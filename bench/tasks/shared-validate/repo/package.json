@@ -1,0 +1,6 @@
+{
+  "name": "shared-validate-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}

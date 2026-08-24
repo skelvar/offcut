@@ -1,0 +1,37 @@
+diff --git a/invite.js b/invite.js
+index 5a659dd..2c84dcd 100644
+--- a/invite.js
++++ b/invite.js
+@@ -1,4 +1,6 @@
++import { isValidEmail } from './validateEmail.js';
++
+ export function inviteUser(email) {
+-  // TODO: validate email, then accept
++  if (!isValidEmail(email)) throw new Error('invalid email');
+   return { ok: true, email };
+ }
+diff --git a/register.js b/register.js
+index 63287b3..fbbda6e 100644
+--- a/register.js
++++ b/register.js
+@@ -1,4 +1,6 @@
++import { isValidEmail } from './validateEmail.js';
++
+ export function registerUser(email) {
+-  // TODO: validate email, then accept
++  if (!isValidEmail(email)) throw new Error('invalid email');
+   return { ok: true, email };
+ }
+diff --git a/validateEmail.js b/validateEmail.js
+new file mode 100644
+index 0000000..b85faee
+--- /dev/null
++++ b/validateEmail.js
+@@ -0,0 +1,7 @@
++export function isValidEmail(email) {
++  if (typeof email !== 'string') return false;
++  const parts = email.split('@');
++  if (parts.length !== 2) return false;
++  const [local, domain] = parts;
++  return local.length > 0 && domain.length > 0 && domain.includes('.');
++}
