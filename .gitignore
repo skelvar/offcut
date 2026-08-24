@@ -7,3 +7,10 @@ node_modules/
 # agent tooling artifacts
 .superpowers/
 .remember/
+
+# Phase 5 bench opaque run artifacts
+bench/runs/
+bench/manifest.jsonl
+bench/manifest.jsonl.*.bak
+bench/schedule-last.json
+

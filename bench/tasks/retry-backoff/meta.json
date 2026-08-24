@@ -1,0 +1,5 @@
+{
+  "id": "retry-backoff",
+  "title": "Retry with linear backoff",
+  "family": "node-utility"
+}

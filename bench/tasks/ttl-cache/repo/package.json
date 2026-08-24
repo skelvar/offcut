@@ -1,0 +1,6 @@
+{
+  "name": "ttl-cache-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}

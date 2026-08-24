@@ -1,0 +1,6 @@
+{
+  "name": "retry-backoff-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}

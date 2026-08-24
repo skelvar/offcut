@@ -1,0 +1,5 @@
+{
+  "id": "config-fallback",
+  "title": "Ordered config fallback loader",
+  "family": "node-utility"
+}
