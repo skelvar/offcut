@@ -79,12 +79,52 @@ function runStub(taskId, style, workDir) {
   };
 }
 
-function runClaude({ workDir, prompt, stateDir, settingsPath, model }) {
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function parseClaudeResult(stdout, status, spawnErr) {
+  let parsed = null;
+  let modelId = null;
+  try {
+    parsed = JSON.parse(stdout || '{}');
+    const usage = parsed.modelUsage || {};
+    const keys = Object.keys(usage);
+    if (keys.length) modelId = keys[0];
+    else if (parsed.model) modelId = parsed.model;
+  } catch {
+    // keep raw
+  }
+  const resultText = parsed && typeof parsed.result === 'string' ? parsed.result : '';
+  const apiError =
+    (parsed && (parsed.terminal_reason === 'api_error' || parsed.api_error_status)) ||
+    /session limit|rate limit|overloaded|429/i.test(resultText) ||
+    /session limit|rate limit|overloaded|429/i.test(stdout || '');
+  const ok = status === 0 && !(parsed && parsed.is_error);
+  return {
+    ok,
+    exitCode: status,
+    stdout: stdout || '',
+    stderr: '',
+    transcript: stdout || '',
+    modelId,
+    parsed,
+    apiError: Boolean(apiError),
+    error:
+      spawnErr?.message ||
+      (apiError
+        ? resultText || `api_error status=${parsed?.api_error_status || status}`
+        : !ok
+          ? resultText || `claude exit ${status}`
+          : null),
+  };
+}
+
+function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 3 }) {
   const env = {
     ...process.env,
     OFFCUT_STATE_DIR: stateDir,
   };
-  // Do not inherit a polluted real state dir path.
   const args = [
     '-p',
     prompt,
@@ -97,36 +137,28 @@ function runClaude({ workDir, prompt, stateDir, settingsPath, model }) {
     '--settings',
     settingsPath,
   ];
-  const r = spawnSync('claude', args, {
-    encoding: 'utf8',
-    cwd: workDir,
-    env,
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: 10 * 60 * 1000,
-  });
-  let parsed = null;
-  let modelId = model;
-  try {
-    parsed = JSON.parse(r.stdout || '{}');
-    const usage = parsed.modelUsage || {};
-    const keys = Object.keys(usage);
-    if (keys.length) modelId = keys[0];
-    else if (parsed.model) modelId = parsed.model;
-  } catch {
-    // keep raw
+
+  let last = null;
+  let attempts = 0;
+  for (let i = 0; i <= retries; i++) {
+    attempts = i + 1;
+    const r = spawnSync('claude', args, {
+      encoding: 'utf8',
+      cwd: workDir,
+      env,
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 10 * 60 * 1000,
+    });
+    last = parseClaudeResult(r.stdout, r.status, r.error);
+    last.stderr = r.stderr || '';
+    if (last.ok || !last.apiError) break;
+    // Back off on rate/session limits. Honor long waits for session resets.
+    const waitMs = Math.min(15 * 60 * 1000, 30_000 * 2 ** i);
+    console.error(`claude api_error (attempt ${attempts}): ${last.error}; sleeping ${waitMs}ms`);
+    sleepSync(waitMs);
   }
-  return {
-    ok: r.status === 0 && !(parsed && parsed.is_error),
-    exitCode: r.status,
-    stdout: r.stdout || '',
-    stderr: r.stderr || '',
-    transcript: r.stdout || '',
-    modelId,
-    parsed,
-    error:
-      r.error?.message ||
-      (r.status !== 0 ? (r.stderr || `claude exit ${r.status}`).trim() : null),
-  };
+  last.attempts = attempts;
+  return last;
 }
 
 export function runOne(opts) {
@@ -225,6 +257,10 @@ export function runOne(opts) {
 
     if (!agent.ok && !stub) {
       record.error = agent.error || 'agent failed';
+    }
+    if (agent.attempts && agent.attempts > 1) {
+      record.retried = true;
+      record.attempts = agent.attempts;
     }
 
     const diff = captureDiff(workDir);

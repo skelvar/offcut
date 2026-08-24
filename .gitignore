@@ -13,4 +13,6 @@ bench/runs/
 bench/manifest.jsonl
 bench/manifest.jsonl.*.bak
 bench/schedule-last.json
+bench/paid-schedule.log
+bench/paid-resume.log
 
