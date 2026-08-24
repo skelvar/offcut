@@ -675,6 +675,18 @@ test('extractWriteFields: full vs fragment shapes', () => {
   );
 });
 
+test('extractWriteFields: apply_patch may use tool_input.command', () => {
+  // Measured 2026-08-24: one host's PreToolUse for apply_patch carries the
+  // patch blob in tool_input.command, not patch/input/file_path.
+  const patch =
+    '*** Begin Patch\n*** Add File: D:/rightseam/new-file.ts\n+export interface A {}\n+export class B implements A {}\n*** End Patch';
+  const fields = extractWriteFields({ command: patch }, 'fragment');
+  assert.equal(fields.path, 'D:/rightseam/new-file.ts');
+  assert.match(fields.addedContent, /export interface A/);
+  assert.match(fields.addedContent, /export class B implements A/);
+  assert.equal(fields.addedContent.includes('+'), false);
+});
+
 test('buildPreView respects truncation and shape', () => {
   return withStateDir((dir) => {
     const norm = normalize({
