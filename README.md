@@ -103,15 +103,40 @@ files are involved.
 
 | Host | Status | Notes |
 |---|---|---|
-| Claude Code | Tier 1 — measured 2026-08-24 | Full mode via hooks |
-| Codex | Tier 1 — measured 2026-08-24 | Same config; snake_case payload |
-| Grok Build | Tier 1 — measured 2026-08-24 | Same config; **camelCase** payload |
+| Claude Code | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
+| Codex | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
+| Grok Build | **Tier 3** — measured 2026-08-24 | Hooks run but deliver nothing; use `AGENTS.md`. See below |
 | Cursor | **Untested** | Deferred; different config schema |
 | ChatGPT / other skill hosts | Tier 2 — skill only | No persistent mode |
-| AGENTS.md readers | Tier 3 — instructions only | Generated file |
+| Other AGENTS.md readers | Tier 3 — instructions only | Generated file |
 
-A host is never listed as supported without a probe run. Vendor documentation
-alone is not enough — Grok's payload dialect disagrees with its own config docs.
+A host is listed as supported only when a challenge was **observed in a real
+transcript**. Installing successfully is not verification, and vendor
+documentation is not either — Grok's payload dialect contradicts its own config
+docs, and its delivery behavior contradicts the tier we assumed.
+
+### Grok Build is Tier 3, not Tier 1
+
+Offcut's hooks install and run correctly on Grok — state is written, signals
+fire, the statusline updates. **The model never sees any of it.** Grok's own
+hook documentation says so:
+
+> `UserPromptSubmit` is observe-only: grok ignores its exit code and its stdout
+
+> For events like `SessionStart` or `PostToolUse`, stdout is ignored. Just exit
+> 0 on success.
+
+That removes the session ruleset, the per-turn reminder, and the post-write
+check. Only `PreToolUse` reads stdout, and there only a `deny` decision is
+reliably honored — which Offcut never issues by design.
+
+Measured 2026-08-24: hook fired, `fired-… = ["new-file"]` written to state,
+model replied `NO_OFFCUT_CHALLENGE`. A direct context probe replied `NO_CTX`.
+
+**What to use instead:** Grok auto-loads `AGENTS.md` as project rules, and
+Offcut generates that file. You get the always-on ruleset, without modes,
+commands, or write-time challenges. Install it by putting `AGENTS.md` at your
+repo root — no hook configuration needed.
 
 ## Develop
 
