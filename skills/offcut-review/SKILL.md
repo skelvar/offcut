@@ -48,7 +48,6 @@ a mode: do not change `~/.offcut/` or any Offcut state file.
 - **Do not write Offcut state.** Commands leave the mode exactly as found.
 - **Do not re-implement signals in prose.** `hooks/signals.js` via
   `scripts/scan.mjs` is the only definition.
-- Signals that only make sense on a live create (`new-file`,
-  `large-first-write`) may appear for newly added files in the diff; they do
-  not run in a repo audit.
+- `large-first-write` may appear for newly added files in the diff; it does
+  not run in a repo audit. `exported-unused` needs a cross-file corpus.
 - No network. The scanner must not modify files.

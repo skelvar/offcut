@@ -77,10 +77,9 @@ test('every signal declares contexts; runner filters on them', () => {
   }
 });
 
-test('new-file and large-first-write cannot fire in a repo audit', () => {
-  const newFile = PRE_SIGNALS.find((s) => s.id === 'new-file');
+test('large-first-write cannot fire in a repo audit; new-file is gone', () => {
+  assert.equal(PRE_SIGNALS.find((s) => s.id === 'new-file'), undefined);
   const large = PRE_SIGNALS.find((s) => s.id === 'large-first-write');
-  assert.ok(!newFile.contexts.includes('repo'));
   assert.ok(!large.contexts.includes('repo'));
 
   const big = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
@@ -93,41 +92,28 @@ test('new-file and large-first-write cannot fire in a repo audit', () => {
     addedContent: big,
     shape: 'full',
   }));
-  assert.ok(!hits.find((h) => h.id === 'new-file'));
   assert.ok(!hits.find((h) => h.id === 'large-first-write'));
 });
 
-test('new-file still fires in write and diff contexts', () => {
-  for (const context of ['write', 'diff']) {
-    const hits = runSignals(PRE_SIGNALS, view({
-      context,
-      pathExists: false,
-      path: 'x.js',
-      shape: 'full',
-      needsContent: false,
-    }));
-    assert.ok(hits.find((h) => h.id === 'new-file'), `missing new-file in ${context}`);
-  }
-});
-
-test('exported-unused is stronger with a cross-file corpus', () => {
+test('exported-unused needs a multi-module corpus', () => {
   const sig = POST_SIGNALS.find((s) => s.id === 'exported-unused');
   const file = 'export function orphan() { return 1 }\n';
-  assert.equal(sig.check(view({ content: file, addedContent: file })), true);
+  // No corpus → silent (write-time is not decidable).
+  assert.equal(sig.check(view({ content: file, addedContent: file })), false);
   assert.equal(
     sig.check(view({
       content: file,
       addedContent: file,
-      corpus: `${file}\norphan();\n`,
+      corpus: `${file}\nimport "./x.js";\norphan();\n`,
     })),
     false,
   );
-  // Repo context still selects the signal.
+  // Repo context with imports but no caller → fire.
   const hits = runSignals(POST_SIGNALS, view({
     context: 'repo',
     content: file,
     addedContent: file,
-    corpus: file,
+    corpus: `${file}\nimport { other } from "./x.js";\n`,
   }));
   assert.ok(hits.find((h) => h.id === 'exported-unused'));
 });
@@ -161,7 +147,7 @@ test('parseUnifiedDiff: new file vs edit', () => {
   assert.equal(created.shape, 'full');
 });
 
-test('scanDiff: fires new-file on added path; scanFiles never does', () => {
+test('scanDiff: new-file gone; large-first-write still create-only', () => {
   return withTempDir((dir) => {
     const filePath = path.join(dir, 'solo.js');
     fs.writeFileSync(filePath, 'export function alone() { return 1 }\n');
@@ -176,12 +162,13 @@ test('scanDiff: fires new-file on added path; scanFiles never does', () => {
     ].join('\n');
 
     const diffHits = scanDiff(diff);
-    assert.ok(diffHits.find((f) => f.signalId === 'new-file'));
+    assert.ok(!diffHits.find((f) => f.signalId === 'new-file'));
 
     const repoHits = scanFiles([filePath], { cwd: dir });
     assert.ok(!repoHits.find((f) => f.signalId === 'new-file'));
     assert.ok(!repoHits.find((f) => f.signalId === 'large-first-write'));
-    assert.ok(repoHits.find((f) => f.signalId === 'exported-unused'));
+    // Lone module with no imports: public API, not a dead export.
+    assert.ok(!repoHits.find((f) => f.signalId === 'exported-unused'));
   });
 });
 
@@ -191,6 +178,18 @@ test('scanFiles: exported-unused silent when another file calls it', () => {
     fs.writeFileSync(path.join(dir, 'b.js'), 'import { shared } from "./a.js";\nshared();\n');
     const hits = scanFiles(collectFiles([dir]), { cwd: dir });
     assert.ok(!hits.find((f) => f.signalId === 'exported-unused' && f.path.endsWith('a.js')));
+  });
+});
+
+test('scanFiles: exported-unused fires on orphan when siblings import elsewhere', () => {
+  return withTempDir((dir) => {
+    fs.writeFileSync(
+      path.join(dir, 'a.js'),
+      'export function shared() { return 1 }\nexport function orphan() { return 2 }\n',
+    );
+    fs.writeFileSync(path.join(dir, 'b.js'), 'import { shared } from "./a.js";\nshared();\n');
+    const hits = scanFiles(collectFiles([dir]), { cwd: dir });
+    assert.ok(hits.find((f) => f.signalId === 'exported-unused' && f.path.endsWith('a.js')));
   });
 });
 
@@ -207,7 +206,10 @@ test('command run leaves state directory byte-identical', () => {
     try {
       const src = path.join(dir, 'src');
       fs.mkdirSync(src);
-      fs.writeFileSync(path.join(src, 'x.js'), 'export const x = 1\n');
+      fs.writeFileSync(
+        path.join(src, 'x.js'),
+        'export function save(x) { return db.save(x) }\n',
+      );
 
       const cli = runScanCli([src], { cwd: dir });
       assert.equal(cli.code, 0);

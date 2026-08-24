@@ -159,45 +159,37 @@ function looksLikeNewDependency(view) {
   return false;
 }
 
+function stripComments(text) {
+  // Structural signals must match code, not prose. Dogfooding caught
+  // `speculative-abstraction` firing on this very file: the comment
+  // "an interface / abstract class with exactly one" parses as an abstract
+  // class named `with`. Comments describing a pattern are not the pattern.
+  return String(text || '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*/g, '$1 ');
+}
+
 function speculativeAbstraction(view) {
-  const text = view.content || '';
+  const text = stripComments(view.content || '');
   if (!text.trim()) return false;
 
-  // Interface / abstract class / factory declarations.
+  // Only structural indirection: an interface / abstract class with exactly one
+  // implementor in view. Naming conventions (createX, FooFactory) are not
+  // evidence — createCache + `new Map()` was a 10/10 false positive on ttl-cache.
   const interfaces = [...text.matchAll(/\binterface\s+([A-Za-z_][\w]*)/g)].map((m) => m[1]);
   const abstracts = [...text.matchAll(/\babstract\s+class\s+([A-Za-z_][\w]*)/g)].map((m) => m[1]);
-  const factories = [
-    ...text.matchAll(/\b(?:function|const|class)\s+(create[A-Z][\w]*|[A-Z][\w]*Factory)\b/g),
-  ].map((m) => m[1]);
-
-  const names = [...new Set([...interfaces, ...abstracts, ...factories])];
+  const names = [...new Set([...interfaces, ...abstracts])];
   if (!names.length) return false;
 
   for (const name of names) {
-    let impls = 0;
     const implRe = new RegExp(`\\b(?:implements|extends)\\s+${name}\\b`, 'g');
-    impls += [...text.matchAll(implRe)].length;
-    // Factory with a single concrete return / instantiation nearby.
-    if (/Factory$/.test(name) || /^create[A-Z]/.test(name)) {
-      const bodyMatch = text.match(
-        new RegExp(
-          `(?:function\\s+${name}|const\\s+${name}\\s*=|class\\s+${name})[\\s\\S]{0,800}?\\{([\\s\\S]*?)\\n\\}`,
-        ),
-      );
-      const body = bodyMatch ? bodyMatch[1] : text;
-      const news = [...body.matchAll(/\bnew\s+([A-Za-z_][\w]*)/g)].map((m) => m[1]);
-      const unique = new Set(news);
-      if (unique.size === 1) impls = Math.max(impls, 1);
-      if (unique.size > 1) impls = unique.size;
-    }
+    const impls = [...text.matchAll(implRe)].length;
     if (impls === 1) return true;
-    // TypeScript-style: interface + exactly one class mentioning it, no second.
-    if (interfaces.includes(name) || abstracts.includes(name)) {
-      const classMentions = [
-        ...text.matchAll(new RegExp(`\\bclass\\s+([A-Za-z_][\\w]*)[^{]*\\b${name}\\b`, 'g')),
-      ];
-      if (classMentions.length === 1) return true;
-    }
+    // TypeScript-style: interface name mentioned in exactly one class header.
+    const classMentions = [
+      ...text.matchAll(new RegExp(`\\bclass\\s+([A-Za-z_][\\w]*)[^{]*\\b${name}\\b`, 'g')),
+    ];
+    if (classMentions.length === 1) return true;
   }
   return false;
 }
@@ -233,10 +225,14 @@ function configForConstant(view) {
 }
 
 function exportedUnused(view) {
+  // Not decidable on a single write: every module's public API looks unused
+  // inside its own file. Requires a cross-file corpus (diff/repo only).
+  if (view.corpus == null) return false;
   const text = view.content || '';
-  // Repo/diff may supply a corpus so "no caller" means across files, not
-  // "no caller in this one file" (which would fire on almost every export).
-  const searchIn = view.corpus != null ? String(view.corpus) : text;
+  const searchIn = String(view.corpus);
+  // A lone module with no imports is a deliverable API, not a dead export.
+  // Need evidence of a multi-module program before "no caller" means anything.
+  if (!/\bimport\b|\brequire\s*\(/.test(searchIn)) return false;
   const exports = [
     ...text.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_][\w]*)/g),
     ...text.matchAll(/export\s+(?:const|let|var|class|enum|type|interface)\s+([A-Za-z_][\w]*)/g),
@@ -246,7 +242,7 @@ function exportedUnused(view) {
   for (const name of new Set(exports)) {
     const re = new RegExp(`\\b${name}\\b`, 'g');
     const hits = [...searchIn.matchAll(re)];
-    // Declaration only — no other reference in the searchable text.
+    // Declaration only — no other reference across the corpus.
     if (hits.length <= 1) return true;
   }
   return false;
@@ -255,10 +251,12 @@ function exportedUnused(view) {
 function newConfigSurface(view) {
   const text = view.addedContent || '';
   if (!text.trim()) return false;
+  // process.env / getenv are often the requested surface (config-fallback: 10/10
+  // FP). Flag new config *frameworks* instead — weight that a few lines would not.
   return (
-    /\b(?:process\.env|getenv|config\.get|getConfig|defineConfig|Convict|ConvictSchema)\b/.test(text) ||
-    /\b(?:nconf|rc\(|cosmiconfig)\b/.test(text) ||
-    (/"(?:[A-Z0-9_]+)"\s*:/.test(text) && /config|settings/i.test(view.path || ''))
+    /\b(?:config\.get|getConfig|defineConfig|Convict|ConvictSchema)\b/.test(text) ||
+    /\b(?:nconf|cosmiconfig)\b/.test(text) ||
+    /\brc\s*\(/.test(text)
   );
 }
 
@@ -278,19 +276,19 @@ function singleCallWrapper(view) {
 
 function unusedDefaultParam(view) {
   const text = view.content || '';
-  // function foo(a = 1) or (a = 1) =>
-  const params = [...text.matchAll(/(?:function\s+[A-Za-z_][\w]*|(?:const|let)\s+[A-Za-z_][\w]*\s*=\s*(?:async\s*)?)\s*\(([^)]*)\)/g)];
+  // Defaulted params that never appear again in the file — not "no named call
+  // site" (that fired on every requested options bag: retry-backoff, ttl-cache).
+  const params = [
+    ...text.matchAll(
+      /(?:function\s+[A-Za-z_][\w]*|(?:const|let)\s+[A-Za-z_][\w]*\s*=\s*(?:async\s*)?)\s*\(([^)]*)\)/g,
+    ),
+  ];
   for (const m of params) {
     const list = m[1];
     const defaults = [...list.matchAll(/([A-Za-z_][\w]*)\s*=\s*[^,)+]+/g)].map((d) => d[1]);
     for (const p of defaults) {
-      // Call sites passing this argument positionally/named are hard; cheap check:
-      // if the param name never appears as an option key at a call, treat as unused default.
-      const named = new RegExp(`\\b${p}\\s*:`, 'g');
-      if (![...text.matchAll(named)].length) {
-        // At least one defaulted param with no named-arg use in the write.
-        return true;
-      }
+      const re = new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+      if ([...text.matchAll(re)].length <= 1) return true;
     }
   }
   return false;
@@ -298,18 +296,9 @@ function unusedDefaultParam(view) {
 
 /** @type {Signal[]} */
 export const PRE_SIGNALS = [
-  {
-    id: 'new-file',
-    phase: 'pre',
-    // pathExists===false is meaningful for a write/diff create, never a repo audit.
-    contexts: ['write', 'diff'],
-    // Applies to full writes, and to fragment creates (pathExists === false).
-    shapes: 'both',
-    needsContent: false,
-    message:
-      'Offcut: new file — is a new file needed, or does this belong in an existing one?',
-    check: (view) => view.pathExists === false,
-  },
+  // new-file deleted (Phase 6): pathExists===false is a constant on creates, not
+  // evidence of over-engineering. The prompt often asks for the file
+  // (shared-validate: 5/5 full-arm fires, all wrong).
   {
     id: 'large-first-write',
     phase: 'pre',
@@ -357,7 +346,8 @@ export const POST_SIGNALS = [
   {
     id: 'exported-unused',
     phase: 'post',
-    contexts: ['write', 'diff', 'repo'],
+    // Write context has no corpus — not decidable at write time (was 20/20 FP).
+    contexts: ['diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message:
