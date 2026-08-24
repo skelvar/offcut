@@ -144,3 +144,58 @@ satisfy the check.
 Both signals are 0/40 on negatives so they are not noisy, but their value is
 unproven. If a real-code corpus shows either firing on ordinary code, delete it
 rather than tuning it.
+
+## Real-code corpus results (2026-08-25)
+
+`node bench/realcode.mjs` — 1655 files across Offcut's own source and every
+installed third-party plugin. Published, reviewed code.
+
+**51.1% of files produce at least one finding.** Broken down, the noise is not
+distributed — it is one signal:
+
+| signal | files fired | rate | verdict |
+|---|---:|---:|---|
+| config-for-constant | 793 | **47.9%** | **broken — see below** |
+| single-call-wrapper | 62 | 3.7% | borderline, investigate |
+| speculative-abstraction | 10 | 0.6% | holds up |
+| new-config-surface | 9 | 0.5% | holds up |
+| new-dependency | 8 | 0.5% | holds up |
+| unused-default-param | 4 | 0.2% | holds up |
+| large-first-write | 0 | 0.0% | holds up |
+| exported-unused | 0 | 0.0% | **not measured** (see caveat) |
+
+### `config-for-constant` fires on 100% of JSON files
+
+Every one of 411 `.json` files. 65% of `.py`. 39% of `.sh`. It matched a
+markdown scaffold doc because an example block contained `NODE_ENV=`,
+`PORT=`, `DATABASE_URL=`.
+
+Two compounding faults:
+
+1. **No file-type gating.** The signals are JS-shaped; the scanner applies them
+   to `.py`, `.json`, `.md`, `.sh`, `.yaml`, `.txt` alike. A config file being
+   full of config keys is not a finding.
+2. **The check is a syntax match, not a semantic one.** `ALLCAPS =` appears in
+   documentation, examples, shell scripts, and env templates.
+
+A signal firing on half of all files carries no information regardless of how
+its message is worded. It should be deleted or restricted to a scope where
+"this constant is never read" is actually decidable.
+
+### Caveat on `exported-unused`
+
+`realcode.mjs` passes `corpus: null`, and after the Phase 6 fix that signal is
+silent without a corpus by design. **Its 0.0% here means "not exercised", not
+"clean."** It needs a separate measurement that builds a cross-file corpus per
+project. Do not read this row as a pass.
+
+### What this settles about the stopping condition
+
+The ceiling is **not** where it looked. Seven of eight signals fire on ≤3.7% of
+real files; the structural ones (`speculative-abstraction`, `new-dependency`,
+`unused-default-param`) survived 1655 files of ordinary code after the
+comment-stripping fix.
+
+The approach is viable. **One signal is broken and one is untested.** That is a
+much smaller problem than "text-level checks cannot work", and it is fixable
+without abandoning the design.
