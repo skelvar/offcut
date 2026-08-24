@@ -4,6 +4,10 @@
 //
 //   node scripts/scan.mjs --diff [file|-]
 //   node scripts/scan.mjs <file-or-dir> [file-or-dir...]
+//
+// Walks all text extensions so audits can cover a tree, but language-specific
+// signals declare `extensions` and runSignals skips non-matching paths
+// (JSON/Markdown never see export/function/interface checks).
 
 import fs from 'node:fs';
 import path from 'node:path';

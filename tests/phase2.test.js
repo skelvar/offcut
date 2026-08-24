@@ -290,27 +290,11 @@ export function createCache({ defaultTtlMs = 1000 } = {}) {
   assert.equal(sig.check(view({ content: factory })), false);
 });
 
-test('signal config-for-constant: positive unread key; negative when key is read', () => {
-  const sig = PRE_SIGNALS.find((s) => s.id === 'config-for-constant');
+test('signal config-for-constant is deleted', () => {
+  // Phase 7: syntax match fired on 47.9% of real files; same retirement path as new-file.
   assert.equal(
-    sig.check(
-      view({
-        path: 'config/settings.js',
-        addedContent: 'export const MAX_RETRIES = 3;\n',
-        content: 'export const MAX_RETRIES = 3;\n',
-      }),
-    ),
-    true,
-  );
-  assert.equal(
-    sig.check(
-      view({
-        path: 'config/settings.js',
-        content: 'export const MAX_RETRIES = 3;\nexport function run(){ return MAX_RETRIES }\n',
-        addedContent: 'export const MAX_RETRIES = 3;\nexport function run(){ return MAX_RETRIES }\n',
-      }),
-    ),
-    false,
+    PRE_SIGNALS.find((s) => s.id === 'config-for-constant'),
+    undefined,
   );
 });
 
