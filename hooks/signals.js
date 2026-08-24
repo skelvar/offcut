@@ -367,9 +367,10 @@ export const ALL_SIGNALS = [...PRE_SIGNALS, ...POST_SIGNALS];
  * @returns {Signal[]}
  */
 export function runSignals(signals, view) {
-  if (!view) return [];
+  if (!view || !Array.isArray(signals)) return [];
   const out = [];
   for (const signal of signals) {
+    if (!signal || typeof signal.check !== 'function') continue;
     if (signal.shapes !== 'both' && signal.shapes !== view.shape) continue;
     if (signal.needsContent && view.truncated) continue;
     let hit = false;

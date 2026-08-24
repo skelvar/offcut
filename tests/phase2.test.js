@@ -689,3 +689,16 @@ test('buildPreView respects truncation and shape', () => {
     assert.equal(v.pathExists, false);
   });
 });
+
+test('signals: runSignals never throws on a bad signal list', () => {
+  // Hooks must never throw — a throw becomes a nonzero exit and a visible
+  // hook failure in the user's transcript. Found by adversarial pass.
+  const view = {
+    toolName: 'Write', shape: 'full', path: 'x.js', pathExists: false,
+    content: 'x', truncated: false, mode: 'full',
+  };
+  for (const bad of [null, undefined, 'nope', 42, {}]) {
+    assert.deepEqual(runSignals(bad, view), [], `threw or misbehaved on ${String(bad)}`);
+  }
+  assert.deepEqual(runSignals([null, undefined, { id: 'x' }], view), []);
+});
