@@ -198,6 +198,44 @@ design.
 
 ---
 
+## Phase 4 — Grok command skills (2026-08-24)
+
+Grok is Tier 3 for the **persistent mode** (hook stdout discarded). Skills do
+not use hook stdout — the agent loads `SKILL.md` directly.
+
+### Measurement
+
+1. `grok inspect --json` from `D:\rightseam` with only repo-root `skills/` —
+   **no** `offcut*` skills listed. Bare Claude-plugin `skills/` is not a Grok
+   discovery root.
+2. Created directory junctions:
+   `.grok/skills/offcut{,-review,-audit,-help}` → `skills/…`
+3. Re-ran `grok inspect --json`. All four appeared:
+
+| name | source.type | userInvocable |
+|---|---|---|
+| `offcut` | `project` | `true` |
+| `offcut-review` | `project` | `true` |
+| `offcut-audit` | `project` | `true` |
+| `offcut-help` | `project` | `true` |
+
+4. Removed the temporary `.grok/skills` junctions afterward (not committed).
+
+Slash-menu invocation of `/offcut-review` in an interactive TUI session was
+**not** exercised in this pass — discovery + `userInvocable` is what was
+measured. End-to-end “agent ran `scan.mjs` after `/offcut-audit`” remains
+unverified on Grok.
+
+### How to use on Grok
+
+- Junction/symlink each `skills/offcut-*` directory into `.grok/skills/`, or
+- Add the repo `skills/` path to `[skills].paths` in `~/.grok/config.toml`.
+
+Status: **commands are discoverable on Grok when placed under a Grok skill
+root. Mode remains Tier 3.**
+
+---
+
 ## Checklist
 
 | Check | Claude 2.1.240 | Codex 0.149.1 | Grok 1.0.5 |
@@ -218,6 +256,7 @@ design.
 | Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
 | `permissionDecision` settled | **ask** blocks in `-p`; escalate ignored | **ask/escalate non-blocking** in exec; context works | context-only |
 | Truncation threshold | — | — | **unverified** |
+| Command skills discovered | plugin `skills/` | — | **pass** via `.grok/skills/` junctions (`grok inspect`); bare `skills/` miss |
 
 ---
 
