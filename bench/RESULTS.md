@@ -1,5 +1,18 @@
 # Phase 5 results
 
+> **SUPERSEDED — measured against a detector that no longer exists.**
+>
+> These 40 runs used the Phase 5 signal set. All 30 challenges it issued were
+> later found to be false positives, and the detector has since changed
+> substantially: 9 signals down to 7, comments stripped, file-type gating added,
+> real-code fire rate 51.1% -> 4.4%, labeled negatives 30/30 wrong -> 0/40.
+>
+> The null result below is therefore **not evidence about the current build**.
+> It is evidence that a broken detector changes nothing, which is unsurprising.
+> Phase 7.5 re-runs this against the corrected signals; until it lands, the
+> product question is **unanswered**.
+
+
 Every run is listed. Failed acceptance checks are excluded from size
 medians and reported separately.
 
