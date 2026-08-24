@@ -1,0 +1,38 @@
+diff --git a/store.ts b/store.ts
+index 33ff1dc..8e11238 100644
+--- a/store.ts
++++ b/store.ts
+@@ -1,7 +1,29 @@
+-// TODO: implement createStore()
+-export function createStore(): {
++export interface Store {
+   set(key: string, value: string): void;
+   get(key: string): string | undefined;
+-} {
+-  throw new Error('not implemented');
++}
++
++export abstract class AbstractStore implements Store {
++  abstract set(key: string, value: string): void;
++  abstract get(key: string): string | undefined;
++}
++
++export class MemoryStore extends AbstractStore {
++  private data = new Map<string, string>();
++  set(key: string, value: string) {
++    this.data.set(key, value);
++  }
++  get(key: string) {
++    return this.data.get(key);
++  }
++}
++
++export function createStoreFactory() {
++  return () => new MemoryStore();
++}
++
++export const createStore = createStoreFactory();
++
++export function unusedStoreMetrics() {
++  return { hits: 0, misses: 0 };
+ }

@@ -1,0 +1,34 @@
+diff --git a/cache.js b/cache.js
+index 462dad0..7e7b2fd 100644
+--- a/cache.js
++++ b/cache.js
+@@ -1,4 +1,25 @@
+-// TODO: implement createCache()
+-export function createCache(options = {}) {
+-  throw new Error('not implemented');
+-}
++export function createCache({ defaultTtlMs = 1000 } = {}) {
++  const store = new Map();
++
++  function isExpired(entry) {
++    return entry.expiresAt <= Date.now();
++  }
++
++  return {
++    set(key, value, ttlMs = defaultTtlMs) {
++      store.set(key, { value, expiresAt: Date.now() + ttlMs });
++    },
++    get(key) {
++      const entry = store.get(key);
++      if (!entry || isExpired(entry)) return undefined;
++      return entry.value;
++    },
++    has(key) {
++      const entry = store.get(key);
++      return !!entry && !isExpired(entry);
++    },
++    delete(key) {
++      store.delete(key);
++    },
++  };
++}

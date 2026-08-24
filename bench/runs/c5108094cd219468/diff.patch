@@ -1,0 +1,14 @@
+diff --git a/greet.js b/greet.js
+index 066e7de..77bf1ae 100644
+--- a/greet.js
++++ b/greet.js
+@@ -1,4 +1,6 @@
+-// TODO: implement formatGreeting()
+-export function formatGreeting(_name, _options) {
+-  throw new Error('not implemented');
++function formatGreeting(name, options) {
++  const base = `Hello, ${name}`;
++  return options && options.excited ? `${base}!` : base;
+ }
++
++module.exports = { formatGreeting };

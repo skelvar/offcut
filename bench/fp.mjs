@@ -13,9 +13,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
 import { parseUnifiedDiff } from '../scripts/scan.mjs';
-import { RUNS_DIR, BENCH_ROOT } from './lib.mjs';
+import { RUNS_DIR, BENCH_ROOT, CONTROL_TASK_IDS } from './lib.mjs';
 
 const POSITIVE_DIR = path.join(BENCH_ROOT, 'corpus', 'positive');
+
+// Invite fixtures deliberately tempt signals; their accepted runs are not
+// labeled negatives. Elaborate stubs for controls are intentional overbuilds.
+const CONTROL_SET = new Set(CONTROL_TASK_IDS);
 
 /**
  * @typedef {{
@@ -73,11 +77,16 @@ export function listNegativeRuns() {
     }
     // accept.json uses `ok`; metrics.json mirrors as `task_passed`.
     if (!accept || accept.ok !== true) continue;
+    const task = run.task_id || 'unknown';
+    if (!CONTROL_SET.has(task)) continue;
+    const stub = run.stub || null;
+    const model = String(run.model_id || '');
+    if (stub === 'elaborate' || model.includes('elaborate')) continue;
     out.push({
       runId: name,
       dir,
       arm: run.arm || 'unknown',
-      task: run.task_id || 'unknown',
+      task,
     });
   }
   return out.sort((a, b) => a.runId.localeCompare(b.runId));
@@ -275,7 +284,9 @@ export function formatReport(report) {
   const lines = [];
   lines.push(`# Signal false-positive report`);
   lines.push('');
-  lines.push(`Negative corpus: ${report.runs} accepted bench runs (any fire = FP).`);
+  lines.push(
+    `Negative corpus: ${report.runs} accepted control-task runs (invite fixtures and elaborate stubs excluded; any fire = FP).`,
+  );
   lines.push('');
   lines.push('## Write-time simulation (no corpus — matches hooks)');
   lines.push('');

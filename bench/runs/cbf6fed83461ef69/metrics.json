@@ -1,0 +1,24 @@
+{
+  "run_id": "cbf6fed83461ef69",
+  "task_passed": true,
+  "accept_exit": 0,
+  "accept_error": null,
+  "files_created": 0,
+  "files_created_paths": [],
+  "dependencies_added": 0,
+  "exported_unused": 1,
+  "abstraction_layers": 0,
+  "config_keys_added": 0,
+  "lines_added": 17,
+  "lines_removed": 4,
+  "diff_sha256": "f71f5065eee8e10b018481eb9eda96a409ee5329454a335d4a95cc2ac128e7ff",
+  "signals_in_diff": [
+    "exported-unused"
+  ],
+  "signals_in_diff_count": 1,
+  "signals_fired": [],
+  "signals_fired_count": 0,
+  "flagged_survived": [],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": null
+}

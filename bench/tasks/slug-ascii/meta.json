@@ -1,0 +1,7 @@
+{
+  "id": "slug-ascii",
+  "title": "ASCII URL slug helper",
+  "family": "node-utility",
+  "role": "invite",
+  "invites": ["new-dependency"]
+}

@@ -1,0 +1,29 @@
+{
+  "run_id": "3d3e828139afc884",
+  "task_passed": true,
+  "accept_exit": 0,
+  "accept_error": null,
+  "files_created": 0,
+  "files_created_paths": [],
+  "dependencies_added": 0,
+  "exported_unused": 0,
+  "abstraction_layers": 0,
+  "config_keys_added": 0,
+  "lines_added": 3,
+  "lines_removed": 2,
+  "diff_sha256": "9db79a3149c686545186a7f8bafec20403244071f0893a68ea36d77631c7f949",
+  "signals_in_diff": [
+    "exported-unused",
+    "single-call-wrapper"
+  ],
+  "signals_in_diff_count": 2,
+  "signals_fired": [
+    "single-call-wrapper"
+  ],
+  "signals_fired_count": 1,
+  "flagged_survived": [
+    "single-call-wrapper"
+  ],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": true
+}

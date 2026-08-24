@@ -323,3 +323,15 @@ helper worth having from one worth inlining.
 internal files into the denominator (2.8%). `walkDir` skips `.git` as a child
 but not as a scan root. Fixed; the rate moves 4.3% → 4.4%, which is the honest
 number.
+
+## Phase 7.5 — single-call-wrapper deleted (2026-08-25)
+
+Paid re-benchmark (`bench/RESULTS.md`): on invite task `id-hex`, the accepted
+lean solution is `return randomBytes(16).toString("hex")`. `single-call-wrapper`
+appeared in the final diff on **9/9** passed runs and hooks challenged it on
+**4/4** full-arm runs that fired. The flagged pattern **survived** (agent kept
+the wrapper).
+
+That matches the earlier hand sample: the detector matches the shape correctly;
+the shape is conventional, not over-engineering. **Deleted.** No tune — there
+is no text-level way to keep useful thin helpers while rejecting dead ones.

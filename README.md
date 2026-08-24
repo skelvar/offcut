@@ -198,11 +198,17 @@ repo `skills/` directory to `[skills].paths` in `~/.grok/config.toml`. See
 
 ## Does it change what the agent builds?
 
-Phase 5 measured that on Claude Code with model `claude-sonnet-5`: four small
-Node tasks, arms `off` vs `full`, five runs each, interleaved. Offcut fired on
-every `full` run and on no `off` run. **No detectable effect** on size metrics
-(files created, lines, abstractions, unused exports, deps, config keys) in that
-sample — all 40 runs passed acceptance. Details: `bench/RESULTS.md`. Re-run with
+**No — not as a persistent write-time mode.** Phase 7.5 re-ran the benchmark on
+Claude Code with model `claude-sonnet-5` against the corrected detector (eight
+tasks, arms `off` vs `full`, five runs each). Challenges that fired almost
+always left the flagged pattern in the final diff (4 survived / 1 cleared among
+passed full runs with a challenge). Size medians did not move. Details:
+`bench/RESULTS.md`. Phase 5's earlier null result is archived in
+`bench/RESULTS-phase5.md` — it measured a broken detector and is not evidence
+about the current build.
+
+The honest product on this evidence is a **review/audit tool** (`/offcut-review`,
+`/offcut-audit`), not a mode that changes what the agent ships. Re-run with
 `node bench/schedule.mjs` (costs model money; dry-run with `--stub-matrix` first).
 
 ## Develop

@@ -1,0 +1,10 @@
+Implement a small in-memory TTL cache in cache.js for this Node project.
+
+Export createCache({ defaultTtlMs = 1000 } = {}) returning an object with:
+- set(key, value, ttlMs?) — store value; ttl defaults to defaultTtlMs
+- get(key) — return value if present and not expired, otherwise undefined
+- has(key) — boolean, same expiry rule
+- delete(key) — remove key
+
+Expired entries must not be returned. Keep package.json as-is (no new dependencies).
+When finished, the harness runs accept.mjs against the project root.

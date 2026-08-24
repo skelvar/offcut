@@ -1,0 +1,1 @@
+STUB_OK one-impl-store elaborate

@@ -1,0 +1,7 @@
+{
+  "id": "greet-opts",
+  "title": "Greeting helper with options object",
+  "family": "node-utility",
+  "role": "invite",
+  "invites": ["unused-default-param"]
+}

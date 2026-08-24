@@ -1,0 +1,6 @@
+{
+  "name": "greet-opts-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,21 @@
+{
+  "run_id": "01733d874b85e2b3",
+  "task_id": "ttl-cache",
+  "arm": "off",
+  "rep": 4,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.241 (Claude Code)",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T23:26:54.709Z",
+  "effort": "low",
+  "prompt_sha256": "8e3f4b990901c173bb260b14adba0ca7d1bffbf25b24c1dd166ab33313a47c7e",
+  "prompt_path": "tasks/ttl-cache/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": false
+  }
+}

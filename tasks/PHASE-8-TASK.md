@@ -116,6 +116,24 @@ files accumulating forever. Fix both, and remove the markers when you do — a
 marker left behind after its debt is paid is worse than no marker, because it
 trains readers to ignore them.
 
+### 6. The product question is still open — do not let Phase 8 imply otherwise
+
+Phase 7.5 attempted to answer "does a correct challenge change what the agent
+builds" and **could not**: 6 of 80 runs fired a signal, 5 of those from
+`single-call-wrapper` which the same PR deleted as a false positive. The one
+observation from a surviving signal *cleared* — the flagged pattern did not
+ship.
+
+So the answer is **not tested**, not "no". Phase 8 hardens a mechanism whose
+value remains unproven, which is a legitimate thing to do — the resilience bugs
+are real and user-visible regardless — but nothing in this phase should be
+written as if the product question were settled.
+
+The blocker for answering it is fixture design: invite tasks must make a
+*surviving* signal fire reliably (target >=80% of invite runs, measured 24%).
+That is a benchmark problem, not a resilience one, and it belongs in its own
+phase.
+
 ## Scope
 
 Fix the four above. Add a diagnostic. Do not add features.

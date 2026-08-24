@@ -452,6 +452,203 @@ export function inviteUser(email) {
       );
     },
   },
+
+  'one-impl-store': {
+    lean: () => {
+      write(
+        'store.ts',
+        `export function createStore() {
+  const data = new Map<string, string>();
+  return {
+    set(key: string, value: string) {
+      data.set(key, value);
+    },
+    get(key: string) {
+      return data.get(key);
+    },
+  };
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'store.ts',
+        `export interface Store {
+  set(key: string, value: string): void;
+  get(key: string): string | undefined;
+}
+
+export abstract class AbstractStore implements Store {
+  abstract set(key: string, value: string): void;
+  abstract get(key: string): string | undefined;
+}
+
+export class MemoryStore extends AbstractStore {
+  private data = new Map<string, string>();
+  set(key: string, value: string) {
+    this.data.set(key, value);
+  }
+  get(key: string) {
+    return this.data.get(key);
+  }
+}
+
+export function createStoreFactory() {
+  return () => new MemoryStore();
+}
+
+export const createStore = createStoreFactory();
+
+export function unusedStoreMetrics() {
+  return { hits: 0, misses: 0 };
+}
+`,
+      );
+    },
+  },
+
+  'slug-ascii': {
+    lean: () => {
+      write(
+        'slug.js',
+        `export function slugify(text) {
+  if (typeof text !== 'string') throw new TypeError('text must be a string');
+  return text
+    .toLowerCase()
+    .replace(/\\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'package.json',
+        JSON.stringify(
+          {
+            name: 'slug-ascii-task',
+            private: true,
+            type: 'module',
+            engines: { node: '>=18' },
+            dependencies: {
+              'slugify': '^1.6.6',
+            },
+          },
+          null,
+          2,
+        ),
+      );
+      write(
+        'slug/Slugifier.js',
+        `export class Slugifier {
+  slugify(text) {
+    if (typeof text !== 'string') throw new TypeError('text must be a string');
+    return text
+      .toLowerCase()
+      .replace(/\\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+}
+export function createSlugifier() {
+  return new Slugifier();
+}
+`,
+      );
+      write(
+        'slug.js',
+        `import { createSlugifier } from './slug/Slugifier.js';
+
+const defaultSlugifier = createSlugifier();
+
+export function slugify(text) {
+  return defaultSlugifier.slugify(text);
+}
+
+export function unusedSlugPreview(text) {
+  return slugify(text);
+}
+`,
+      );
+    },
+  },
+
+  'id-hex': {
+    lean: () => {
+      write(
+        'id.js',
+        `import { randomBytes } from 'node:crypto';
+
+export function generateId() {
+  return randomBytes(16).toString('hex');
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'id/Generator.js',
+        `import { randomBytes } from 'node:crypto';
+
+export class IdGenerator {
+  generate() {
+    return randomBytes(16).toString('hex');
+  }
+}
+
+export function createIdGenerator() {
+  return new IdGenerator();
+}
+`,
+      );
+      write(
+        'id.js',
+        `import { createIdGenerator } from './id/Generator.js';
+
+const defaultGenerator = createIdGenerator();
+
+export function generateId() {
+  return defaultGenerator.generate();
+}
+
+export function buildIdFacade() {
+  return { generateId, createIdGenerator };
+}
+`,
+      );
+    },
+  },
+
+  'greet-opts': {
+    lean: () => {
+      write(
+        'greet.js',
+        `export function formatGreeting(name, options = {}) {
+  const base = \`Hello, \${name}\`;
+  return options.excited ? \`\${base}!\` : base;
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'greet.js',
+        `export function formatGreeting(name, { excited = false, locale = 'en', formal = false } = {}) {
+  const base = formal ? \`Greetings, \${name}\` : \`Hello, \${name}\`;
+  return excited ? \`\${base}!\` : base;
+}
+
+export function unusedGreetingHelpers(prefix = 'Hi') {
+  return (name) => \`\${prefix}, \${name}\`;
+}
+`,
+      );
+    },
+  },
 };
 
 function write(rel, content) {

@@ -1,0 +1,9 @@
+Implement retry(fn, options) in retry.js for this Node project.
+
+Signature: retry(fn, { retries = 3, delayMs = 10 } = {})
+- Call fn (sync or async). If it throws/rejects, wait delayMs * attemptNumber milliseconds (attemptNumber starts at 1), then try again.
+- After exhausting retries, rethrow the last error.
+- Resolve/return the first successful value.
+
+Export retry from retry.js. Keep package.json as-is (no new dependencies).
+Do not change accept.test.js. When finished, `node --test` is not required; the harness runs accept.mjs.

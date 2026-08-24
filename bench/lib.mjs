@@ -15,11 +15,31 @@ export const TASKS_DIR = path.join(BENCH_ROOT, 'tasks');
 export const RUNS_DIR = path.join(BENCH_ROOT, 'runs');
 export const MANIFEST_PATH = path.join(BENCH_ROOT, 'manifest.jsonl');
 
+// Controls: originals that the corrected detector should stay silent on.
+// Invite: tasks that tempt the surviving signals (Phase 7.5).
 export const TASK_IDS = [
+  'config-fallback', // control
+  'retry-backoff', // control
+  'ttl-cache', // control
+  'shared-validate', // control
+  'one-impl-store', // invite: speculative-abstraction
+  'slug-ascii', // invite: new-dependency
+  'id-hex', // invite: single-call-wrapper
+  'greet-opts', // invite: unused-default-param
+];
+
+export const CONTROL_TASK_IDS = [
   'config-fallback',
   'retry-backoff',
   'ttl-cache',
   'shared-validate',
+];
+
+export const INVITE_TASK_IDS = [
+  'one-impl-store',
+  'slug-ascii',
+  'id-hex',
+  'greet-opts',
 ];
 
 export const ARMS = ['off', 'full'];

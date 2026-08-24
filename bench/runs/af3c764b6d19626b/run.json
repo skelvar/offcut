@@ -1,0 +1,21 @@
+{
+  "run_id": "af3c764b6d19626b",
+  "task_id": "greet-opts",
+  "arm": "full",
+  "rep": 4,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.241 (Claude Code)",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T23:31:13.018Z",
+  "effort": "low",
+  "prompt_sha256": "25ab01c0652748098c47254b97171b8fc1283b65a8c6125a0f778260225c4885",
+  "prompt_path": "tasks/greet-opts/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

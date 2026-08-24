@@ -1,0 +1,17 @@
+diff --git a/store.ts b/store.ts
+index 33ff1dc..264b0bc 100644
+--- a/store.ts
++++ b/store.ts
+@@ -1,7 +1,10 @@
+-// TODO: implement createStore()
+ export function createStore(): {
+   set(key: string, value: string): void;
+   get(key: string): string | undefined;
+ } {
+-  throw new Error('not implemented');
++  const data = new Map<string, string>();
++  return {
++    set: (key, value) => { data.set(key, value); },
++    get: (key) => data.get(key),
++  };
+ }

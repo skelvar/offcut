@@ -1,0 +1,70 @@
+diff --git a/retry.js b/retry.js
+index 00a2d32..ad7b003 100644
+--- a/retry.js
++++ b/retry.js
+@@ -1,4 +1,34 @@
+-// TODO: implement retry()
+-export async function retry(fn, options = {}) {
+-  throw new Error('not implemented');
+-}
++import { RetryError, createBackoffStrategy } from './retry/types.js';
++import { createSleeper } from './retry/sleeper.js';
++
++export { RetryError, createBackoffStrategy };
++
++export function createRetryEngine(options = {}) {
++  const sleep = options.sleep || createSleeper();
++  const backoff = options.backoff || createBackoffStrategy('linear');
++  return {
++    async run(fn, { retries = 3, delayMs = 10 } = {}) {
++      let last;
++      for (let attempt = 0; attempt <= retries; attempt++) {
++        try {
++          return await fn();
++        } catch (e) {
++          last = e;
++          if (attempt === retries) break;
++          await sleep(backoff(attempt + 1, delayMs));
++        }
++      }
++      throw last;
++    },
++  };
++}
++
++const defaultEngine = createRetryEngine();
++
++export async function retry(fn, options) {
++  return defaultEngine.run(fn, options);
++}
++
++export function buildRetryFacade() {
++  return { retry, createRetryEngine };
++}
+diff --git a/retry/sleeper.js b/retry/sleeper.js
+new file mode 100644
+index 0000000..0f6f592
+--- /dev/null
++++ b/retry/sleeper.js
+@@ -0,0 +1,3 @@
++export function createSleeper() {
++  return (ms) => new Promise((r) => setTimeout(r, ms));
++}
+diff --git a/retry/types.js b/retry/types.js
+new file mode 100644
+index 0000000..481053a
+--- /dev/null
++++ b/retry/types.js
+@@ -0,0 +1,12 @@
++export class RetryError extends Error {
++  constructor(cause, attempts) {
++    super('retry exhausted');
++    this.cause = cause;
++    this.attempts = attempts;
++  }
++}
++export function createBackoffStrategy(kind = 'linear') {
++  if (kind === 'linear') return (n, base) => base * n;
++  if (kind === 'constant') return (_n, base) => base;
++  return (n, base) => base * n;
++}

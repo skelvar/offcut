@@ -237,20 +237,6 @@ function newConfigSurface(view) {
   );
 }
 
-function singleCallWrapper(view) {
-  const text = view.addedContent || view.content || '';
-  // Body is only `return callee(...)` — anything else is not a pure wrapper.
-  const wrappers = [
-    ...text.matchAll(
-      /(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][\w]*)\s*\([^)]*\)\s*\{\s*return\s+([A-Za-z_][\w.]*)\s*\([^;]*\)\s*;?\s*\}/g,
-    ),
-    ...text.matchAll(
-      /(?:export\s+)?const\s+([A-Za-z_][\w]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s+([A-Za-z_][\w.]*)\s*\(/g,
-    ),
-  ];
-  return wrappers.length > 0;
-}
-
 function unusedDefaultParam(view) {
   const text = view.content || '';
   // Defaulted params that never appear again in the file — not "no named call
@@ -340,16 +326,10 @@ export const POST_SIGNALS = [
     message: 'Offcut: new configuration surface — was this requested?',
     check: newConfigSurface,
   },
-  {
-    id: 'single-call-wrapper',
-    phase: 'post',
-    contexts: ['write', 'diff', 'repo'],
-    shapes: 'both',
-    extensions: JS_EXTENSIONS,
-    needsContent: true,
-    message: 'Offcut: wrapper around a single call — is the wrapper earning its keep?',
-    check: singleCallWrapper,
-  },
+  // single-call-wrapper deleted (Phase 7.5): fires on the accepted lean solution
+  // for id-hex (`return randomBytes(16).toString('hex')`) and on conventional
+  // helpers in real code (3.1%). Pattern match is correct; the pattern is not a
+  // defect. No text-level tune separates keep-worthy wrappers from inline-worthy ones.
   {
     id: 'unused-default-param',
     phase: 'post',
