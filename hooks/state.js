@@ -29,6 +29,13 @@ function turnPath(sessionId) {
   return path.join(stateDir(), key ? `turn-${key}` : 'turn');
 }
 
+// One challenge per signal per session. Concurrent sessions must not share this.
+// offcut: fired files are never pruned — same ceiling as turn files.
+function firedPath(sessionId) {
+  const key = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return path.join(stateDir(), key ? `fired-${key}` : 'fired');
+}
+
 function ensureDir() {
   try {
     fs.mkdirSync(stateDir(), { recursive: true });
@@ -185,6 +192,51 @@ export function resetTurn(sessionId) {
   }
 }
 
+function readFiredSet(sessionId) {
+  try {
+    if (!fs.existsSync(firedPath(sessionId))) return new Set();
+    const raw = fs.readFileSync(firedPath(sessionId), 'utf8').replace(/^\uFEFF/, '').trim();
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Has this signal already challenged this session?
+ * @param {string | null | undefined} sessionId
+ * @param {string} signalId
+ */
+export function hasFiredSignal(sessionId, signalId) {
+  if (!signalId) return false;
+  return readFiredSet(sessionId).has(String(signalId));
+}
+
+/**
+ * Record that a signal fired for this session. Best-effort.
+ * @param {string | null | undefined} sessionId
+ * @param {string} signalId
+ * @returns {boolean}
+ */
+export function markFiredSignal(sessionId, signalId) {
+  if (!signalId) return false;
+  try {
+    ensureDir();
+    const set = readFiredSet(sessionId);
+    set.add(String(signalId));
+    fs.writeFileSync(
+      firedPath(sessionId),
+      JSON.stringify([...set]) + '\n',
+      'utf8',
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Paths exposed for statusline / tests. */
 export function paths() {
   return {
@@ -193,5 +245,6 @@ export function paths() {
     default: defaultPath(),
     turn: turnPath(),
     turnFor: turnPath,
+    firedFor: firedPath,
   };
 }
