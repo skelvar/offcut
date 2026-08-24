@@ -55,6 +55,7 @@ export function buildPreView(norm) {
     shape: writeTool.shape,
     pathExists: exists,
     truncated: Boolean(norm.toolInputTruncated),
+    context: 'write',
   };
 }
 

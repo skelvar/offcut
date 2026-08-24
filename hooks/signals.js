@@ -3,7 +3,12 @@
 // takes a write view and returns findings. Phase 4 reuses this for review/audit.
 
 /** @typedef {'full' | 'fragment'} WriteShape */
+/** @typedef {'write' | 'diff' | 'repo'} SignalContext */
 /**
+ * View a signal inspects. `context` selects which signals apply:
+ * write (hook), diff (review), repo (audit). Defaults to `write`.
+ * `corpus` is optional cross-file text for repo/diff reference checks.
+ *
  * @typedef {{
  *   path: string | null,
  *   content: string,
@@ -11,6 +16,8 @@
  *   shape: WriteShape,
  *   pathExists: boolean | null,
  *   truncated: boolean,
+ *   context?: SignalContext,
+ *   corpus?: string | null,
  * }} WriteView
  */
 /**
@@ -20,6 +27,7 @@
  *   message: string,
  *   shapes: 'full' | 'fragment' | 'both',
  *   needsContent: boolean,
+ *   contexts: SignalContext[],
  *   check: (view: WriteView) => boolean,
  * }} Signal
  */
@@ -226,6 +234,9 @@ function configForConstant(view) {
 
 function exportedUnused(view) {
   const text = view.content || '';
+  // Repo/diff may supply a corpus so "no caller" means across files, not
+  // "no caller in this one file" (which would fire on almost every export).
+  const searchIn = view.corpus != null ? String(view.corpus) : text;
   const exports = [
     ...text.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_][\w]*)/g),
     ...text.matchAll(/export\s+(?:const|let|var|class|enum|type|interface)\s+([A-Za-z_][\w]*)/g),
@@ -234,8 +245,8 @@ function exportedUnused(view) {
   if (!exports.length) return false;
   for (const name of new Set(exports)) {
     const re = new RegExp(`\\b${name}\\b`, 'g');
-    const hits = [...text.matchAll(re)];
-    // Declaration only — no other reference in this write.
+    const hits = [...searchIn.matchAll(re)];
+    // Declaration only — no other reference in the searchable text.
     if (hits.length <= 1) return true;
   }
   return false;
@@ -290,6 +301,8 @@ export const PRE_SIGNALS = [
   {
     id: 'new-file',
     phase: 'pre',
+    // pathExists===false is meaningful for a write/diff create, never a repo audit.
+    contexts: ['write', 'diff'],
     // Applies to full writes, and to fragment creates (pathExists === false).
     shapes: 'both',
     needsContent: false,
@@ -300,6 +313,7 @@ export const PRE_SIGNALS = [
   {
     id: 'large-first-write',
     phase: 'pre',
+    contexts: ['write', 'diff'],
     // Whole-file only: a fragment over the threshold is an edit, not a "first write".
     shapes: 'full',
     needsContent: true,
@@ -310,6 +324,7 @@ export const PRE_SIGNALS = [
   {
     id: 'new-dependency',
     phase: 'pre',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message:
@@ -319,6 +334,7 @@ export const PRE_SIGNALS = [
   {
     id: 'speculative-abstraction',
     phase: 'pre',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message:
@@ -328,6 +344,7 @@ export const PRE_SIGNALS = [
   {
     id: 'config-for-constant',
     phase: 'pre',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message: 'Offcut: config for a constant — does this value ever change?',
@@ -340,15 +357,17 @@ export const POST_SIGNALS = [
   {
     id: 'exported-unused',
     phase: 'post',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message:
-      'Offcut: exported symbol with no caller in this write — did anyone ask for it?',
+      'Offcut: exported symbol with no caller — did anyone ask for it?',
     check: exportedUnused,
   },
   {
     id: 'new-config-surface',
     phase: 'post',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message: 'Offcut: new configuration surface — was this requested?',
@@ -357,6 +376,7 @@ export const POST_SIGNALS = [
   {
     id: 'single-call-wrapper',
     phase: 'post',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message: 'Offcut: wrapper around a single call — is the wrapper earning its keep?',
@@ -365,6 +385,7 @@ export const POST_SIGNALS = [
   {
     id: 'unused-default-param',
     phase: 'post',
+    contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
     needsContent: true,
     message:
@@ -376,8 +397,8 @@ export const POST_SIGNALS = [
 export const ALL_SIGNALS = [...PRE_SIGNALS, ...POST_SIGNALS];
 
 /**
- * Run signals against a write view. Returns findings in definition order.
- * Truncation: content-based signals decline when view.truncated is set.
+ * Run signals against a view. Returns findings in definition order.
+ * Filters by shape, truncation, and `contexts` (default view context: write).
  *
  * @param {Signal[]} signals
  * @param {WriteView} view
@@ -385,9 +406,11 @@ export const ALL_SIGNALS = [...PRE_SIGNALS, ...POST_SIGNALS];
  */
 export function runSignals(signals, view) {
   if (!view || !Array.isArray(signals)) return [];
+  const ctx = view.context || 'write';
   const out = [];
   for (const signal of signals) {
     if (!signal || typeof signal.check !== 'function') continue;
+    if (Array.isArray(signal.contexts) && !signal.contexts.includes(ctx)) continue;
     if (signal.shapes !== 'both' && signal.shapes !== view.shape) continue;
     if (signal.needsContent && view.truncated) continue;
     let hit = false;

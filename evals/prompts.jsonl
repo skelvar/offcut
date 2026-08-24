@@ -38,3 +38,15 @@
 {"id":"b18","prompt":"add dependency on lodash for deep merge","expect":"fire","note":"dependency"}
 {"id":"b19","prompt":"build an abstract base class for handlers","expect":"fire","note":"abstraction"}
 {"id":"b20","prompt":"set up a configuration system with env overrides","expect":"fire","note":"config surface"}
+{"id":"c01","prompt":"review this diff for over-engineering","expect":"skill:offcut-review","note":"command positive review"}
+{"id":"c02","prompt":"/offcut-review","expect":"skill:offcut-review","note":"slash review"}
+{"id":"c03","prompt":"audit this repo for bloat","expect":"skill:offcut-audit","note":"command positive audit"}
+{"id":"c04","prompt":"/offcut-audit","expect":"skill:offcut-audit","note":"slash audit"}
+{"id":"c05","prompt":"how do I turn offcut off?","expect":"skill:offcut-help","note":"command positive help"}
+{"id":"c06","prompt":"/offcut-help","expect":"skill:offcut-help","note":"slash help"}
+{"id":"c07","prompt":"explain this function","expect":"skill:none","note":"command negative — must not activate review/audit"}
+{"id":"c08","prompt":"what does this function do?","expect":"skill:none","note":"command negative explanation"}
+{"id":"c09","prompt":"rename this variable","expect":"skill:none","note":"command negative rename"}
+{"id":"c10","prompt":"format this file","expect":"skill:none","note":"command negative format"}
+{"id":"c11","prompt":"scan the codebase for speculative abstractions and unused exports","expect":"skill:offcut-audit","note":"audit phrasing"}
+{"id":"c12","prompt":"check my patch for new dependencies and wrappers","expect":"skill:offcut-review","note":"review phrasing"}

@@ -86,11 +86,40 @@ Deactivate: `/offcut off`, `stop offcut`, or `normal mode`.
 State lives in `~/.offcut/` (`active`, `default`, `turn-<session>`,
 `fired-<session>`). Override with `OFFCUT_STATE_DIR` for tests.
 
+## Commands (one-shot)
+
+Commands are **not** modes. They run once, touch no Offcut state, and leave the
+mode exactly as they found it. Invoked as Agent Skills (`/offcut-review`,
+`/offcut-audit`, `/offcut-help`) — not via the `UserPromptSubmit` hook.
+
+| Command | Does |
+|---|---|
+| `/offcut-review` | Apply signals to a unified diff via `scripts/scan.mjs --diff` |
+| `/offcut-audit` | Apply signals across a file set / tree via `scripts/scan.mjs <paths>` |
+| `/offcut-help` | Modes, commands, how to turn it off |
+
+The scanner imports the same `hooks/signals.js` definitions the write hooks use.
+Signals declare which contexts they apply to (`write` / `diff` / `repo`):
+`new-file` and `large-first-write` never fire in a repo audit.
+
+**Mode vs scan:** the persistent mode never initiates a repository scan. It
+reacts to the turn and the write in front of it. An explicit review/audit
+command is the user asking for a scan.
+
+```bash
+node scripts/scan.mjs --diff changes.diff
+node scripts/scan.mjs hooks skills scripts
+```
+
 ## What gets installed / created
 
 | Path | Role |
 |---|---|
 | `skills/offcut/SKILL.md` | Challenge text (source of truth) |
+| `skills/offcut-review/` | Diff review command |
+| `skills/offcut-audit/` | Repo audit command |
+| `skills/offcut-help/` | Help command |
+| `scripts/scan.mjs` | Shared scanner for review/audit |
 | `hooks/*.js` | Lifecycle hooks |
 | `adapters/claude/hooks.json` | Hook wiring (Claude / Codex / Grok) |
 | `AGENTS.md` | Generated; do not hand-edit |
@@ -105,7 +134,7 @@ files are involved.
 |---|---|---|
 | Claude Code | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
 | Codex | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
-| Grok Build | **Tier 3** — measured 2026-08-24 | Hooks run but deliver nothing; use `AGENTS.md`. See below |
+| Grok Build | **Tier 3** mode; **commands work** — measured 2026-08-24 | Hooks discard output; `AGENTS.md` for ruleset. Skills under `.grok/skills/` are discovered (see below) |
 | Cursor | **Untested** | Deferred; different config schema |
 | ChatGPT / other skill hosts | Tier 2 — skill only | No persistent mode |
 | Other AGENTS.md readers | Tier 3 — instructions only | Generated file |
@@ -133,23 +162,38 @@ reliably honored — which Offcut never issues by design.
 Measured 2026-08-24: hook fired, `fired-… = ["new-file"]` written to state,
 model replied `NO_OFFCUT_CHALLENGE`. A direct context probe replied `NO_CTX`.
 
-**What to use instead:** Grok auto-loads `AGENTS.md` as project rules, and
-Offcut generates that file. You get the always-on ruleset, without modes,
-commands, or write-time challenges. Install it by putting `AGENTS.md` at your
-repo root — no hook configuration needed.
+**What to use instead for the mode:** Grok auto-loads `AGENTS.md` as project
+rules, and Offcut generates that file. You get the always-on ruleset, without
+modes or write-time challenges. Put `AGENTS.md` at your repo root — no hook
+configuration needed.
+
+**Commands on Grok:** skills are different from hooks — the agent loads them
+directly, so nothing depends on hook stdout. Measured 2026-08-24 with
+`grok inspect --json`: skills linked under `.grok/skills/` appear as
+`source=project` with `userInvocable=true` (`offcut-review`, `offcut-audit`,
+`offcut-help`). Bare repo-root `skills/` is **not** auto-discovered by Grok.
+Wire them with directory junctions/symlinks into `.grok/skills/`, or add the
+repo `skills/` directory to `[skills].paths` in `~/.grok/config.toml`. See
+`HOSTS.md`.
 
 ## Develop
 
 ```bash
 node --test tests/*.test.js
 node scripts/build-agents-md.js
+node scripts/scan.mjs --diff - < changes.diff
 ```
 
 ## Security
 
-Hooks make no network calls, install no dependencies, spawn no subprocesses,
+**Hooks** make no network calls, install no dependencies, spawn no subprocesses,
 read only the state file and ruleset, and write only the state file / session
 markers. No binaries ship in the plugin.
+
+**Commands** are user-invoked and may read the repository because that is what
+the user asked for. `scripts/scan.mjs` still makes no network calls, modifies no
+files, spawns no subprocesses, and does not touch Offcut state. The persistent
+mode never initiates a scan on its own.
 
 ## License
 
