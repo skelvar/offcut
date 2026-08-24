@@ -96,10 +96,11 @@ function parseClaudeResult(stdout, status, spawnErr) {
     // keep raw
   }
   const resultText = parsed && typeof parsed.result === 'string' ? parsed.result : '';
+  const apiStatus = parsed && parsed.api_error_status;
   const apiError =
-    (parsed && (parsed.terminal_reason === 'api_error' || parsed.api_error_status)) ||
-    /session limit|rate limit|overloaded|429/i.test(resultText) ||
-    /session limit|rate limit|overloaded|429/i.test(stdout || '');
+    (parsed && parsed.terminal_reason === 'api_error') ||
+    (typeof apiStatus === 'number' && apiStatus >= 400) ||
+    /session limit|hit your.*limit|rate limit|overloaded/i.test(resultText);
   const ok = status === 0 && !(parsed && parsed.is_error);
   return {
     ok,
@@ -120,16 +121,19 @@ function parseClaudeResult(stdout, status, spawnErr) {
   };
 }
 
-function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 3 }) {
+function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0 }) {
   const env = {
     ...process.env,
     OFFCUT_STATE_DIR: stateDir,
   };
+  // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
   const args = [
     '-p',
     prompt,
     '--model',
     model,
+    '--effort',
+    'low',
     '--permission-mode',
     'bypassPermissions',
     '--output-format',
@@ -147,19 +151,20 @@ function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 3
       cwd: workDir,
       env,
       maxBuffer: 32 * 1024 * 1024,
-      timeout: 10 * 60 * 1000,
+      timeout: 3 * 60 * 1000,
     });
     last = parseClaudeResult(r.stdout, r.status, r.error);
     last.stderr = r.stderr || '';
     if (last.ok || !last.apiError) break;
-    // Back off on rate/session limits. Honor long waits for session resets.
-    const waitMs = Math.min(15 * 60 * 1000, 30_000 * 2 ** i);
+    // Fail fast on limits — schedule --resume-failed later. Short retry only.
+    const waitMs = 5_000 * (i + 1);
     console.error(`claude api_error (attempt ${attempts}): ${last.error}; sleeping ${waitMs}ms`);
     sleepSync(waitMs);
   }
   last.attempts = attempts;
   return last;
 }
+
 
 export function runOne(opts) {
   const { task: taskId, arm, rep, stub, model, keepWork } = opts;

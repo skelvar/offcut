@@ -28,7 +28,7 @@ function parseArgs(argv) {
     model: MODEL_ID,
     limit: null,
     resumeFailed: false,
-    pauseMs: 5000,
+    pauseMs: 0,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
