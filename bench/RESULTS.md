@@ -568,13 +568,51 @@ For each task/arm: how often hooks challenged, and whether the flagged pattern r
 
 ## Conclusion
 
-**Product answer: no — challenges fired and the flagged patterns still shipped.** Offcut detects over-engineering accurately enough to challenge and still does not prevent it. The honest product on this evidence is a review/audit tool, not a persistent mode that changes builds. No consistent size-metric shift across arms (or movements are within run-to-run noise). Challenges on passed full runs: 5; pattern survived 4; cleared 1. Detector discrimination on full arm: invite fire rate 24%, control fire rate 6%. Fail counts: off=5, full=5. files_created: off median=0, full median=0; lines_added: off median=10, full median=10; abstraction_layers: off median=0, full median=0; exported_unused: off median=0, full median=0. Five runs per cell is enough to notice a large effect and not enough to claim a small one.
+**Product answer: inconclusive. The experiment did not produce a valid
+observation of a correct challenge being ignored.**
 
-## single-call-wrapper verdict
+Of 80 runs, **6 fired any signal at all**:
 
-On id-hex (the conventional crypto.randomBytes→hex wrapper), single-call-wrapper appears in the final diff on 9/9 passed runs. Hooks challenged it on 4/4 full-arm runs. **Verdict: delete `single-call-wrapper`.** It fires on the accepted lean solution; the pattern is conventional, not a defect. No text-level tune separates keep-worthy helpers from inline-worthy ones.
+| signal | runs | flagged pattern survived | status of that signal |
+|---|---:|---|---|
+| `single-call-wrapper` (id-hex) | 5 | yes, 5/5 | **deleted in this same PR** as a false positive |
+| `unused-default-param` (ttl-cache rep5) | 1 | **no — cleared** | still shipping |
 
-## Findings (process)
+The 4/5 (later 5/5) survival figure rests **entirely on a signal this PR
+removes for firing on the accepted lean solution**. Those are not correct
+challenges; they are the Phase 5 error repeating — a conclusion drawn from
+advice that was itself wrong.
 
-- Real `~/.offcut/` can accumulate many `fired-*` / `turn-*` files; this bench always uses a fresh `OFFCUT_STATE_DIR` and never touches the real state dir. Pruning is owned by Phase 8 (`tasks/PHASE-8-TASK.md` §5).
-- Phase 5 undercounted challenges by keeping only the first per phase in analysis; this report records the full fired set per run as a column.
+The single observation involving a signal that survived review points the other
+way: the challenge fired and the flagged pattern **did not ship**. That is n=1
+and proves nothing on its own, but it is the only valid data point in the
+experiment, and it does not support "challenges are ignored".
+
+### Why the experiment under-powered itself
+
+The invite fixtures did not invite. Three of the four — `one-impl-store`,
+`slug-ascii`, `greet-opts` — fired **nothing in any run**. `id-hex` fired only
+the signal since deleted.
+
+A treatment that is applied 6 times in 80 runs cannot answer whether the
+treatment works. The correct reading is not "no effect"; it is **not tested**.
+
+### What is established
+
+- The harness is sound: prompt hashes identical across arms, blind scoring,
+  per-run clean state, interleaved arms, survival recorded as a column.
+- Detector discrimination is real but weak in this fixture set: invite-arm fire
+  rate 24% vs control 6%.
+- Size medians do not separate the arms — but with 6 challenges across 80 runs,
+  they could not have.
+- `single-call-wrapper` earned deletion, and the `id-hex` runs are the evidence.
+  That is a genuine result from this phase.
+
+### What is required to answer the product question
+
+Fixtures where a **surviving** signal fires reliably — target ≥80% of invite
+runs, not 24%. Until a challenge from a signal that passes review is issued
+enough times to count, the product question stays open.
+
+Five runs per cell is enough to notice a large effect and not enough to claim a
+small one. Six challenges across the whole grid is not enough to claim anything.

@@ -1,0 +1,21 @@
+{
+  "run_id": "d945d27d2ab747a1",
+  "task_id": "slug-ascii",
+  "arm": "off",
+  "rep": 4,
+  "stub": "lean",
+  "model_requested": "claude-sonnet-5",
+  "model_id": "stub:lean",
+  "host": "claude-code",
+  "host_version": "stub",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T22:19:58.186Z",
+  "effort": "low",
+  "prompt_sha256": "3d26876104b5c782d65742176598750ab2440403b4aea4e3b1bf861624e1738e",
+  "prompt_path": "tasks/slug-ascii/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

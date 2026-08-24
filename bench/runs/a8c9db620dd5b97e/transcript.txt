@@ -1,0 +1,1 @@
+STUB_OK greet-opts elaborate

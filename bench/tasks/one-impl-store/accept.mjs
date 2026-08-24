@@ -43,6 +43,14 @@ if (s.get('missing') !== undefined) {
 console.log('ACCEPT_OK');
 `;
 
+// This fixture is TypeScript on purpose: `interface` is what invites the
+// speculative-abstraction signal. Executing it needs Node 22.6+. Say so plainly
+// rather than surfacing `bad option: --experimental-strip-types`.
+const major = Number(process.versions.node.split('.')[0]);
+if (major < 22) {
+  fail(`one-impl-store needs Node >= 22 to strip types (running ${process.versions.node})`);
+}
+
 const r = spawnSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', probe], {
   encoding: 'utf8',
   cwd: root,
