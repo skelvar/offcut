@@ -367,3 +367,28 @@ test('evals: command activation cases cover positive and negative', () => {
   const none = byExpect('skill:none');
   assert.ok(none.some((r) => /explain this function/i.test(r.prompt)));
 });
+
+test('scan: a nonexistent path errors instead of reporting clean', () => {
+  // An audit that scans nothing prints "No Offcut findings", which reads as
+  // "your repo is clean". Silent-clean is the worst failure for a tool whose
+  // output is the product. Found by adversarial pass.
+  const r = runScanCli(['./definitely-not-here-xyz']);
+  assert.equal(r.code, 2, 'a missing path must not exit 0');
+  assert.match(r.stderr, /no such file or directory/);
+  assert.equal(r.findings.length, 0);
+  assert.equal(r.stdout, '', 'must not print a findings summary for a failed scan');
+});
+
+test('scan: collectFiles reports unreadable inputs', () => {
+  const missing = [];
+  const files = collectFiles(['./definitely-not-here-xyz'], missing);
+  assert.deepEqual(files, []);
+  assert.equal(missing.length, 1);
+});
+
+test('scan: --help exits 0 and does not scan', () => {
+  const r = runScanCli(['--help']);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /usage:/);
+  assert.equal(r.findings.length, 0);
+});

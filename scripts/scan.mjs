@@ -156,7 +156,7 @@ function walkDir(root, out) {
  * @param {string[]} inputs
  * @returns {string[]}
  */
-export function collectFiles(inputs) {
+export function collectFiles(inputs, missing = []) {
   const out = [];
   for (const raw of inputs) {
     const p = path.resolve(raw);
@@ -164,10 +164,14 @@ export function collectFiles(inputs) {
     try {
       st = fs.statSync(p);
     } catch {
+      // Unreadable input is reported, never skipped. A scan that silently
+      // covers nothing prints "No findings", which reads as "you are clean".
+      missing.push(raw);
       continue;
     }
     if (st.isDirectory()) walkDir(p, out);
     else if (st.isFile()) out.push(p);
+    else missing.push(raw);
   }
   return [...new Set(out)].sort();
 }
@@ -351,6 +355,20 @@ export function runScanCli(argv, io = {}) {
     return { code: 0, stdout, stderr, findings };
   }
 
+  if (args.includes('--help') || args.includes('-h')) {
+    stdout =
+      'Offcut scanner - applies the shared signal set to files or a diff.\n' +
+      '\n' +
+      'usage:\n' +
+      '  node scripts/scan.mjs <file-or-dir>...   scan files (repo context)\n' +
+      '  node scripts/scan.mjs --diff <file|->    scan a unified diff\n' +
+      '  node scripts/scan.mjs --help             this message\n' +
+      '\n' +
+      'Reads only. No network, no file writes, no subprocesses, no Offcut state.\n' +
+      'Exit 0 = scanned successfully, 2 = bad arguments or unreadable input.\n';
+    return { code: 0, stdout, stderr, findings: [] };
+  }
+
   const paths = args.filter((a) => a !== '--');
   if (!paths.length) {
     stderr =
@@ -359,7 +377,12 @@ export function runScanCli(argv, io = {}) {
     return { code: 2, stdout, stderr, findings: [] };
   }
 
-  const files = collectFiles(paths.map((p) => path.resolve(cwd, p)));
+  const missing = [];
+  const files = collectFiles(paths.map((p) => path.resolve(cwd, p)), missing);
+  if (missing.length) {
+    stderr = missing.map((m) => `scan: no such file or directory: ${m}\n`).join('');
+    return { code: 2, stdout, stderr, findings: [] };
+  }
   const findings = scanFiles(files, { cwd });
   stdout = formatFindings(findings);
   return { code: 0, stdout, stderr, findings };
