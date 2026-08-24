@@ -311,26 +311,47 @@ design problem rather than a packaging detail.
 
 ### 5.1 What the divergence actually looks like
 
-Verified August 24, 2026 against each host's own documentation.
+Verified August 24, 2026 — from each host's own shipped documentation and from
+real hook configs found on disk, not from third-party summaries.
 
-| | Claude Code / Codex | Cursor | Copilot CLI | ChatGPT |
-|---|---|---|---|---|
-| Config path | plugin `hooks.json` | `.cursor/hooks.json` | plugin hooks file | — |
-| Event naming | `SessionStart` | `sessionStart` | `sessionStart` | — |
-| Prompt event | `UserPromptSubmit` | `beforeSubmitPrompt` | `userPromptSubmitted` | — |
-| Write event | `PreToolUse` + matcher | `preToolUse`, `afterFileEdit` | limited | — |
-| Timeout key | `timeout` | — | `timeoutSec` | — |
-| Windows variant | `commandWindows` | — | `powershell` | — |
-| Gate field | `permissionDecision` | `permission` | — | — |
-| Gate values | `allow`/`deny`/`escalate` | `allow`/`deny`/`ask` | — | — |
-| Context field | `additionalContext` | `additional_context` | `additionalContext` | — |
+| | Claude Code | Codex | Grok Build | Cursor | ChatGPT |
+|---|---|---|---|---|---|
+| Config path | `~/.claude/settings.json`, plugin | `~/.codex/hooks.json` | `~/.grok/hooks/*.json` | `~/.cursor/hooks.json` | — |
+| Event naming | `SessionStart` | `SessionStart` | `SessionStart` | `sessionStart` | — |
+| Prompt event | `UserPromptSubmit` | `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` | — |
+| Write event | `PreToolUse` + matcher | `PreToolUse` + matcher | `PreToolUse` + matcher | `preToolUse`, `afterFileEdit` | — |
+| Timeout key | `timeout` | `timeout` | `timeout` | — | — |
+| Gate field | `permissionDecision` | `permissionDecision` | decision + `deny` | `permission` | — |
+| Gate values | `allow`/`deny`/`escalate` | same | `deny` blocks | `allow`/`deny`/`ask` | — |
+| Context field | `additionalContext` | `additionalContext` | `additionalContext` | `additional_context` | — |
 
-Four vocabularies for three concepts. The same logical decision — "let this
-write through but say something about it" — serializes four different ways.
+**Two dialects, not five.** Claude Code, Codex, and Grok Build share one
+PascalCase schema — confirmed by reading a real `~/.codex/hooks.json` and Grok's
+shipped hooks reference, both of which use `matcher`, nested `hooks`, `type:
+"command"`, and `timeout` exactly as Claude Code does. Cursor is the sole
+outlier, and ChatGPT has no hooks at all.
 
-Worse, **event availability differs**, not just naming. Some hosts have no
-session-start event at all, forcing activation into the prompt event. Some have
-no subagent event, forcing subagent injection through a tool matcher. An adapter
+**Grok Build is the most permissive host and needs no adapter of its own.** It
+reads `~/.claude/settings.json` *and* `~/.cursor/hooks.json` natively as
+compatibility sources, merges every discovered source, accepts Cursor's
+camelCase event names and maps them to its own, and aliases Claude's tool names
+(`Write`, `Edit`, `MultiEdit` → its internal `search_replace`) while keeping the
+original names matchable. A RightSeam config written for Claude Code loads in
+Grok unchanged.
+
+Two Grok-specific behaviors do need handling, and neither is a schema problem:
+
+- **Folder trust.** Project-level hooks are silently skipped until the folder is
+  trusted via `/hooks-trust` or `--trust`. Silently — so a user whose hooks
+  "do nothing" is the expected failure, and the README must say so. Global hooks
+  in `~/.grok/hooks/` are always trusted.
+- **Fail-open by contract.** Timeouts, crashes, and malformed output never block
+  a tool call; only an explicit `deny` does. This matches §4.3's design, which
+  never denies — so RightSeam degrades correctly on Grok by construction.
+
+Event *availability* still differs even where naming agrees. Some hosts have no
+session-start event, forcing activation into the prompt event; some have no
+subagent event, forcing subagent injection through a tool matcher. An adapter
 cannot assume the event it wants exists.
 
 ### 5.2 Tiers
@@ -341,7 +362,7 @@ plainly rather than implying every host gets the full product.
 **Tier 1 — Full.** Lifecycle hooks available. Persistent mode, per-turn
 reminder, write-time challenge, subagent inheritance, statusline. This is
 RightSeam as designed.
-→ Claude Code, Cursor, Codex.
+→ Claude Code, Codex, Grok Build (one shared config); Cursor (second dialect).
 
 **Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. RightSeam
 becomes an on-demand skill: the challenge fires when the description matches or
@@ -388,32 +409,48 @@ point at the same hook scripts.
 
 ### 5.4 How many hosts to support, and when
 
-**v0.1 ships two: Claude Code (Tier 1) and `AGENTS.md` (Tier 3).**
+**v0.1 ships one hook config, three Tier 1 hosts, plus `AGENTS.md`.**
 
-Not because the others do not matter, but because:
+The PascalCase config covers **Claude Code, Codex, and Grok Build** at once
+(§5.1). That is not scope creep — it is one artifact that three hosts read.
+`AGENTS.md` adds Tier 3 for one generated file.
 
-- **One adapter does not prove a seam.** An abstraction validated against a
+Cursor is deliberately held to v0.2 even though it is the same amount of JSON,
+because it is the *second dialect* and therefore the thing that proves or
+disproves `host.js`:
+
+- **One dialect does not prove a seam.** An abstraction validated against a
   single implementation is the speculative abstraction §3 question 1 exists to
-  prevent. Two implementations is the minimum that proves `host.js` is real and
-  not Claude Code's shape wearing a wrapper.
-- **`AGENTS.md` is nearly free** and reaches the widest set of agents of
-  anything in the plan. It costs one file.
-- **An adapter you cannot test is a liability**, not a feature. Every host added
-  is a schema that can change unilaterally and break users silently.
+  prevent. Shipping three hosts that share one schema does not test `host.js`
+  at all — it only tests that the schema works.
+- **Cursor diverges on every axis at once** — `beforeSubmitPrompt`,
+  `permission: ask`, `additional_context`, flat handler arrays, no timeout key.
+  It is the strongest available test, which is exactly why it goes second rather
+  than never.
+- **An adapter you cannot test is a liability.** Every host added is a schema
+  that can change unilaterally and break users silently.
 
-v0.2 adds Cursor — the second Tier 1 host, and the one whose vocabulary differs
-most, which makes it the best possible test of whether `host.js` actually
-abstracts anything. If adding Cursor requires changing hook scripts rather than
-only `host.js`, the seam is in the wrong place and gets moved before any third
-host is considered.
-
-Every host beyond that is demand-driven: it ships when someone asks and a
+Beyond Cursor, hosts are demand-driven: one ships when someone asks and a
 maintainer can test it. **A host is never listed as supported without a dated
 manual smoke test.** Untested hosts are listed as untested.
 
 ### 5.5 Testing across hosts
 
-Three layers, and only the third needs a human.
+Four layers, and only the last needs a human.
+
+**0. The probe — establish the truth before writing the adapter.** Vendor docs
+drift, omit fields, and disagree with what a host actually sends. `tools/probe.mjs`
+is a passive hook that records the real payload, the real event names, and the
+environment variables that identify each host, then `tools/report-probe.mjs`
+renders the capability table from that evidence.
+
+Run it against a harness *before* claiming support, and re-run it when a host
+ships a major version. It is the only thing in this plan that can catch a host
+silently renaming a field. It writes nothing to stdout, never blocks, and exits
+0 on malformed input, empty stdin, and stdin that never closes — verified
+against all three conditions.
+
+The probe is a development tool, not part of the shipped plugin.
 
 **1. Contract tests — automated, no host required.** Hooks are programs: JSON
 in, JSON out. For each supported host, feed that host's documented input shape
@@ -674,7 +711,11 @@ retrofitting an adapter seam through five hook scripts later is strictly more
 work than starting with it. It stays deliberately thin until Phase 3 proves its
 shape.
 
-**Done when:** the mode activates on install; survives `/clear` and compaction;
+Run the probe (§5.5 layer 0) against Claude Code, Codex, and Grok Build first,
+and build the adapter from what it records rather than from the doc table.
+
+**Done when:** the probe report confirms the PascalCase schema on all three
+hosts; the mode activates on install; survives `/clear` and compaction;
 `/rightseam` switches modes and the statusline follows; the reminder fires per
 §4.2 and meets §11.2's gates; every hook honors §4.6; nothing hangs; `AGENTS.md`
 regenerates from `SKILL.md` and CI fails when it is stale; no hook script
@@ -689,7 +730,7 @@ is unreachable by construction and there is a test asserting it; `escalate`
 fires only in `strict` for a new dependency; one-challenge-per-signal-per-session
 holds; the write path stays under 50ms.
 
-### Phase 3 — Second host, and the seam gets tested
+### Phase 3 — Second dialect, and the seam gets tested
 
 Add Cursor: `adapters/cursor/hooks.json` and Cursor's branch in `host.js`.
 Cursor is chosen deliberately as the second host because its vocabulary diverges
