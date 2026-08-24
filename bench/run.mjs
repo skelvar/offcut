@@ -26,6 +26,9 @@ import {
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
 
+// Reasoning effort for paid runs. Named so the manifest can record it.
+const RUN_EFFORT = 'low';
+
 function parseArgs(argv) {
   const out = {
     task: null,
@@ -133,7 +136,7 @@ function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0
     '--model',
     model,
     '--effort',
-    'low',
+    RUN_EFFORT,
     '--permission-mode',
     'bypassPermissions',
     '--output-format',
@@ -191,6 +194,13 @@ export function runOne(opts) {
     host: 'claude-code',
     host_version: null,
     date: new Date().toISOString().slice(0, 10),
+    // Execution order and effort must be auditable from the manifest alone.
+    // The first paid grid changed --effort mid-run to beat a rate limit; with
+    // neither field recorded, checking whether a per-task difference tracked
+    // the effort switch rather than the arm required reconstructing order from
+    // filesystem mtimes. Record both so the next reader does not have to.
+    started_at: new Date().toISOString(),
+    effort: RUN_EFFORT,
     prompt_sha256: task.promptSha256,
     prompt_path: path.relative(BENCH_ROOT, path.join(task.dir, 'prompt.txt')).replace(/\\/g, '/'),
     error: null,

@@ -8,9 +8,11 @@ node_modules/
 .superpowers/
 .remember/
 
-# Phase 5 bench opaque run artifacts
-bench/runs/
-bench/manifest.jsonl
+# Phase 5 bench. The evidence is published so RESULTS.md is auditable:
+# manifest (arm mapping), diffs, metrics, state-after, transcripts. Only the
+# redundant working trees and scratch logs are ignored — the diff already
+# captures what the agent produced.
+bench/runs/*/work/
 bench/manifest.jsonl.*.bak
 bench/schedule-last.json
 bench/paid-schedule.log

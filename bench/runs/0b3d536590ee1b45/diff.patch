@@ -1,0 +1,24 @@
+diff --git a/config.js b/config.js
+index cc0bae4..145f551 100644
+--- a/config.js
++++ b/config.js
+@@ -1,4 +1,17 @@
+-// TODO: implement loadConfig()
++import { existsSync, readFileSync } from 'node:fs';
++import path from 'node:path';
++
++const defaults = { port: 3000, host: 'localhost' };
++
+ export function loadConfig() {
+-  throw new Error('not implemented');
++  const configPath = path.resolve('config.json');
++  const fileConfig = existsSync(configPath)
++    ? JSON.parse(readFileSync(configPath, 'utf8'))
++    : {};
++
++  const envConfig = {};
++  if (process.env.APP_PORT !== undefined) envConfig.port = Number(process.env.APP_PORT);
++  if (process.env.APP_HOST !== undefined) envConfig.host = process.env.APP_HOST;
++
++  return { ...defaults, ...fileConfig, ...envConfig };
+ }

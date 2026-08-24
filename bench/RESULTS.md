@@ -201,6 +201,32 @@ Per-task, three of four tasks are essentially tied. `ttl-cache` shows a lower
 export counts — interesting, not enough alone to claim an effect. Fail counts:
 off=0, full=0.
 
+### The challenge was delivered and ignored
+
+On `ttl-cache`, all five `full` runs fired exactly the signals matching the
+over-engineering the task invites — `speculative-abstraction` and
+`post:exported-unused`. All five resulting diffs still contain
+`abstraction_layers=1` and `exported_unused=1`, identical to the `off` arm.
+
+Detection worked. Delivery worked. The output did not change.
+
+That is a sharper result than "no detectable effect", and it points somewhere
+specific. The gap is not in the signal set and not in the hook plumbing — both
+did their job on 5/5 runs. It is in whether an advisory `additionalContext`
+message can change a decision the agent has already committed to.
+
+Candidate explanations, none tested here:
+
+- `PreToolUse` context arrives after the agent has settled on a plan
+- the message is phrased as a question, not an instruction
+- one challenge per signal per session is too few to matter
+- the model does not treat hook context as authoritative
+
+**This failure mode is invisible to the size metrics.** A future experiment
+should measure "signal fired AND the flagged pattern survived" as a first-class
+outcome — that is the number that says whether the challenge persuades, and it
+is the number this run can already report: 5/5 survived.
+
 Five runs per cell is enough to notice a large effect and not enough to claim
 a small one. This experiment does not support claiming that Offcut makes agent
 output smaller or simpler under these prompts on Claude Code + `claude-sonnet-5`.
