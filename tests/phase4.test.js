@@ -310,7 +310,12 @@ test('UserPromptSubmit parseModeCommand: no review/audit handling', () => {
 
 test('command skills: name matches directory, description bounds, body bounds', () => {
   for (const name of ['offcut-review', 'offcut-audit', 'offcut-help']) {
-    const raw = fs.readFileSync(path.join(root, 'skills', name, 'SKILL.md'), 'utf8');
+    // Normalize line endings: git stores LF but checks out CRLF on Windows, so
+    // asserting on raw bytes makes this test pass on the branch and fail after
+    // merge. The shipped parser in rules.js is already CRLF-tolerant.
+    const raw = fs
+      .readFileSync(path.join(root, 'skills', name, 'SKILL.md'), 'utf8')
+      .replace(/\r\n/g, '\n');
     assert.ok(raw.startsWith('---\n'));
     const end = raw.indexOf('\n---', 3);
     assert.ok(end > 0);
