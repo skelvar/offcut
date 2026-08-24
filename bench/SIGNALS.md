@@ -199,3 +199,78 @@ comment-stripping fix.
 The approach is viable. **One signal is broken and one is untested.** That is a
 much smaller problem than "text-level checks cannot work", and it is fixable
 without abandoning the design.
+
+## Phase 7 — after real-code fixes (2026-08-25)
+
+Before changing anything: `node bench/realcode.mjs` reproduced **51.1%** /
+`config-for-constant` **47.9%** (same as the table above).
+
+### What changed
+
+1. **`config-for-constant` deleted.** Being right would require knowing a value
+   is never read, in a language whose config conventions we parse. That is not
+   available at scan time — same retirement reasoning as `new-file`.
+2. **File-type applicability.** Every signal declares `extensions` (or `*`).
+   `runSignals` skips non-matching paths. JS-shaped signals
+   (`speculative-abstraction`, `exported-unused`, `new-config-surface`,
+   `single-call-wrapper`, `unused-default-param`) no longer run on `.json` /
+   `.md` / `.py` / `.sh`.
+3. **`realcode.mjs` builds per-project corpora.** Offcut (hooks+scripts+bench+
+   tests) is one project; each `~/.claude/plugins/cache/<plugin>/<version>` is
+   its own. `exported-unused` is exercised.
+
+### After
+
+`node bench/realcode.mjs` — 1710 files, 20 projects:
+
+**4.3% of files produce at least one finding** (was 51.1%).
+
+| signal | files fired | rate | verdict |
+|---|---:|---:|---|
+| single-call-wrapper | 53 | 3.1% | keep — see sample below |
+| new-dependency | 8 | 0.5% | holds up |
+| exported-unused | 6 | 0.4% | **measured** — holds up |
+| new-config-surface | 5 | 0.3% | holds up |
+| unused-default-param | 5 | 0.3% | holds up |
+| speculative-abstraction | 2 | 0.1% | holds up |
+| large-first-write | 0 | 0.0% | holds up |
+
+`bench/fp.mjs` remains **0/40** write-time and **0/40** diff-context. Every
+survivor still fires on its positive example.
+
+Markdown and Python fire rates dropped to **0%**. Remaining JSON fires are
+`new-dependency` on real manifest edits (expected).
+
+### `single-call-wrapper` hand sample (dozen JS/TS fires)
+
+Before file-type gating, 11/62 fires were `.md` and 2 were `.sh` — examples of
+code in docs, not wrappers. After gating, rate is 3.1% on JS/TS only.
+
+Sampled matches (superpowers brainstorm server and tests):
+
+| match | reading |
+|---|---|
+| `nextReconnectDelay` → `Math.min(...)` | real thin helper |
+| `computeAcceptKey` → `crypto.createHash(...).digest(...)` | real one-liner |
+| `generateToken` → `crypto.randomBytes(...).toString(...)` | real one-liner |
+| `startServer` → `spawn(...)` | test helper wrapper |
+| `isBootstrapSkillPath` → `String(...).includes(...)` | real thin predicate |
+| `readPackageJson` → `JSON.parse(await readFile(...))` | real thin wrapper |
+| `firstServerStarted` → `JSON.parse(...find...)` | test helper |
+
+These are what the signal claims to find: functions whose body is a single
+call. Many are conventional (crypto, test spawn). They are not parse accidents
+like `config-for-constant` on JSON. **Keep** — rate is low enough to act on,
+and the detector is matching the pattern. Duplicate plugin versions (6.2 / 6.3)
+inflate the absolute count slightly.
+
+### Stopping condition (Phase 7)
+
+Overall real-code fire rate is under 10% with seven survivors that still hit
+hand-written positives and stay silent on the 40 labeled negatives. The
+write-time deterministic-signal approach is **usable** on this evidence.
+
+The open question moves back to Phase 5: whether an advisory hook message
+changes what the agent builds. That is a product question, not a signal one.
+
+Re-run: `node bench/realcode.mjs` and `node bench/fp.mjs`.
