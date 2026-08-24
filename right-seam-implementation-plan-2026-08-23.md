@@ -218,7 +218,7 @@ enables §4.3's escalation.
 
 Matcher: `Write|Edit`
 
-The event ponytail-style plugins leave unused, and the one that matters most.
+The event the prevailing pattern leaves unused, and the one that matters most.
 It fires between the agent deciding to write and the file existing, and it can
 `allow`, `deny`, or `escalate`.
 
