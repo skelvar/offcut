@@ -1,0 +1,21 @@
+{
+  "run_id": "d16b28fe8a7fab5a",
+  "task_id": "shared-validate",
+  "arm": "full",
+  "rep": 3,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.241 (Claude Code)",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T23:18:16.714Z",
+  "effort": "low",
+  "prompt_sha256": "c50b4734722d7839efa581c951b8c2b87cdb65bf807e8be51d01f3fb818f425b",
+  "prompt_path": "tasks/shared-validate/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

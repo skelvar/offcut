@@ -1,0 +1,21 @@
+{
+  "run_id": "1b1e27fb91514dc6",
+  "task_id": "id-hex",
+  "arm": "off",
+  "rep": 3,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.241 (Claude Code)",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T23:22:38.225Z",
+  "effort": "low",
+  "prompt_sha256": "86e6af4ca8bf5f3247fbfa3b0d8668878e91774967bb310586cea3286f173c77",
+  "prompt_path": "tasks/id-hex/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "run_id": "67d25e6eeb7249bc",
+  "task_passed": false,
+  "accept_exit": 1,
+  "accept_error": "file:///C:/Users/bash/AppData/Local/Temp/offcut-bench-work-txoDPF/repo/retry.js:19\r\nmodule.exports = retry;\r\n^\r\n\r\nReferenceError: module is not defined in ES module scope\r\nThis file is being treated as an ES module because it has a '.js' file extension and '\\\\?\\C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-bench-work-txoDPF\\repo\\package.json' contains \"type\": \"module\". To treat it as a CommonJS script, rename it to use the '.cjs' file extension.\r\n    at file:///C:/Users/bash/AppData/Local/Temp/offcut-bench-work-txoDPF/repo/retry.js:19:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\r\n    at async node:internal/modules/esm/loader:633:26\r\n    at async file:///D:/rightseam/bench/tasks/retry-backoff/accept.mjs:15:19\r\n\r\nNode.js v24.16.0",
+  "files_created": 0,
+  "files_created_paths": [],
+  "dependencies_added": 0,
+  "exported_unused": 0,
+  "abstraction_layers": 0,
+  "config_keys_added": 0,
+  "lines_added": 20,
+  "lines_removed": 4,
+  "diff_sha256": "315ebaf43bb9996bca8bf03312b28ba6493dc570a062101d2c799c3b186eb278",
+  "signals_in_diff": [],
+  "signals_in_diff_count": 0,
+  "signals_fired": [],
+  "signals_fired_count": 0,
+  "flagged_survived": [],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": null
+}

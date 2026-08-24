@@ -1,0 +1,27 @@
+diff --git a/retry.js b/retry.js
+index 00a2d32..36ec8d9 100644
+--- a/retry.js
++++ b/retry.js
+@@ -1,4 +1,18 @@
+-// TODO: implement retry()
+-export async function retry(fn, options = {}) {
+-  throw new Error('not implemented');
+-}
++function wait(ms) {
++  return new Promise(resolve => setTimeout(resolve, ms));
++}
++
++async function retry(fn, { retries = 3, delayMs = 10 } = {}) {
++  let attempt = 0;
++  for (;;) {
++    try {
++      return await fn();
++    } catch (err) {
++      attempt++;
++      if (attempt > retries) throw err;
++      await wait(delayMs * attempt);
++    }
++  }
++}
++
++module.exports = retry;

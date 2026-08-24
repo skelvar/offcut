@@ -1,0 +1,12 @@
+diff --git a/id.js b/id.js
+index 2a7933c..11413d6 100644
+--- a/id.js
++++ b/id.js
+@@ -1,4 +1,5 @@
+-// TODO: implement generateId()
++import { randomBytes } from 'node:crypto';
++
+ export function generateId() {
+-  throw new Error('not implemented');
++  return randomBytes(16).toString('hex');
+ }

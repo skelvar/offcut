@@ -1,0 +1,21 @@
+{
+  "run_id": "583c29cac81dabdc",
+  "task_id": "config-fallback",
+  "arm": "off",
+  "rep": 4,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.241 (Claude Code)",
+  "date": "2026-08-24",
+  "started_at": "2026-08-24T23:24:57.517Z",
+  "effort": "low",
+  "prompt_sha256": "7b697d0e77188dad99f028e65876e37bbcc8b541f9762e4d58fa9651d275d789",
+  "prompt_path": "tasks/config-fallback/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

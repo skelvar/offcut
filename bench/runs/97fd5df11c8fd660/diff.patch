@@ -1,0 +1,19 @@
+diff --git a/slug.js b/slug.js
+index 514311d..f817b08 100644
+--- a/slug.js
++++ b/slug.js
+@@ -1,4 +1,11 @@
+-// TODO: implement slugify()
+-export function slugify(_text) {
+-  throw new Error('not implemented');
++export function slugify(text) {
++  if (typeof text !== 'string') {
++    throw new TypeError('slugify: text must be a string');
++  }
++  return text
++    .toLowerCase()
++    .replace(/\s+/g, '-')
++    .replace(/[^a-z0-9-]/g, '')
++    .replace(/-+/g, '-')
++    .replace(/^-+|-+$/g, '');
+ }

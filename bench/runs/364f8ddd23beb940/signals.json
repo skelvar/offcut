@@ -1,0 +1,11 @@
+{
+  "signals_fired": [],
+  "signals_fired_count": 0,
+  "signals_in_diff": [
+    "exported-unused"
+  ],
+  "signals_in_diff_count": 1,
+  "flagged_survived": [],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": null
+}
