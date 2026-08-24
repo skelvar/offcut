@@ -156,6 +156,17 @@ cheapest diff in the wrong place distributes the cost instead of removing it.
 Question 6 is the only one that can be checked mechanically, which is why §4.4
 checks it.
 
+**Mark deliberate shortcuts.** When a cheap answer knowingly cuts a real corner
+with a known ceiling — a coarse lock, a linear scan that will not stay linear, a
+heuristic that holds only for current inputs — leave a `rightseam:` comment
+naming the ceiling and what to do when it is reached. Cheap and *known* cheap is
+a decision. Cheap and unmarked is a landmine, and the person who finds it will
+not be the person who left it.
+
+This earns its place on its own: it makes intentional corner-cutting visible in
+the diff, where it can be argued with at review time. It also happens to be the
+precondition for harvesting those decisions later (§13).
+
 ### 3.1 What never gets simplified away
 
 The challenge applies to construction, never to correctness. Never cut:
@@ -207,9 +218,12 @@ every turn would cost more context than it saves, and would train the model to
 skim it. One compact question every turn beats one long lecture at turn one.
 
 **Skip the reminder when it cannot help.** No injection when the prompt is a
-mode command, when the mode is `off`, or when the prompt is plainly
-conversational rather than a build request. A reminder on "what does this
-function do?" is noise, and noise is how a mode gets turned off.
+mode command, when the prompt invokes a RightSeam command (§12, Phase 3), when the mode
+is `off`, or when the prompt is plainly conversational rather than a build
+request. A reminder on "what does this function do?" is noise, and noise is how
+a mode gets turned off. During a command the reminder is worse than noise — the
+command carries its own instructions and the two would contradict each other on
+scope.
 
 `lite` mode reduces this to every third turn. `strict` keeps it every turn and
 enables §4.3's escalation.
@@ -503,9 +517,47 @@ is unreachable by construction and there is a test asserting it; `escalate`
 fires only in `strict` for a new dependency; one-challenge-per-signal-per-session
 holds; the write path stays under 50ms.
 
-### Phase 3 — Prove it changes behavior
+### Phase 3 — Commands
 
-Only after 1 and 2. The smallest experiment that could change your mind: one
+One-shot, user-invoked, stateless. **A command is not a mode.** Modes
+(`off`/`lite`/`full`/`strict`) persist in the state file and change how every
+turn behaves. Commands run once, touch no state, and leave the mode exactly as
+they found it. Keeping the two apart is what keeps "which mode am I in?"
+answerable.
+
+Each command is one `SKILL.md` under `skills/`. No hook work is required beyond
+what already exists.
+
+| Command | Does | Ships in |
+|---|---|---|
+| `/right-seam review` | Applies the §4.3 signals to a diff instead of a single write | v0.2 |
+| `/right-seam audit` | Applies them across the repository, ranked | v0.2 |
+| `/right-seam help` | Modes, commands, how to turn it off | v0.2 |
+
+**Automatic invocation is already solved — do not build it.** A skill's
+`description` is the activation mechanism: the agent reads it and fires on
+"audit this repo for bloat" with no hook involvement. RightSeam's
+`UserPromptSubmit` hook parses **explicit** `/right-seam <command>` invocations
+only. Adding intent detection there would reimplement the platform's matcher and
+cause both paths to fire on the same prompt.
+
+Write each description with negative triggers as well as positive ones, and
+extend §10.2's corpus to cover command activation — a command that fires on
+"explain this function" is the same failure as a reminder that does.
+
+**On `audit` and §1.1.** The non-goal stands: the *persistent mode* never scans
+a repository. It reacts to the turn and the write in front of it. An explicit
+command is the user asking for a scan, which is a different act with a different
+cost profile. The line is who initiated it — never RightSeam on its own.
+
+**Not in scope.** A benchmark scoreboard command needs numbers, and Phase 3 has
+not produced any; shipping one earlier is marketing ahead of evidence. A
+shortcut-harvesting command needs `rightseam:` markers (§3) to reach meaningful
+density in real repositories first. Both are parked in §13.
+
+### Phase 4 — Prove it changes behavior
+
+Only after 1 and 2. Commands (Phase 3) may run in parallel; they share no code with the hook layer. The smallest experiment that could change your mind: one
 task family, two arms — mode off, mode `full` — five runs each, one host,
 recorded model ID.
 
@@ -527,6 +579,9 @@ bounded by what was measured.
 |---|---|
 | `references/` files | An eval shows the agent missing a question that more detail fixes |
 | Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient *and* latency budget allows |
+| `debt` command (harvest `rightseam:` markers) | Markers reach meaningful density in real repositories |
+| `gain` command (impact scoreboard) | Phase 4 has produced numbers worth showing |
+| Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
 | Repository-wide scanning | Never — it is a different product |
 | Cross-host verification beyond Claude Code | A second host has users asking |
 | Benchmark against other tools | RightSeam has independent reproducible results first |
