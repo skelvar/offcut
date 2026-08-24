@@ -79,7 +79,6 @@ test('JS-shaped signals do not run on JSON or Markdown', () => {
     'speculative-abstraction',
     'exported-unused',
     'new-config-surface',
-    'single-call-wrapper',
     'unused-default-param',
   ];
   for (const id of jsShaped) {
@@ -138,16 +137,27 @@ test('JS-shaped signals do not run on JSON or Markdown', () => {
 test('extension filter is enforced by runSignals, not only by check()', () => {
   // Regression: a signal whose check() would match must still be suppressed
   // on the wrong file type. Fails if gating lives only inside individual checks.
-  const wrapper = 'export function getUser(id) { return db.getUser(id); }\n';
+  const text = 'export interface Store { get(k: string): string }\nexport class MemoryStore implements Store { get(k: string) { return k; } }\n';
   const hits = runSignals(ALL_SIGNALS, view({
     path: 'notes.md',
-    content: wrapper,
-    addedContent: wrapper,
+    content: text,
+    addedContent: text,
     context: 'repo',
   }));
   assert.ok(
-    !hits.find((h) => h.id === 'single-call-wrapper'),
-    'single-call-wrapper must not fire on .md even when content matches',
+    !hits.find((h) => h.id === 'speculative-abstraction'),
+    'speculative-abstraction must not fire on .md even when content matches',
+  );
+});
+
+test('single-call-wrapper is deleted', () => {
+  assert.equal(
+    ALL_SIGNALS.find((s) => s.id === 'single-call-wrapper'),
+    undefined,
+  );
+  assert.equal(
+    fs.existsSync(path.join(POSITIVE, 'single-call-wrapper')),
+    false,
   );
 });
 

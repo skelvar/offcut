@@ -19,6 +19,7 @@ import {
 import {
   PRE_SIGNALS,
   POST_SIGNALS,
+  ALL_SIGNALS,
   LARGE_FIRST_WRITE_LINES,
   extractWriteFields,
   runSignals,
@@ -344,25 +345,14 @@ test('post signal new-config-surface: positive and negative', () => {
   );
 });
 
-test('post signal single-call-wrapper: positive and negative', () => {
-  const sig = POST_SIGNALS.find((s) => s.id === 'single-call-wrapper');
+test('post signal single-call-wrapper is deleted', () => {
   assert.equal(
-    sig.check(
-      view({
-        addedContent: 'export function save(x){ return db.save(x) }\n',
-        content: 'export function save(x){ return db.save(x) }\n',
-      }),
-    ),
-    true,
+    POST_SIGNALS.find((s) => s.id === 'single-call-wrapper'),
+    undefined,
   );
   assert.equal(
-    sig.check(
-      view({
-        addedContent: 'export function save(x){ validate(x); return db.save(x) }\n',
-        content: 'export function save(x){ validate(x); return db.save(x) }\n',
-      }),
-    ),
-    false,
+    ALL_SIGNALS.find((s) => s.id === 'single-call-wrapper'),
+    undefined,
   );
 });
 

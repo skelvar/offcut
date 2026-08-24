@@ -208,7 +208,7 @@ test('command run leaves state directory byte-identical', () => {
       fs.mkdirSync(src);
       fs.writeFileSync(
         path.join(src, 'x.js'),
-        'export function save(x) { return db.save(x) }\n',
+        'export function load(path, verbose = false) { return read(path); }\n',
       );
 
       const cli = runScanCli([src], { cwd: dir });

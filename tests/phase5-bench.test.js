@@ -43,8 +43,8 @@ new file mode 100644
   assert.equal('arm' in m, false);
   assert.ok(Array.isArray(m.signals_in_diff));
   assert.deepEqual(extractFiredSignals({
-    'fired-abc': '["post:single-call-wrapper","speculative-abstraction"]\n',
-  }), ['single-call-wrapper', 'speculative-abstraction']);
+    'fired-abc': '["post:unused-default-param","speculative-abstraction"]\n',
+  }), ['speculative-abstraction', 'unused-default-param']);
   assert.equal(normalizeSignalId('post:exported-unused'), 'exported-unused');
 });
 
@@ -55,14 +55,15 @@ test('invite elaborate stubs put target signals in the diff; control leans stay 
     '../bench/lib.mjs'
   );
 
+  // id-hex invited single-call-wrapper; that signal was deleted after Phase 7.5
+  // paid runs showed it firing on the accepted lean solution.
   const expected = {
     'one-impl-store': 'speculative-abstraction',
     'slug-ascii': 'new-dependency',
-    'id-hex': 'single-call-wrapper',
     'greet-opts': 'unused-default-param',
   };
 
-  for (const id of INVITE_TASK_IDS) {
+  for (const [id, signalId] of Object.entries(expected)) {
     const task = loadTask(id);
     const parent = tmpName(`p75-inv-${id}-`);
     const work = path.join(parent, 'repo');
@@ -77,8 +78,8 @@ test('invite elaborate stubs put target signals in the diff; control leans stay 
     const diff = captureDiff(work);
     const hits = detectSignalsInDiff(diff, work);
     assert.ok(
-      hits.includes(expected[id]),
-      `${id} elaborate should include ${expected[id]}, got ${hits.join(',')}`,
+      hits.includes(signalId),
+      `${id} elaborate should include ${signalId}, got ${hits.join(',')}`,
     );
     fs.rmSync(parent, { recursive: true, force: true });
   }
