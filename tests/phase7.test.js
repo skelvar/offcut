@@ -14,6 +14,7 @@ import { measure } from '../bench/fp.mjs';
 import {
   buildProjects,
   scanRealCode,
+  defaultProjectInputs,
 } from '../bench/realcode.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -213,4 +214,37 @@ test('scanRealCode builds per-project corpus so exported-unused can fire', () =>
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('gating: non-JS files get no write-time challenge (documented cliff)', () => {
+  // Extension gating is correct — ungated these checks were 65% noise on .py.
+  // But it silently removes the write-time challenge for non-JS projects, so
+  // the boundary is pinned here and documented in README/SIGNALS.md.
+  const src = [
+    'from abc import ABC, abstractmethod',
+    'class Store(ABC):',
+    '    @abstractmethod',
+    '    def get(self, k): ...',
+    'class MemStore(Store):',
+    '    def get(self, k): return k',
+  ].join('\n');
+  const mk = (p) => ({
+    path: p, content: src, addedContent: src, shape: 'full',
+    pathExists: false, truncated: false, context: 'write',
+  });
+  assert.equal(runSignals(ALL_SIGNALS, mk('store.py')).length, 0, 'python should be silent');
+
+  const ts = 'export interface Store { get(k: string): string }\n'
+    + 'export class MemStore implements Store { get(k) { return k } }\n';
+  const hits = runSignals(ALL_SIGNALS, {
+    path: 'store.ts', content: ts, addedContent: ts, shape: 'full',
+    pathExists: false, truncated: false, context: 'write',
+  });
+  assert.ok(hits.length > 0, 'typescript must still fire — gating went too far');
+});
+
+test('corpus: git internals are not treated as projects', () => {
+  const inputs = defaultProjectInputs();
+  const bad = inputs.filter((i) => /(^|@)\.git$/.test(i.name) || i.name.endsWith('@.git'));
+  assert.deepEqual(bad, [], 'a .git dir was scanned as a project');
 });

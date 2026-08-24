@@ -274,3 +274,52 @@ The open question moves back to Phase 5: whether an advisory hook message
 changes what the agent builds. That is a product question, not a signal one.
 
 Re-run: `node bench/realcode.mjs` and `node bench/fp.mjs`.
+
+## Review findings (Phase 7)
+
+### Language coverage is now a cliff, and it is invisible to the user
+
+File-extension gating is the right fix — ungated, the JS-shaped checks were 65%
+noise on `.py` and 100% on `.json`. But it introduced a capability boundary
+nothing surfaces.
+
+Measured: a Python file containing a one-implementor `ABC` **and** a single-call
+wrapper — textbook cases of two surviving signals — produces **no challenge at
+all**. The identical structure as `.ts` fires normally.
+
+| | covered | not covered |
+|---|---|---|
+| extensions | `.js .mjs .cjs .ts .tsx .jsx` (+ manifests) | `.py .go .rs .rb .php .java .kt .swift .sh .sql .css .html` |
+
+What still works outside JS/TS: session activation, mode switching, the
+statusline, and **the per-turn reminder** (language-agnostic, verified firing on
+a Python prompt). What does not: the write-time challenge — the thing that
+distinguishes Offcut from a rule file.
+
+This is the same shape as the Grok Tier 1 error and the `offcut:full` badge:
+**the mode reports healthy while its core feature is inert.** The gating stays;
+the silence must be documented, and `doctor` (Phase 8) should report which
+languages the current signal set covers.
+
+### `single-call-wrapper`: right pattern, wrong conclusion
+
+The hand sample is honest and the matches are real single-call wrappers — not
+parse accidents. But the sample itself notes many are conventional:
+`generateToken` → `crypto.randomBytes(...).toString(...)`, `computeAcceptKey` →
+`crypto.createHash(...).digest(...)`.
+
+Those are good code. The signal identifies the **pattern** correctly while the
+pattern is not a **defect**. That is a different failure mode from
+`config-for-constant` — a true positive that is not a finding — and it will not
+show up as a parse bug.
+
+Keeping it at 3.1% is defensible. Watch it: if users report it as noise, the
+fix is deletion, not tuning, because there is no text-level way to tell a thin
+helper worth having from one worth inlining.
+
+### Corpus hygiene
+
+`defaultProjectInputs` treated `temp_git_*/.git` as projects, feeding 48 git
+internal files into the denominator (2.8%). `walkDir` skips `.git` as a child
+but not as a scan root. Fixed; the rate moves 4.3% → 4.4%, which is the honest
+number.

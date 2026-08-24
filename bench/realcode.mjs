@@ -73,6 +73,10 @@ export function defaultProjectInputs() {
       }
       for (const ver of versions) {
         if (!ver.isDirectory()) continue;
+        // A version dir literally named .git is a git internal, not a project.
+        // walkDir only skips .git as a CHILD, so rooting a scan inside one
+        // silently feeds git objects into the denominator.
+        if (ver.name === '.git' || ver.name === 'node_modules') continue;
         inputs.push({
           name: `${plugin.name}@${ver.name}`,
           dirs: [path.join(pluginDir, ver.name)],
