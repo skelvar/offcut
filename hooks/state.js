@@ -20,8 +20,13 @@ function defaultPath() {
   return path.join(stateDir(), 'default');
 }
 
-function turnPath() {
-  return path.join(stateDir(), 'turn');
+// Per-session, not global. Concurrent sessions share one state dir, so a single
+// turn file lets one session's SessionStart reset another's lite-mode cadence.
+// offcut: turn files are never pruned — one small file per session id, which is
+// fine at human session counts; prune on SessionEnd if a state dir ever grows.
+function turnPath(sessionId) {
+  const key = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return path.join(stateDir(), key ? `turn-${key}` : 'turn');
 }
 
 function ensureDir() {
@@ -153,27 +158,27 @@ export function activateSession() {
  * Lite-mode turn counter. Increments and returns the new value.
  * @returns {number}
  */
-export function bumpTurn() {
+export function bumpTurn(sessionId) {
   try {
     ensureDir();
     let n = 0;
-    if (fs.existsSync(turnPath())) {
-      const raw = fs.readFileSync(turnPath(), 'utf8').replace(/^\uFEFF/, '').trim();
+    if (fs.existsSync(turnPath(sessionId))) {
+      const raw = fs.readFileSync(turnPath(sessionId), 'utf8').replace(/^\uFEFF/, '').trim();
       n = parseInt(raw, 10);
       if (!Number.isFinite(n) || n < 0) n = 0;
     }
     n += 1;
-    fs.writeFileSync(turnPath(), String(n) + '\n', 'utf8');
+    fs.writeFileSync(turnPath(sessionId), String(n) + '\n', 'utf8');
     return n;
   } catch {
     return 1;
   }
 }
 
-export function resetTurn() {
+export function resetTurn(sessionId) {
   try {
     ensureDir();
-    fs.writeFileSync(turnPath(), '0\n', 'utf8');
+    fs.writeFileSync(turnPath(sessionId), '0\n', 'utf8');
     return true;
   } catch {
     return false;
@@ -187,5 +192,6 @@ export function paths() {
     active: activePath(),
     default: defaultPath(),
     turn: turnPath(),
+    turnFor: turnPath,
   };
 }

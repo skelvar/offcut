@@ -11,7 +11,7 @@ export async function handleActivate(norm) {
   if (!norm) return null;
 
   const mode = activateSession();
-  resetTurn();
+  resetTurn(norm.sessionId);
 
   if (mode === 'off') return null;
 

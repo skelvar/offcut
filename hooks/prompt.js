@@ -60,14 +60,15 @@ export function parseModeCommand(prompt) {
  * lite: every 3rd turn.
  * @param {string} mode
  * @param {object | null} command
- * @param {() => number} [bump]
+ * @param {string | null} [sessionId] scopes the lite counter to this session
+ * @param {(id?: string) => number} [bump]
  */
-export function shouldRemind(mode, command, bump = bumpTurn) {
+export function shouldRemind(mode, command, sessionId = null, bump = bumpTurn) {
   if (command) return false;
   const m = normalizeMode(mode) || 'off';
   if (m === 'off') return false;
   if (m === 'lite') {
-    const turn = bump();
+    const turn = bump(sessionId);
     return turn % 3 === 0;
   }
   // full, strict
@@ -99,7 +100,7 @@ export async function handlePrompt(norm) {
   }
 
   const mode = readMode();
-  if (!shouldRemind(mode, null)) return null;
+  if (!shouldRemind(mode, null, norm.sessionId)) return null;
 
   return emit(norm.host, 'user_prompt_submit', reminderText());
 }

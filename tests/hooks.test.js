@@ -217,10 +217,24 @@ test('state: activateSession seeds from default', async () => {
 
 test('state: bumpTurn increments', async () => {
   await withStateDir(() => {
-    resetTurn();
-    assert.equal(bumpTurn(), 1);
-    assert.equal(bumpTurn(), 2);
-    assert.equal(bumpTurn(), 3);
+    resetTurn('s1');
+    assert.equal(bumpTurn('s1'), 1);
+    assert.equal(bumpTurn('s1'), 2);
+    assert.equal(bumpTurn('s1'), 3);
+  });
+});
+
+test('state: turn counters are per-session, not shared', async () => {
+  await withStateDir(() => {
+    resetTurn('alpha');
+    resetTurn('beta');
+    assert.equal(bumpTurn('alpha'), 1);
+    assert.equal(bumpTurn('alpha'), 2);
+    // beta is a separate concurrent session; alpha's turns must not count here
+    assert.equal(bumpTurn('beta'), 1, 'beta inherited alpha count — counter is global');
+    // and a new session starting must not reset a session already running
+    resetTurn('beta');
+    assert.equal(bumpTurn('alpha'), 3, "beta's SessionStart reset alpha's counter");
   });
 });
 
