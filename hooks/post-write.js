@@ -24,6 +24,7 @@ export function buildPostView(norm) {
     pathExists: true,
     // Decline content signals when either side was truncated.
     truncated: Boolean(norm.toolInputTruncated || norm.toolResultTruncated),
+    context: 'write',
   };
 }
 
