@@ -1,0 +1,9 @@
+{
+  "name": "offcut",
+  "version": "0.1.0",
+  "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
+  "author": {
+    "name": "xyzbk"
+  },
+  "hooks": "./adapters/claude/hooks.json"
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/agent-plugins/main/schemas/plugin.schema.json",
+  "name": "offcut",
+  "version": "0.1.0",
+  "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
+  "author": {
+    "name": "xyzbk"
+  },
+  "homepage": "https://github.com/xyzbk/rightseam",
+  "repository": "https://github.com/xyzbk/rightseam",
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "minimal",
+    "simplicity",
+    "agent-skills"
+  ]
+}
