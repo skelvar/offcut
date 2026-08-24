@@ -70,8 +70,10 @@ jobs:
             for (const [event, groups] of Object.entries(cfg.hooks)) {
               for (const g of groups) {
                 for (const h of g.hooks) {
-                  const rel = h.args[0].replace("${CLAUDE_PLUGIN_ROOT}/","");
-                  if (!fs.existsSync(rel)) throw new Error("missing "+rel+" for "+event);
+                  if (h.args) throw new Error(event+": args array breaks Grok (use single command string)");
+                  const m = String(h.command||"").match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/);
+                  if (!m) throw new Error(event+": missing ${CLAUDE_PLUGIN_ROOT}/path in "+h.command);
+                  if (!fs.existsSync(m[1])) throw new Error("missing "+m[1]+" for "+event);
                 }
               }
             }

@@ -550,7 +550,41 @@ test('evals: fire cases inject under always-inject default; quiet cases are know
   });
 });
 
-test('statusline.ps1 reflects mode', async () => {
+test('statusline.sh reflects mode', async (t) => {
+  // Windows often aliases `bash` to a WSL stub with no distro — skip there.
+  if (process.platform === 'win32') {
+    t.skip('statusline.sh exercised on POSIX CI');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    writeMode('strict');
+    const script = path.join(root, 'hooks', 'statusline.sh');
+    const r = await new Promise((resolve, reject) => {
+      const child = spawn('bash', [script], {
+        env: { ...process.env, OFFCUT_STATE_DIR: dir },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => {
+        stdout += d;
+      });
+      child.stderr.on('data', (d) => {
+        stderr += d;
+      });
+      child.on('close', (code) => resolve({ code, stdout, stderr }));
+      child.on('error', reject);
+    });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout.trim(), /offcut:strict/);
+  });
+});
+
+test('statusline.ps1 reflects mode', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('statusline.ps1 exercised on Windows');
+    return;
+  }
   await withStateDir(async (dir) => {
     writeMode('strict');
     const r = await new Promise((resolve, reject) => {
