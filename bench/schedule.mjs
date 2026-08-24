@@ -70,7 +70,12 @@ function prepareResume(allJobs) {
     }
     if (fs.existsSync(transcriptPath)) {
       const t = fs.readFileSync(transcriptPath, 'utf8');
-      if (/session limit|rate limit|"terminal_reason":"api_error"|api_error_status/i.test(t)) {
+      // Do not match "api_error_status":null — that appears on successful JSON too.
+      if (
+        /"terminal_reason"\s*:\s*"api_error"/i.test(t) ||
+        /"api_error_status"\s*:\s*[1-9]/i.test(t) ||
+        /session limit|hit your.*limit|rate limit|overloaded/i.test(t)
+      ) {
         apiError = true;
       }
     }
