@@ -786,25 +786,36 @@ is unreachable by construction and there is a test asserting it; `escalate`
 fires only in `strict` for a new dependency; one-challenge-per-signal-per-session
 holds; the write path stays under 50ms.
 
-### Phase 3 — Close what the probe left open
+### Phase 3 — Make it real
 
-The v0.1 host set already spans two payload dialects, so the adapter seam is
-exercised from Phase 1. What Phase 3 closes are the gaps §5.1 named as unproven:
+Phases 1 and 2 are verified only against synthetic payloads. Offcut has never
+been installed or run in a real session. This phase installs it on Claude Code,
+Codex, and Grok Build, verifies end to end, and fixes what breaks.
 
-1. ~~Subagent inheritance~~ — **done.** `SubagentStart` verified on Claude Code,
-   Codex, and Grok Build; field-name and value differences recorded in §5.1.
-   `host.js` must normalize `agent_id`/`subagentId` and `agent_type`/`subagentType`,
-   and must not match on agent-type values.
-2. **Truncation handling needs a real case.** Construct a write large enough to
-   trip Grok's `toolInputTruncated`, and confirm every content-based signal
-   declines to fire rather than firing on a fragment.
-3. **Tool-name normalization needs all four spellings.** `Write`, `Edit`,
-   `apply_patch`, and `write` must map to one internal concept, asserted by
-   contract test.
+Two items from the original Phase 3 were absorbed by Phase 2 — tool-name
+normalization (`classifyWriteTool` covers `Write`, `Edit`, `apply_patch`,
+`write`, `search_replace`) and truncation gating — but both are verified only
+with synthetic input. What remains is empirical.
 
-**Done when:** a probe capture exists containing a truncated payload; contract
-tests cover all four tool-name spellings and both subagent dialects; the
-README's host table cites probe dates rather than vendor documentation.
+Known-unverified going in:
+
+1. **`${CLAUDE_PLUGIN_ROOT}` is Claude-specific.** The "one config, three hosts"
+   claim is proven for the schema and unproven for path resolution. Codex and
+   Grok do not set that variable; an empty expansion fails silently.
+2. **No Windows command variant**, which §12 Phase 1 required, and the `args`
+   array form is unverified against Grok's documented single-string `command`.
+3. **`permissionDecision` values** for Claude and Codex, left open by Phase 2
+   because no hook could be installed.
+4. **A real truncated payload** — the threshold is unknown, so the size at which
+   content signals go quiet is unknown.
+
+**Done when:** the plugin installs and activates on all three hosts with hook
+scripts unchanged; a real over-engineered write produces an observed challenge
+in a real transcript; uninstall is clean; and `HOSTS.md` records host, version,
+date, and result for every check — including the failures.
+
+A host counts as verified only when a challenge was observed in a real session.
+Installing successfully is not verification.
 
 ### Phase 4 — Commands
 
