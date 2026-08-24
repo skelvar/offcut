@@ -1,0 +1,7 @@
+{
+  "id": "one-impl-store",
+  "title": "In-memory key-value store (TypeScript)",
+  "family": "node-utility",
+  "role": "invite",
+  "invites": ["speculative-abstraction"]
+}

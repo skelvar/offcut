@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Blind scorer: metrics from diff + accept.json only. Does not read arm labels.
+// Blind scorer: metrics from diff + accept.json (+ optional state-after for fired signals).
+// Does not read arm labels.
 //
 //   node bench/score.mjs <run-dir>
 //   node bench/score.mjs --all
@@ -10,6 +11,100 @@ import { fileURLToPath } from 'node:url';
 import { RUNS_DIR, sha256 } from './lib.mjs';
 import { parseUnifiedDiff } from '../scripts/scan.mjs';
 import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
+
+/**
+ * Normalize fired keys from state (`post:exported-unused` / `speculative-abstraction`)
+ * to bare signal ids.
+ * @param {string} raw
+ */
+export function normalizeSignalId(raw) {
+  const s = String(raw || '').trim();
+  if (s.startsWith('post:')) return s.slice(5);
+  if (s.startsWith('pre:')) return s.slice(4);
+  return s;
+}
+
+/**
+ * Collect every signal id recorded in state-after.json fired-* files.
+ * @param {Record<string, string|null>|null|undefined} stateAfter
+ * @returns {string[]} sorted unique bare ids
+ */
+export function extractFiredSignals(stateAfter) {
+  if (!stateAfter || typeof stateAfter !== 'object') return [];
+  const ids = new Set();
+  for (const [key, val] of Object.entries(stateAfter)) {
+    if (!key.startsWith('fired-') && key !== 'fired') continue;
+    let list = [];
+    try {
+      const raw = String(val ?? '').replace(/^\uFEFF/, '').trim();
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      continue;
+    }
+    for (const item of list) ids.add(normalizeSignalId(item));
+  }
+  return [...ids].filter(Boolean).sort();
+}
+
+/**
+ * Re-run surviving signals against the final worktree (preferred) or diff hunks.
+ * Worktree full-file views are required for "pattern survived": a unified diff
+ * fragment often omits unchanged function headers, which silently drops matches.
+ * @param {string} diffText
+ * @param {string|null} workDir
+ */
+export function detectSignalsInDiff(diffText, workDir) {
+  const files = parseUnifiedDiff(diffText || '');
+  let corpus = '';
+  if (workDir && fs.existsSync(workDir)) {
+    corpus = walkText(workDir);
+  } else {
+    corpus = files.map((f) => f.addedContent || f.content || '').join('\n');
+  }
+
+  const ids = new Set();
+
+  if (workDir && fs.existsSync(workDir) && files.length) {
+    for (const f of files) {
+      const abs = path.join(workDir, f.path);
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+      const content = fs.readFileSync(abs, 'utf8');
+      const view = {
+        path: f.path,
+        content,
+        addedContent: content,
+        shape: 'full',
+        pathExists: f.pathExists,
+        truncated: false,
+        context: 'diff',
+        corpus,
+      };
+      for (const sig of runSignals(ALL_SIGNALS, view)) {
+        ids.add(sig.id);
+      }
+    }
+    return [...ids].sort();
+  }
+
+  for (const f of files) {
+    const view = {
+      path: f.path,
+      content: f.content || f.addedContent || '',
+      addedContent: f.addedContent || '',
+      shape: f.pathExists === false ? 'full' : 'fragment',
+      pathExists: f.pathExists,
+      truncated: false,
+      context: 'diff',
+      corpus,
+    };
+    for (const sig of runSignals(ALL_SIGNALS, view)) {
+      ids.add(sig.id);
+    }
+  }
+  return [...ids].sort();
+}
 
 /**
  * @param {string} diffText
@@ -92,6 +187,8 @@ export function scoreDiff(diffText, workDir) {
     }
   }
 
+  const signalsInDiff = detectSignalsInDiff(diffText, workDir);
+
   return {
     files_created: filesCreated.size,
     files_created_paths: [...filesCreated].sort(),
@@ -102,6 +199,8 @@ export function scoreDiff(diffText, workDir) {
     lines_added: linesAdded,
     lines_removed: linesRemoved,
     diff_sha256: sha256(diffText || ''),
+    signals_in_diff: signalsInDiff,
+    signals_in_diff_count: signalsInDiff.length,
   };
 }
 
@@ -112,7 +211,7 @@ function walkText(dir) {
       if (ent.name === '.git' || ent.name === 'node_modules') continue;
       const p = path.join(d, ent.name);
       if (ent.isDirectory()) walk(p);
-      else if (/\.(js|mjs|cjs|json|ts)$/i.test(ent.name)) {
+      else if (/\.(js|mjs|cjs|json|ts|tsx|jsx)$/i.test(ent.name)) {
         parts.push(fs.readFileSync(p, 'utf8'));
       }
     }
@@ -122,13 +221,14 @@ function walkText(dir) {
 }
 
 /**
- * Score one opaque run directory. Writes metrics.json.
+ * Score one opaque run directory. Writes metrics.json and signals.json.
  * @param {string} runDir
  */
 export function scoreRun(runDir) {
   const diffPath = path.join(runDir, 'diff.patch');
   const acceptPath = path.join(runDir, 'accept.json');
   const workDir = path.join(runDir, 'work');
+  const statePath = path.join(runDir, 'state-after.json');
 
   if (!fs.existsSync(diffPath) || !fs.existsSync(acceptPath)) {
     throw new Error(`run dir incomplete: ${runDir}`);
@@ -138,12 +238,43 @@ export function scoreRun(runDir) {
   const accept = JSON.parse(fs.readFileSync(acceptPath, 'utf8'));
   const metrics = scoreDiff(diffText, fs.existsSync(workDir) ? workDir : null);
 
+  let stateAfter = null;
+  if (fs.existsSync(statePath)) {
+    try {
+      stateAfter = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    } catch {
+      stateAfter = null;
+    }
+  }
+
+  const signalsFired = extractFiredSignals(stateAfter);
+  const inDiff = new Set(metrics.signals_in_diff || []);
+  // Of the signals the hooks actually challenged, which patterns remain in the final diff?
+  const survived = signalsFired.filter((id) => inDiff.has(id));
+  const cleared = signalsFired.filter((id) => !inDiff.has(id));
+  // null when nothing fired — "survived" is not meaningful without a challenge.
+  const flaggedPatternSurvived =
+    signalsFired.length === 0 ? null : survived.length > 0;
+
+  const signals = {
+    signals_fired: signalsFired,
+    signals_fired_count: signalsFired.length,
+    signals_in_diff: metrics.signals_in_diff,
+    signals_in_diff_count: metrics.signals_in_diff_count,
+    flagged_survived: survived,
+    flagged_cleared: cleared,
+    flagged_pattern_survived: flaggedPatternSurvived,
+  };
+
+  fs.writeFileSync(path.join(runDir, 'signals.json'), JSON.stringify(signals, null, 2) + '\n');
+
   const out = {
     run_id: path.basename(runDir),
     task_passed: Boolean(accept.ok),
     accept_exit: accept.exitCode ?? null,
     accept_error: accept.error ?? null,
     ...metrics,
+    ...signals,
     // no arm field — blind
   };
 

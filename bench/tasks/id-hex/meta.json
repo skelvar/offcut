@@ -1,0 +1,7 @@
+{
+  "id": "id-hex",
+  "title": "Hex id from crypto.randomBytes",
+  "family": "node-utility",
+  "role": "invite",
+  "invites": ["single-call-wrapper"]
+}

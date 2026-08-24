@@ -25,7 +25,9 @@ test('interleaveSchedule alternates arms across reps', async () => {
 });
 
 test('scoreDiff counts new files and does not require arm', async () => {
-  const { scoreDiff } = await import('../bench/score.mjs');
+  const { scoreDiff, extractFiredSignals, normalizeSignalId } = await import(
+    '../bench/score.mjs'
+  );
   const diff = `diff --git a/x.js b/x.js
 new file mode 100644
 --- /dev/null
@@ -39,10 +41,81 @@ new file mode 100644
   assert.equal(m.files_created, 1);
   assert.ok(m.lines_added >= 3);
   assert.equal('arm' in m, false);
+  assert.ok(Array.isArray(m.signals_in_diff));
+  assert.deepEqual(extractFiredSignals({
+    'fired-abc': '["post:single-call-wrapper","speculative-abstraction"]\n',
+  }), ['single-call-wrapper', 'speculative-abstraction']);
+  assert.equal(normalizeSignalId('post:exported-unused'), 'exported-unused');
 });
 
-test('stub lean solutions pass accept for every task', () => {
-  const tasks = ['config-fallback', 'retry-backoff', 'ttl-cache', 'shared-validate'];
+test('invite elaborate stubs put target signals in the diff; control leans stay quiet', async () => {
+  const { listTaskIds, INVITE_TASK_IDS, CONTROL_TASK_IDS } = await import('../bench/lib.mjs');
+  const { detectSignalsInDiff } = await import('../bench/score.mjs');
+  const { captureDiff, copyTree, initGitRepo, loadTask, tmpName } = await import(
+    '../bench/lib.mjs'
+  );
+
+  const expected = {
+    'one-impl-store': 'speculative-abstraction',
+    'slug-ascii': 'new-dependency',
+    'id-hex': 'single-call-wrapper',
+    'greet-opts': 'unused-default-param',
+  };
+
+  for (const id of INVITE_TASK_IDS) {
+    const task = loadTask(id);
+    const parent = tmpName(`p75-inv-${id}-`);
+    const work = path.join(parent, 'repo');
+    copyTree(task.repoDir, work);
+    initGitRepo(work);
+    const stub = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'bench', 'stub-agent.mjs'), '--task', id, '--style', 'elaborate', '--cwd', work],
+      { encoding: 'utf8' },
+    );
+    assert.equal(stub.status, 0, stub.stderr || stub.stdout);
+    const diff = captureDiff(work);
+    const hits = detectSignalsInDiff(diff, work);
+    assert.ok(
+      hits.includes(expected[id]),
+      `${id} elaborate should include ${expected[id]}, got ${hits.join(',')}`,
+    );
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+
+  // Discrimination target: invite signals the new fixtures are built to tempt.
+  // exported-unused can still fire on a lone ESM module that imports node:* —
+  // that is a known corpus soft spot, not what these controls are for.
+  const inviteSignals = new Set(Object.values(expected));
+  for (const id of CONTROL_TASK_IDS) {
+    if (!listTaskIds().includes(id)) continue;
+    const task = loadTask(id);
+    const parent = tmpName(`p75-ctl-${id}-`);
+    const work = path.join(parent, 'repo');
+    copyTree(task.repoDir, work);
+    initGitRepo(work);
+    const stub = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'bench', 'stub-agent.mjs'), '--task', id, '--style', 'lean', '--cwd', work],
+      { encoding: 'utf8' },
+    );
+    assert.equal(stub.status, 0, stub.stderr || stub.stdout);
+    const diff = captureDiff(work);
+    const hits = detectSignalsInDiff(diff, work);
+    const leaked = hits.filter((h) => inviteSignals.has(h));
+    assert.deepEqual(
+      leaked,
+      [],
+      `${id} lean control should be silent on invite signals, got ${hits.join(',')}`,
+    );
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('stub lean solutions pass accept for every task', async () => {
+  const { listTaskIds } = await import('../bench/lib.mjs');
+  const tasks = listTaskIds();
+  assert.ok(tasks.length >= 6, `expected extended fixture set, got ${tasks.length}`);
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5-${id}-`));
     const repo = path.join(ROOT, 'bench', 'tasks', id, 'repo');
@@ -81,8 +154,9 @@ test('stub lean solutions pass accept for every task', () => {
   }
 });
 
-test('stub elaborate solutions also pass accept', () => {
-  const tasks = ['config-fallback', 'retry-backoff', 'ttl-cache', 'shared-validate'];
+test('stub elaborate solutions also pass accept', async () => {
+  const { listTaskIds } = await import('../bench/lib.mjs');
+  const tasks = listTaskIds();
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5e-${id}-`));
     const repo = path.join(ROOT, 'bench', 'tasks', id, 'repo');

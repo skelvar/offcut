@@ -1,0 +1,6 @@
+{
+  "name": "one-impl-store-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" }
+}
