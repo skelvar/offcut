@@ -40,14 +40,15 @@ export function absScript(rel, root = ROOT) {
 }
 
 /**
- * Single-string command proven on Claude / Codex / Grok (Windows).
- * Guards on `node` so a machine without Node fails open instead of hanging.
+ * Single-string command proven on Claude / Codex / Grok (Windows, 2026-08-24).
+ *
+ * Plain `node "abs"` — not `command`+`args` (Grok ignores args) and not
+ * `cmd /c "where node && node …"` (Claude Code on Windows spawns via bash;
+ * nested cmd quoting fails silently). Missing `node` fails open on measured
+ * hosts rather than hanging the session.
  */
-export function hookCommand(scriptAbs, platform = process.platform) {
-  if (platform === 'win32') {
-    return `cmd /c "where node >nul 2>&1 && node ""${scriptAbs}"""`;
-  }
-  return `command -v node >/dev/null 2>&1 && node "${scriptAbs}"`;
+export function hookCommand(scriptAbs, _platform = process.platform) {
+  return `node "${scriptAbs}"`;
 }
 
 function pascalGroup(event, matcher) {

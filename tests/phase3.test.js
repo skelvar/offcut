@@ -23,24 +23,16 @@ test('adapters/claude/hooks.json uses single-string commands (no args)', () => {
   }
 });
 
-test('hookCommand: win32 guards on where node; posix on command -v', () => {
+test('hookCommand: plain node + quoted absolute path on every platform', () => {
   const script = 'D:/rightseam/hooks/activate.js';
-  const win = hookCommand(script, 'win32');
-  assert.match(win, /^cmd \/c "/);
-  assert.match(win, /where node/);
-  assert.ok(win.includes(script));
-
-  const posix = hookCommand(script, 'linux');
-  assert.match(posix, /command -v node/);
-  assert.ok(posix.includes(`node "${script}"`));
-  assert.doesNotMatch(posix, /cmd \/c/);
-});
-
-test('hookCommand: never emits a bare `node` with a separate args array shape', () => {
-  const cmd = hookCommand(absScript('hooks/pre-write.js', root), 'win32');
-  // The failure mode we measured: command "node" + args [...] → Grok runs bare node.
-  assert.notEqual(cmd, 'node');
-  assert.match(cmd, /pre-write\.js/);
+  for (const platform of ['win32', 'linux', 'darwin']) {
+    const cmd = hookCommand(script, platform);
+    assert.equal(cmd, `node "${script}"`);
+    // Not the Grok-broken shape (bare "node" with a separate args array).
+    assert.notEqual(cmd, 'node');
+    // Not the Claude-broken nested cmd /c guard.
+    assert.doesNotMatch(cmd, /cmd \/c/);
+  }
 });
 
 test('absScript: forward-slash absolute path under repo root', () => {

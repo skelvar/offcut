@@ -19,10 +19,10 @@ node tools/install.mjs --uninstall
 ```
 
 The installer writes **absolute** script paths as a single `command` string
-(with a Windows `where node` guard). That is required: `${CLAUDE_PLUGIN_ROOT}`
-is not set for settings/hooks-dir installs, and Grok silently ignores an `args`
-array. See `HOSTS.md`. Hooks load at session start — open a **new** session
-after installing.
+(`node "…/hooks/….js"`). That is required: `${CLAUDE_PLUGIN_ROOT}` is not set
+for settings/hooks-dir installs, and Grok silently ignores an `args` array.
+See `HOSTS.md`. Hooks load at session start — open a **new** session after
+installing. Node.js must be on `PATH`; without it hooks fail open.
 
 ### Claude Code (plugin)
 
