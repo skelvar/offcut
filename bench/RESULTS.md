@@ -178,7 +178,7 @@ _None._
 
 ## Conclusion
 
-**No detectable effect** in this sample.
+**No detectable effect** in this sample — and the reason is the signal set, not the mechanism (see below).
 
 Offcut's mechanism worked: every `full` run wrote at least one `fired-*`
 signal under the per-run state dir; every `off` run wrote none. Acceptance
@@ -201,31 +201,46 @@ Per-task, three of four tasks are essentially tied. `ttl-cache` shows a lower
 export counts — interesting, not enough alone to claim an effect. Fail counts:
 off=0, full=0.
 
-### The challenge was delivered and ignored
+### Every challenge issued was a false positive
 
-On `ttl-cache`, all five `full` runs fired exactly the signals matching the
-over-engineering the task invites — `speculative-abstraction` and
-`post:exported-unused`. All five resulting diffs still contain
-`abstraction_layers=1` and `exported_unused=1`, identical to the `off` arm.
+The signals fired 30 times across the 20 `full` runs:
 
-Detection worked. Delivery worked. The output did not change.
+| signal | fires | of 20 runs |
+|---|---:|---|
+| `post:exported-unused` | 20 | **every run, every task** |
+| `speculative-abstraction` | 5 | all ttl-cache |
+| `new-file` | 5 | all shared-validate |
 
-That is a sharper result than "no detectable effect", and it points somewhere
-specific. The gap is not in the signal set and not in the hook plumbing — both
-did their job on 5/5 runs. It is in whether an advisory `additionalContext`
-message can change a decision the agent has already committed to.
+Checked against the prompts and the diffs, **none of them identified real
+over-engineering**:
 
-Candidate explanations, none tested here:
+- **`ttl-cache`** — the prompt *specifies* `createCache({ defaultTtlMs = 1000 })`
+  returning an object. `speculative-abstraction` flagged the factory the spec
+  mandated. The implementation is a `Map`, an `isExpired` helper, and the four
+  requested methods.
+- **`shared-validate`** — the prompt says "Put the function where both callers
+  can import it (a small shared module is fine)". `new-file` flagged the file
+  the task asked for, and `post:exported-unused` flagged `isValidEmail` even
+  though `register.js` and `invite.js` both import it **in the same diff**.
+- **`post:exported-unused` fired on 20/20 runs.** Every task's deliverable is an
+  exported function. A signal that fires on every input carries no information.
 
-- `PreToolUse` context arrives after the agent has settled on a plan
-- the message is phrased as a question, not an instruction
-- one challenge per signal per session is too few to matter
-- the model does not treat hook context as authoritative
+This reframes the headline. The output did not change because **the agent was
+correct to ignore the advice**. That is the right outcome from a wrong input,
+not a persuasion failure.
 
-**This failure mode is invisible to the size metrics.** A future experiment
-should measure "signal fired AND the flagged pattern survived" as a first-class
-outcome — that is the number that says whether the challenge persuades, and it
-is the number this run can already report: 5/5 survived.
+What the experiment actually establishes:
+
+- the mechanism works — hooks fire, state is written, context is delivered
+- the signal set does not — it flags spec-compliant code as over-engineering
+- a tool that challenges correct code is worse than one that stays quiet,
+  because it trains the reader to ignore it
+
+**The number that matters now is the false-positive rate, and on this corpus it
+is 30/30.** A future run should measure it directly rather than inferring it
+from unchanged output, and no intervention should be tuned until the signals
+identify something real — otherwise the experiment measures how effectively an
+agent can be pushed into writing worse code.
 
 Five runs per cell is enough to notice a large effect and not enough to claim
 a small one. This experiment does not support claiming that Offcut makes agent
