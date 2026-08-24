@@ -69,17 +69,34 @@ export function extractWriteFields(toolInput, shape) {
     };
   }
 
-  if (input.patch != null || input.input != null) {
-    const patch = String(input.patch ?? input.input ?? '');
+  // apply_patch (measured 2026-08-24): some hosts put the patch blob in
+  // `command`, not `patch`/`input`, with the path inside (`*** Add File:`).
+  const patchBlob =
+    input.patch ??
+    input.input ??
+    (typeof input.command === 'string' && input.command.includes('*** Begin Patch')
+      ? input.command
+      : null);
+  if (patchBlob != null) {
+    const patch = String(patchBlob);
+    const fromBlob = patch.match(/\*\*\*\s+(?:Add|Update)\s+File:\s*(.+)/)?.[1]?.trim();
     const added = patch
       .split(/\r?\n/)
       .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
       .map((l) => l.slice(1))
       .join('\n');
+    // Prefer reconstructed added lines as `content` so text signals see
+    // `interface Foo` rather than `+interface Foo` from the raw patch.
+    const reconstructed = added || patch;
     return {
-      path: filePath != null ? String(filePath) : null,
-      content: patch,
-      addedContent: added || patch,
+      path:
+        filePath != null
+          ? String(filePath)
+          : fromBlob
+            ? String(fromBlob)
+            : null,
+      content: reconstructed,
+      addedContent: reconstructed,
     };
   }
 

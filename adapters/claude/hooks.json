@@ -6,8 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/activate.js"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/activate.js\"",
             "timeout": 5
           }
         ]
@@ -18,8 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/prompt.js"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt.js\"",
             "timeout": 5
           }
         ]
@@ -30,8 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/subagent.js"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent.js\"",
             "timeout": 5
           }
         ]
@@ -43,8 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/pre-write.js"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-write.js\"",
             "timeout": 5
           }
         ]
@@ -56,8 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/post-write.js"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-write.js\"",
             "timeout": 5
           }
         ]

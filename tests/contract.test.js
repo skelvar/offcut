@@ -207,8 +207,12 @@ test('contract: adapters/claude/hooks.json wires SessionStart matcher and script
   ]) {
     const hook = cfg.hooks[event][0].hooks[0];
     assert.equal(hook.type, 'command');
-    assert.equal(hook.command, 'node');
-    assert.ok(fs.existsSync(path.join(root, hook.args[0].replace('${CLAUDE_PLUGIN_ROOT}/', ''))));
+    // Single-string command — Grok silently ignores an `args` array (HOSTS.md).
+    assert.equal(hook.args, undefined);
+    assert.match(hook.command, /^node "/);
+    const rel = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/)?.[1];
+    assert.ok(rel, `command should embed script path: ${hook.command}`);
+    assert.ok(fs.existsSync(path.join(root, rel)));
   }
   assert.match(cfg.hooks.PreToolUse[0].matcher, /Write\|Edit/);
   assert.match(cfg.hooks.PostToolUse[0].matcher, /Write\|Edit/);

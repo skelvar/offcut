@@ -1,3 +1,9 @@
 node_modules/
 .env
 .env.*
+
+.worktrees/
+
+# agent tooling artifacts
+.superpowers/
+.remember/

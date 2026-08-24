@@ -415,11 +415,22 @@ and carries the same risk that the Grok payload finding just demonstrated.
 Offcut's value is not uniformly deliverable. The plan states the tiers
 plainly rather than implying every host gets the full product.
 
-**Tier 1 — Full.** Lifecycle hooks available. Persistent mode, per-turn
-reminder, write-time challenge, subagent inheritance, statusline. This is
-Offcut as designed.
-→ **v0.1: Claude Code, Codex, Grok Build** — one config file, two payload
-dialects, all three measured (§5.1). Cursor is deferred (§5.4).
+**Tier 1 — Full.** Lifecycle hooks available **and delivered to the model**.
+Persistent mode, per-turn reminder, write-time challenge, subagent inheritance,
+statusline.
+→ **v0.1: Claude Code, Codex.** Both verified 2026-08-24 with a challenge
+observed in a real transcript.
+
+**Grok Build is Tier 3, not Tier 1 — corrected in Phase 3.** Its hooks install,
+run, and write state correctly, but it discards hook stdout on `SessionStart`,
+`UserPromptSubmit`, and `PostToolUse`, and honors only `deny` on `PreToolUse`.
+Nothing Offcut emits ever reaches the model. Grok auto-loads `AGENTS.md`, so it
+gets the Tier 3 always-on ruleset instead.
+
+This is the third time a documented capability turned out to be wrong on the
+wire, and the first time it invalidated a tier rather than a field name. **A
+host having hooks does not mean a host delivers hook output.** Verify delivery,
+not registration.
 
 **Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. Offcut
 becomes an on-demand skill: the challenge fires when the description matches or
@@ -466,10 +477,12 @@ point at the same hook scripts.
 
 ### 5.4 How many hosts to support, and when
 
-**v0.1 ships one hook config, three Tier 1 hosts, plus `AGENTS.md`.**
+**v0.1 ships one hook config, two Tier 1 hosts, plus `AGENTS.md`.**
 
-One PascalCase config file installs on **Claude Code, Codex, and Grok Build**.
-`AGENTS.md` adds Tier 3 for one generated file.
+One PascalCase config file installs on **Claude Code and Codex**. Grok Build
+accepts the same config and runs it, but discards the output (§5.2), so it is
+served by `AGENTS.md` instead. `AGENTS.md` adds Tier 3 for one generated file —
+and is now the only thing that works on Grok.
 
 **Cursor is deferred, and the measurement is why.** The earlier argument for
 shipping Cursor early was that a seam validated against a single implementation

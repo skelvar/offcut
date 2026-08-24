@@ -651,10 +651,14 @@ test('adapters/claude/hooks.json wires PreToolUse and PostToolUse', () => {
   assert.match(cfg.hooks.PreToolUse[0].matcher, /Write/);
   assert.match(cfg.hooks.PreToolUse[0].matcher, /Edit/);
   assert.ok(cfg.hooks.PostToolUse);
-  const pre = cfg.hooks.PreToolUse[0].hooks[0].args[0];
-  const post = cfg.hooks.PostToolUse[0].hooks[0].args[0];
-  assert.ok(fs.existsSync(path.join(root, pre.replace('${CLAUDE_PLUGIN_ROOT}/', ''))));
-  assert.ok(fs.existsSync(path.join(root, post.replace('${CLAUDE_PLUGIN_ROOT}/', ''))));
+  const preCmd = cfg.hooks.PreToolUse[0].hooks[0].command;
+  const postCmd = cfg.hooks.PostToolUse[0].hooks[0].command;
+  assert.equal(cfg.hooks.PreToolUse[0].hooks[0].args, undefined);
+  assert.equal(cfg.hooks.PostToolUse[0].hooks[0].args, undefined);
+  const pre = preCmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/)?.[1];
+  const post = postCmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/)?.[1];
+  assert.ok(fs.existsSync(path.join(root, pre)));
+  assert.ok(fs.existsSync(path.join(root, post)));
 });
 
 test('extractWriteFields: full vs fragment shapes', () => {
@@ -669,6 +673,18 @@ test('extractWriteFields: full vs fragment shapes', () => {
     ).addedContent,
     'b',
   );
+});
+
+test('extractWriteFields: apply_patch may use tool_input.command', () => {
+  // Measured 2026-08-24: one host's PreToolUse for apply_patch carries the
+  // patch blob in tool_input.command, not patch/input/file_path.
+  const patch =
+    '*** Begin Patch\n*** Add File: D:/rightseam/new-file.ts\n+export interface A {}\n+export class B implements A {}\n*** End Patch';
+  const fields = extractWriteFields({ command: patch }, 'fragment');
+  assert.equal(fields.path, 'D:/rightseam/new-file.ts');
+  assert.match(fields.addedContent, /export interface A/);
+  assert.match(fields.addedContent, /export class B implements A/);
+  assert.equal(fields.addedContent.includes('+'), false);
 });
 
 test('buildPreView respects truncation and shape', () => {
