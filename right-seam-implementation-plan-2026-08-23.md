@@ -11,24 +11,22 @@
 
 ## 0. What changed in v2.0
 
-Version 1.0 positioned RightSeam as a *companion* to the Ponytail skill:
-Ponytail would minimize, RightSeam would place. That is no longer the design.
+Version 1.0 defined RightSeam in relation to another skill — what it added, what
+it deferred, where it differed. That framing is gone. RightSeam is defined by
+the problem it solves, not by its position relative to anything else.
 
 **RightSeam is a self-contained skill.** It carries its own minimality
 discipline *and* its own boundary-selection discipline. It does not require,
 depend on, or defer to any other skill. If a minimality skill happens to be
 active too, RightSeam composes with it — but it must be complete alone.
 
-Three further changes follow from re-verifying v1.0's claims against primary
+Two further changes follow from re-verifying v1.0's claims against primary
 sources (§3):
 
 1. **Scope cut.** v1.0 specified roughly forty files for v0.1. This plan ships
    eight. The removed scaffolding is parked in §20, not deleted, and returns
    only when an evaluation demonstrates the need.
-2. **Positioning sharpened.** An open upstream pull request already addresses
-   the *completeness* half of v1.0's thesis. RightSeam now leads with the half
-   nothing else addresses: **ownership**. See §5.3.
-3. **Originality constraint made explicit.** See §2.
+2. **Originality constraint made explicit.** See §2.
 
 ---
 
@@ -101,9 +99,6 @@ August 24, 2026.
 
 | Claim under test | Result |
 |---|---|
-| Ponytail issue #660 describes the containment gap | **Confirmed.** Open. *"Rethink 'shortest diff wins': optimize for contained complexity, not minimum code"* |
-| Ponytail PR #608 proposes outcome-first | **Confirmed.** Open, unmerged. *"fix: make best complete outcome primary"* |
-| Ponytail is significant enough to position against | **Confirmed.** ~109k stars |
 | Agent Skills spec defines `name`, `description`, `license`, `compatibility`, `metadata` | **Confirmed.** All five standard; `allowed-tools` also exists (experimental) |
 | `description` limit is 1024 characters | **Confirmed.** Draft measures 420 — passes |
 | `compatibility` limit is 500 characters | **Confirmed.** Draft measures 119 — passes |
@@ -154,7 +149,7 @@ metaphor. This is not trademark clearance.
 
 ---
 
-## 5. Prior art and positioning
+## 5. The problem and its boundaries
 
 ### 5.1 The problem
 
@@ -172,12 +167,19 @@ The first wins on per-file line count while losing on duplicated policy, places
 that must change together, caller knowledge, behavior drift, unprotected
 sibling callers, test duplication, and clear ownership.
 
-This is not hypothetical. Ponytail issue #660 documents a real case: a
-configuration-loader task where minimum-code pressure produced *more*
-architectural complexity — policy leaked into callers, the public contract
-became indirect, and behavior-bearing wrappers obscured the single interface the
-system needed. That issue frames the distinction RightSeam is built on:
-**reducing** complexity is not **containing** it.
+The distinction RightSeam is built on: **reducing** complexity is not
+**containing** it. A change can cut total line count while increasing the number
+of places a maintainer must understand — and that trade is usually invisible at
+review time, because each individual file looks smaller.
+
+The clearest instance is a configuration loader with ordered per-key fallback.
+Optimizing each call site for brevity produces local fallback chains and
+behavior-bearing wrappers; the system needed one interface with a visible lookup
+order. Every caller should be able to read one contract. Instead, each learns
+part of the policy.
+
+This plan does not treat that as proven. §19 Phase 2 exists to collect real
+cases before the protocol is trusted.
 
 ### 5.2 What RightSeam is not
 
@@ -193,27 +195,19 @@ must also not become:
 - a numeric "architecture score",
 - a set of named intensity modes.
 
-### 5.3 The differentiation risk, stated plainly
+### 5.3 What RightSeam leads with
 
-Ponytail PR #608 proposes that upstream choose the strongest complete outcome
-*before* applying its efficiency ladder, with simplicity demoted to a
-tiebreaker. That is substantially the **completeness** half of v1.0's thesis.
+**Ownership.** "Prefer the complete solution over the short one" is a reasonable
+principle that plenty of tools and reviewers already advocate; it is not a
+product. Choosing *which boundary owns the responsibility* — and refusing to
+centralize things that merely look alike — is the part that is specific,
+testable, and hard to get right.
 
-If #608 merges, "prefer the complete solution over the short one" stops being a
-differentiator. RightSeam must therefore lead with what #608 does **not**
-address: *which boundary owns the responsibility*. Nothing in that pull request
-selects an owner, compares distributed reasoning burden, or guards against
-centralizing coincidental duplication.
+So the description, README, and evaluation corpus lead with owner selection.
+Completeness stays a gate in the protocol because it is genuinely required, but
+it is not the headline claim.
 
-Upstream state at this revision: #608 is open with no review comments and an
-unstable merge state; #660 has one comment. Upstream is not moving quickly — but
-the plan must not depend on that.
-
-**Consequence:** the description, README, and evaluation corpus lead with owner
-selection. Completeness stays a gate in the protocol, because it is genuinely
-required, but it is not the headline claim.
-
-### 5.4 Positioning against the portable-plugin ecosystem
+### 5.4 Distribution reality
 
 The Agent Plugins specification is real and RightSeam conforms to it, but the
 spec names no production adopters. Treat portable-plugin distribution as a bet,
@@ -868,20 +862,20 @@ repository cannot establish an owner.
 ### Phase 2 — Ground it in real cases
 
 The evaluation guidance is explicit that skills should come from real expertise,
-not from reasoning about a domain. This protocol currently rests on one
-documented failure (§5.1). That is the weakest thing about it.
+not from reasoning about a domain. This protocol is currently reasoned, not
+observed. That is the weakest thing about it, and no amount of packaging fixes
+it.
 
-Collect at least three more real cases where an agent placed a change at the
-wrong boundary — from your own transcripts, public issue trackers, or code
-review history. For each, record the task, what the agent did, what it should
-have done, and which stage of §7 would have caught it.
+Collect at least four real cases where an agent placed a change at the wrong
+boundary — from your own transcripts, your own repositories, or code review
+history. For each, record the task, what the agent did, what it should have
+done, and which stage of §7 would have caught it.
 
 Then revise the skill against them. A stage no real case exercises is a
 candidate for deletion.
 
-**Acceptance:** ≥3 new documented cases; every stage of the protocol is
-exercised by at least one; any stage that is not is either cut or justified in
-writing.
+**Acceptance:** ≥4 documented cases; every stage of the protocol is exercised by
+at least one; any stage that is not is either cut or justified in writing.
 
 ### Phase 3 — Measure, if it still looks worth it
 
@@ -913,7 +907,6 @@ Parked deliberately, with the condition that brings each back:
 | Full agentic benchmark | Phase 3's minimal experiment shows a real effect |
 | Ten-host verification | A Tier 2 host has users asking for it |
 | Signed releases, marketplace listings | There are users to protect |
-| Upstream contribution to another project | RightSeam has independent, reproducible results worth bringing |
 
 Nothing here is rejected. It is sequenced behind evidence that it is needed.
 
@@ -949,11 +942,6 @@ Specifications and guidance consulted, all re-verified August 24, 2026:
 - Claude Code — skills and plugin marketplace documentation
 - Host documentation for the Tier 2 list, treated as unverified until manually
   tested
-
-Prior art, cited as context and not as a source of text or code:
-
-- Ponytail issue #660 — contained versus reduced complexity
-- Ponytail pull request #608 — outcome-first proposal
 
 ---
 
