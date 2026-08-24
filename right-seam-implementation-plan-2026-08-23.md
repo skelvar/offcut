@@ -67,7 +67,7 @@ that owns it.**
 
 Researched August 24, 2026 against Claude Code's documented hook API. This
 section records the platform capability RightSeam builds on. Implementing a
-documented API is not derivative work; see §8.
+documented API is not derivative work; see §9.
 
 ### 2.1 The events that matter
 
@@ -165,7 +165,7 @@ not be the person who left it.
 
 This earns its place on its own: it makes intentional corner-cutting visible in
 the diff, where it can be argued with at review time. It also happens to be the
-precondition for harvesting those decisions later (§13).
+precondition for harvesting those decisions later (§14).
 
 ### 3.1 What never gets simplified away
 
@@ -218,7 +218,7 @@ every turn would cost more context than it saves, and would train the model to
 skim it. One compact question every turn beats one long lecture at turn one.
 
 **Skip the reminder when it cannot help.** No injection when the prompt is a
-mode command, when the prompt invokes a RightSeam command (§12, Phase 3), when the mode
+mode command, when the prompt invokes a RightSeam command (§13, Phase 4), when the mode
 is `off`, or when the prompt is plainly conversational rather than a build
 request. A reminder on "what does this function do?" is noise, and noise is how
 a mode gets turned off. During a command the reminder is worse than noise — the
@@ -302,7 +302,154 @@ A hook that breaks the agent is worse than no hook. Every RightSeam hook:
 
 ---
 
-## 5. Modes and state
+## 5. Host compatibility
+
+Agent Skills are standardized. **Hooks are not.** Every host that has them
+invented its own event names, config schema, and output vocabulary. This is the
+largest ongoing cost in the project and the plan treats it as a first-class
+design problem rather than a packaging detail.
+
+### 5.1 What the divergence actually looks like
+
+Verified August 24, 2026 against each host's own documentation.
+
+| | Claude Code / Codex | Cursor | Copilot CLI | ChatGPT |
+|---|---|---|---|---|
+| Config path | plugin `hooks.json` | `.cursor/hooks.json` | plugin hooks file | — |
+| Event naming | `SessionStart` | `sessionStart` | `sessionStart` | — |
+| Prompt event | `UserPromptSubmit` | `beforeSubmitPrompt` | `userPromptSubmitted` | — |
+| Write event | `PreToolUse` + matcher | `preToolUse`, `afterFileEdit` | limited | — |
+| Timeout key | `timeout` | — | `timeoutSec` | — |
+| Windows variant | `commandWindows` | — | `powershell` | — |
+| Gate field | `permissionDecision` | `permission` | — | — |
+| Gate values | `allow`/`deny`/`escalate` | `allow`/`deny`/`ask` | — | — |
+| Context field | `additionalContext` | `additional_context` | `additionalContext` | — |
+
+Four vocabularies for three concepts. The same logical decision — "let this
+write through but say something about it" — serializes four different ways.
+
+Worse, **event availability differs**, not just naming. Some hosts have no
+session-start event at all, forcing activation into the prompt event. Some have
+no subagent event, forcing subagent injection through a tool matcher. An adapter
+cannot assume the event it wants exists.
+
+### 5.2 Tiers
+
+RightSeam's value is not uniformly deliverable. The plan states the tiers
+plainly rather than implying every host gets the full product.
+
+**Tier 1 — Full.** Lifecycle hooks available. Persistent mode, per-turn
+reminder, write-time challenge, subagent inheritance, statusline. This is
+RightSeam as designed.
+→ Claude Code, Cursor, Codex.
+
+**Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. RightSeam
+becomes an on-demand skill: the challenge fires when the description matches or
+the user invokes it explicitly. **No persistence, no per-turn reminder, no
+write-time enforcement.** Scripts may be bundled but only run when the agent
+chooses to call one — nothing fires on a lifecycle event.
+→ ChatGPT desktop and web, and any Agent Skills client without hooks.
+
+**Tier 3 — Instruction.** A single always-on rule file, `AGENTS.md`, read at
+session start by a large number of agents. No modes, no commands, no
+enforcement — but genuinely always in context.
+→ Everything that reads `AGENTS.md` or an equivalent project-rules path.
+
+Note the inversion, because it is counterintuitive and worth designing around:
+**Tier 3 is always on and Tier 2 is not.** A rule file sits in context for every
+turn; a skill fires only when its description matches. Tier 2 hosts get the best
+instructions and the weakest delivery.
+
+### 5.3 The adapter seam
+
+One module owns every host difference. Every hook calls it and none of them
+contains a host name.
+
+```text
+hooks/host.js
+  detect()            → which host, from environment
+  events()            → this host's event-name mapping
+  emit(event, payload) → serialize to this host's output shape
+  gate(decision)      → map allow/challenge/escalate to this host's vocabulary
+```
+
+Hook scripts express intent — *"challenge this write"* — and `host.js` decides
+whether that becomes `additionalContext`, `additional_context`, or nothing
+because the host has no such field. A hook that emits raw JSON for a specific
+host is a bug.
+
+This is question 5 of §3 applied to RightSeam itself: host divergence is real
+complexity, so it goes at the one boundary that owns it, instead of into five
+hook scripts that each learn the whole matrix.
+
+Adapter configs live under `adapters/<host>/`, one file each, generated from
+nothing and hand-written per host schema. They are thin by construction: they
+point at the same hook scripts.
+
+### 5.4 How many hosts to support, and when
+
+**v0.1 ships two: Claude Code (Tier 1) and `AGENTS.md` (Tier 3).**
+
+Not because the others do not matter, but because:
+
+- **One adapter does not prove a seam.** An abstraction validated against a
+  single implementation is the speculative abstraction §3 question 1 exists to
+  prevent. Two implementations is the minimum that proves `host.js` is real and
+  not Claude Code's shape wearing a wrapper.
+- **`AGENTS.md` is nearly free** and reaches the widest set of agents of
+  anything in the plan. It costs one file.
+- **An adapter you cannot test is a liability**, not a feature. Every host added
+  is a schema that can change unilaterally and break users silently.
+
+v0.2 adds Cursor — the second Tier 1 host, and the one whose vocabulary differs
+most, which makes it the best possible test of whether `host.js` actually
+abstracts anything. If adding Cursor requires changing hook scripts rather than
+only `host.js`, the seam is in the wrong place and gets moved before any third
+host is considered.
+
+Every host beyond that is demand-driven: it ships when someone asks and a
+maintainer can test it. **A host is never listed as supported without a dated
+manual smoke test.** Untested hosts are listed as untested.
+
+### 5.5 Testing across hosts
+
+Three layers, and only the third needs a human.
+
+**1. Contract tests — automated, no host required.** Hooks are programs: JSON
+in, JSON out. For each supported host, feed that host's documented input shape
+and assert the exact output shape comes back — correct field names, correct
+casing, correct gate vocabulary. This is parametrized over the host table, so a
+new host is a new row, and it catches the overwhelming majority of breakage on
+every commit.
+
+Assert the negative cases too: that Cursor output never contains
+`additionalContext`, that Claude output never contains `permission`, that a host
+lacking a gate field never receives one.
+
+**2. Adapter config validation — automated.** Each `adapters/<host>/` file must
+parse and conform to that host's schema: event names drawn from that host's
+documented set, correct timeout key, correct Windows-variant key, and every
+referenced script path existing on disk. A typo in an event name is silent
+failure at runtime — no error, the hook simply never fires — so this check is
+the only thing standing between a typo and a host that quietly does nothing.
+
+**3. Smoke tests — manual, per release.** Install on each Tier 1 host and verify
+the mode activates, survives a context clear, switches modes, fires a challenge
+on an over-built write, and uninstalls cleanly. Record host name, host version,
+date, and result in the README.
+
+These cannot be automated — the hosts are interactive products behind auth — and
+pretending otherwise is how a support matrix becomes fiction. Three checks per
+host, ten minutes each. That cost is the reason §5.4 keeps the host count low.
+
+**Regression trigger:** when a host ships a new version, its smoke test is
+re-run before RightSeam claims support for it. A host whose smoke test has not
+been run against a current version gets marked stale in the README rather than
+quietly left claiming support.
+
+---
+
+## 6. Modes and state
 
 One file, `.rightseam-active`, holding one mode string, in the agent's config
 directory. Absent file means off. The statusline command reads it.
@@ -322,7 +469,7 @@ Deactivation must be easy and obvious: `/rightseam off`, "stop rightseam", or
 
 ---
 
-## 6. The ruleset file
+## 7. The ruleset file
 
 `skills/right-seam/SKILL.md` holds the full challenge text. Hooks read it at
 runtime and emit it — the file is the source, the hook is delivery. There is
@@ -339,27 +486,35 @@ read — a broken install must degrade to a working mode, not to silence.
 
 ---
 
-## 7. Repository structure
+## 8. Repository structure
 
 ```text
 rightseam/
 ├── skills/right-seam/SKILL.md      # the challenge, single source
+├── AGENTS.md                       # Tier 3, generated from SKILL.md
 ├── hooks/
-│   ├── hooks.json                  # event wiring
-│   ├── activate.js                 # SessionStart
-│   ├── prompt.js                   # UserPromptSubmit
-│   ├── pre-write.js                # PreToolUse  ← the differentiator
-│   ├── post-write.js               # PostToolUse
-│   ├── subagent.js                 # SubagentStart
-│   ├── state.js                    # shared state + output
-│   ├── rules.js                    # ruleset loader + fallback
+│   ├── activate.js                 # session start
+│   ├── prompt.js                   # per-turn reminder + mode commands
+│   ├── pre-write.js                # write-time challenge  ← the differentiator
+│   ├── post-write.js               # what got added
+│   ├── subagent.js                 # subagent inheritance
+│   ├── host.js                     # adapter seam  ← owns all host divergence
+│   ├── state.js                    # mode file
+│   ├── rules.js                    # ruleset loader + hardcoded fallback
 │   ├── statusline.sh
 │   └── statusline.ps1
+├── adapters/
+│   ├── claude/hooks.json           # v0.1
+│   └── cursor/hooks.json           # v0.2
 ├── plugin.json                     # Agent Plugins 1.0
 ├── .claude-plugin/
-│   ├── plugin.json                 # references hooks/hooks.json
+│   ├── plugin.json
 │   └── marketplace.json
-├── tests/hooks.test.js
+├── tests/
+│   ├── hooks.test.js               # behavior
+│   ├── contract.test.js            # per-host output shapes (§5.5)
+│   └── adapters.test.js            # config schema validation (§5.5)
+├── scripts/build-agents-md.js      # SKILL.md → AGENTS.md
 ├── README.md
 ├── LICENSE
 └── .github/workflows/test.yml
@@ -368,13 +523,23 @@ rightseam/
 Zero runtime dependencies. Node's standard library only — the hooks run on every
 turn and every write, so startup cost is the budget that matters.
 
-No per-host rule copies — no `.cursor/rules/`, no `.clinerules/`, no
-`copilot-instructions.md`. Duplicated prompt bodies drift, and a mode whose
-whole value is a coherent question set cannot afford divergent copies.
+**No hook script contains a host name.** Host differences live only in
+`host.js` and `adapters/`. This is checkable, so CI checks it: a grep for host
+identifiers outside those two paths fails the build.
+
+**`AGENTS.md` is generated, never hand-edited.** It is a compact projection of
+`SKILL.md` for Tier 3, and CI fails if it is stale. Hand-maintaining a second
+copy of the ruleset is exactly the drift trap that per-host rule files create —
+generating it keeps one source of truth while still reaching hosts that read
+nothing else.
+
+No per-host rule copies beyond that — no `.cursor/rules/`, no `.clinerules/`, no
+`copilot-instructions.md`. Hosts that read those paths are served by `AGENTS.md`
+where they support it, and go unsupported where they do not.
 
 ---
 
-## 8. Originality constraint
+## 9. Originality constraint
 
 RightSeam is an original work. Not a fork, rename, re-skin, or derivative.
 
@@ -390,14 +555,14 @@ Claude Code's public interface. Writing a `SessionStart` hook is using the
 platform, not copying whoever used it first. The same applies to the state-file
 pattern and to conforming to published manifest schemas.
 
-The line: **mechanism is shared, text and code are ours.** Every hook in §7 is
+The line: **mechanism is shared, text and code are ours.** Every hook in §8 is
 written from its specification in this plan. Every line of the challenge in §3
 is written from the requirement. Any contribution that vendors third-party
 instruction text or code is rejected regardless of the source license.
 
 ---
 
-## 9. Manifests
+## 10. Manifests
 
 `.claude-plugin/plugin.json` declares the hook wiring:
 
@@ -427,7 +592,7 @@ Versions must match across all three manifests and the skill's
 
 ---
 
-## 10. Evaluation
+## 11. Evaluation
 
 Two suites. Neither needs a model to run.
 
@@ -469,7 +634,7 @@ on the conversational set.
 
 ---
 
-## 11. Security
+## 12. Security
 
 Hooks execute on the user's machine on every turn. That is a higher bar than an
 instruction file, and the plan states it plainly.
@@ -495,18 +660,25 @@ runtime, and how to remove all of them. Uninstall removes only RightSeam files.
 
 ---
 
-## 12. Phases
+## 13. Phases
 
 ### Phase 1 — The mode works
 
-Write `SKILL.md`, `state.js`, `rules.js`, `activate.js`, `prompt.js`,
-`subagent.js`, `hooks.json`, and the manifests. `PreToolUse` and `PostToolUse`
-come in Phase 2 — get activation, persistence, mode switching, and the per-turn
-reminder correct first.
+Write `SKILL.md`, `host.js`, `state.js`, `rules.js`, `activate.js`,
+`prompt.js`, `subagent.js`, `adapters/claude/hooks.json`, the manifests, and the
+`AGENTS.md` generator. Write-time enforcement comes in Phase 2 — get activation,
+persistence, mode switching, and the per-turn reminder correct first.
+
+`host.js` is written in this phase even though only one host exists yet, because
+retrofitting an adapter seam through five hook scripts later is strictly more
+work than starting with it. It stays deliberately thin until Phase 3 proves its
+shape.
 
 **Done when:** the mode activates on install; survives `/clear` and compaction;
 `/rightseam` switches modes and the statusline follows; the reminder fires per
-§4.2 and meets §10.2's gates; every hook honors §4.6; nothing hangs.
+§4.2 and meets §11.2's gates; every hook honors §4.6; nothing hangs; `AGENTS.md`
+regenerates from `SKILL.md` and CI fails when it is stale; no hook script
+contains a host name.
 
 ### Phase 2 — Enforcement
 
@@ -517,7 +689,25 @@ is unreachable by construction and there is a test asserting it; `escalate`
 fires only in `strict` for a new dependency; one-challenge-per-signal-per-session
 holds; the write path stays under 50ms.
 
-### Phase 3 — Commands
+### Phase 3 — Second host, and the seam gets tested
+
+Add Cursor: `adapters/cursor/hooks.json` and Cursor's branch in `host.js`.
+Cursor is chosen deliberately as the second host because its vocabulary diverges
+most from Claude Code's — `beforeSubmitPrompt`, `permission: ask`,
+`additional_context` — so it is the strongest available test of whether the
+adapter seam abstracts anything.
+
+**The acceptance criterion is a constraint on the diff, not a feature:** adding
+Cursor must touch `host.js` and `adapters/` and *nothing else*. If a hook script
+needs to change, the seam is in the wrong place — move it before considering a
+third host.
+
+**Done when:** contract tests pass for both hosts including the negative
+assertions in §5.5; adapter config validation passes; the manual smoke test runs
+clean on Cursor and is recorded with version and date; the diff touched no hook
+script.
+
+### Phase 4 — Commands
 
 One-shot, user-invoked, stateless. **A command is not a mode.** Modes
 (`off`/`lite`/`full`/`strict`) persist in the state file and change how every
@@ -530,9 +720,9 @@ what already exists.
 
 | Command | Does | Ships in |
 |---|---|---|
-| `/right-seam review` | Applies the §4.3 signals to a diff instead of a single write | v0.2 |
-| `/right-seam audit` | Applies them across the repository, ranked | v0.2 |
-| `/right-seam help` | Modes, commands, how to turn it off | v0.2 |
+| `/right-seam review` | Applies the §4.3 signals to a diff instead of a single write | v0.3 |
+| `/right-seam audit` | Applies them across the repository, ranked | v0.3 |
+| `/right-seam help` | Modes, commands, how to turn it off | v0.3 |
 
 **Automatic invocation is already solved — do not build it.** A skill's
 `description` is the activation mechanism: the agent reads it and fires on
@@ -542,7 +732,7 @@ only. Adding intent detection there would reimplement the platform's matcher and
 cause both paths to fire on the same prompt.
 
 Write each description with negative triggers as well as positive ones, and
-extend §10.2's corpus to cover command activation — a command that fires on
+extend §11.2's corpus to cover command activation — a command that fires on
 "explain this function" is the same failure as a reminder that does.
 
 **On `audit` and §1.1.** The non-goal stands: the *persistent mode* never scans
@@ -553,11 +743,11 @@ cost profile. The line is who initiated it — never RightSeam on its own.
 **Not in scope.** A benchmark scoreboard command needs numbers, and Phase 3 has
 not produced any; shipping one earlier is marketing ahead of evidence. A
 shortcut-harvesting command needs `rightseam:` markers (§3) to reach meaningful
-density in real repositories first. Both are parked in §13.
+density in real repositories first. Both are parked in §14.
 
-### Phase 4 — Prove it changes behavior
+### Phase 5 — Prove it changes behavior
 
-Only after 1 and 2. Commands (Phase 3) may run in parallel; they share no code with the hook layer. The smallest experiment that could change your mind: one
+Only after 1–3. Commands (Phase 4) may run in parallel; they share no code with the hook layer. The smallest experiment that could change your mind: one
 task family, two arms — mode off, mode `full` — five runs each, one host,
 recorded model ID.
 
@@ -573,7 +763,7 @@ bounded by what was measured.
 
 ---
 
-## 13. Deferred
+## 14. Deferred
 
 | Deferred | Return when |
 |---|---|
@@ -589,12 +779,12 @@ bounded by what was measured.
 
 ---
 
-## 14. Definition of done for v0.1
+## 15. Definition of done for v0.1
 
 - Mode activates, persists across compaction and `/clear`, and is visible in the
   statusline.
 - Mode switching and deactivation work through every documented phrasing.
-- The per-turn reminder meets §10.2's gates — fires on build prompts, quiet
+- The per-turn reminder meets §11.2's gates — fires on build prompts, quiet
   otherwise.
 - `PreToolUse` challenges every §4.3 signal, never denies, and escalates only
   under `strict` for a new dependency.
@@ -602,17 +792,27 @@ bounded by what was measured.
 - Subagents inherit the mode.
 - Every hook satisfies §4.6, with tests for hang, malformed input, and missing
   files.
-- Zero runtime dependencies; §11 holds in full.
-- One copy of the instructions in the repository.
-- No third-party instruction text or code anywhere (§8).
-- README claims nothing §10 or §12 does not support.
+- Zero runtime dependencies; §12 holds in full.
+- One copy of the instructions in the repository; `AGENTS.md` is generated from
+  it and CI fails when stale.
+- No hook script contains a host name — enforced by CI, not by convention.
+- Contract tests pass for every claimed host, including the negative assertions
+  (§5.5): no host ever receives another host's field names.
+- Adapter config validation passes — every event name is real for that host,
+  every referenced script path exists.
+- Claude Code smoke test recorded with host version and date.
+- Tier 2 and Tier 3 behavior documented honestly: ChatGPT and other hook-less
+  hosts get the skill, not the mode, and the README says so in those words.
+- No third-party instruction text or code anywhere (§9).
+- README claims nothing §11 or §13 does not support, and marks every untested
+  host untested.
 
-Not required for v0.1: a multi-host matrix, a published benchmark, or any
+Not required for v0.1: a second hook host, a published benchmark, or any
 reference file.
 
 ---
 
-## 15. Final principle
+## 16. Final principle
 
 > A mode that speaks once is a suggestion. A mode that asks again before the
 > code lands is a constraint.
