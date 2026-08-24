@@ -50,7 +50,31 @@ Packaging only — hook scripts unchanged for path concerns:
 1. `adapters/claude/hooks.json` — single `command` string with `${CLAUDE_PLUGIN_ROOT}` for plugin installs.
 2. `tools/install.mjs` — absolute paths as `node "…/hooks/….js"` for Claude settings / Codex / Grok.
 
-Status: **fixed for settings installs. Claude plugin-install path still unmeasured.**
+Status: **fixed for settings installs.**
+
+### Plugin-install path — measured (Phase 7.5, 2026-08-24/25)
+
+Installed a throwaway plugin (`offcut-root-measure`) whose SessionStart /
+UserPromptSubmit hooks run `node "${CLAUDE_PLUGIN_ROOT}/hooks/mark.js"` and
+append env to `~/.offcut-plugin-root-mark.json`.
+
+Observed on Claude Code after `claude plugin install`:
+
+```json
+"CLAUDE_PLUGIN_ROOT": "C:/Users/bash/.claude/plugins/cache/offcut-root-measure/offcut-root-measure/0.0.1/",
+"PLUGIN_ROOT": null,
+"CLAUDECODE": "1"
+```
+
+`${CLAUDE_PLUGIN_ROOT}` **expands and is present in the hook subprocess env** on
+the plugin-install path. `PLUGIN_ROOT` was absent. Offcut's
+`adapters/claude/hooks.json` form is therefore correct for plugin installs.
+Also verified `claude plugin install offcut@offcut` from this repo (after
+removing a temporary `.grok/skills` junction that caused Windows `EPERM` on
+symlink during install). Measure plugin uninstalled afterward; mark file kept
+as evidence.
+
+Status: **closed — plugin path measured; placeholder works.**
 
 ---
 
@@ -127,8 +151,12 @@ schema). Attempts to force `true`:
 - Grok: model would not place 20k–200k bodies into a write call (~1.2k max observed).
 - Claude: 100k read-then-Write hung past 10 minutes without a completed measure line; killed.
 
-Status: **unverified — threshold unknown. Flag handling remains tested only with
-synthetic payloads. Do not claim a size.**
+Status: **retired (Phase 7.5)** — threshold still unknown after repeated
+attempts (Grok: model refuses to place 20k–200k bodies in a write call;
+Claude: 100k read-then-Write hung past 10 minutes). Flag handling stays covered
+by synthetic `toolInputTruncated` payloads in unit tests. **Do not claim a
+real-world size.** Re-open only if a host documents a truncation threshold or a
+reliable way to force `toolInputTruncated: true` appears.
 
 ---
 
@@ -236,26 +264,66 @@ root. Mode remains Tier 3.**
 
 ---
 
+## Phase 7.5 — remaining host gaps (2026-08-25)
+
+### Grok `/offcut` mode switch — closed
+
+`grok -p "/offcut lite" --output-format json` with hooks installed and skill
+discoverable: model confirmed lite; `~/.offcut/active` became `lite` (default
+unchanged). Persistent-mode delivery remains Tier 3 (hook stdout discarded), but
+**state write for the mode command works** via the skill/agent path.
+
+### Grok `/offcut default` — closed (with caveat)
+
+`grok -p "/offcut default lite"`: both `default` and `active` became `lite`.
+After deleting `active` and starting a new `grok -p` session, `default` remained
+`lite`. **SessionStart did not rewrite `active` in that headless `-p` session**
+(file stayed absent; `readMode()` would still fall back to default). So the
+persisted default survives; Grok `-p` SessionStart re-seed is not observed the
+way Codex `activate` is. Interactive TUI restart not separately measured.
+
+### Claude `/offcut default` — retired as blocked by CLI
+
+`-p "/offcut …"` remains intercepted as `Unknown command` before hooks see the
+prompt (Phase 3). Phrase deactivation and Codex default→activate already prove
+the state machine. Re-open only for an interactive Claude TUI session that can
+type `/offcut default` without CLI intercept — not worth blocking Phase 7.5.
+
+### Subagent inheritance (Codex + Grok) — retired with reason
+
+Claude already **pass**. Codex/Grok lack a cheap, deterministic headless
+subagent spawn comparable to Claude's measured path; a dedicated harness is
+out of Phase 7.5 scope. Inheritance is the same `SubagentStart` →
+`hooks/subagent.js` code path on all three hosts when the host fires the event.
+Re-open if product claims depend on Codex/Grok subagent delivery specifically.
+
+### State-pruning debt
+
+Both `offcut:` markers in `hooks/state.js` (`turn-*`, `fired-*`) are named in
+`tasks/PHASE-8-TASK.md` §5. Not fixed here.
+
+---
+
 ## Checklist
 
 | Check | Claude 2.1.240 | Codex 0.149.1 | Grok 1.0.5 |
 |---|---|---|---|
-| Plugin/hooks install | **pass** (`install.mjs`) | **pass** | **pass** |
-| Path resolution | **pass** (absolute) | **pass** | **pass** |
+| Plugin/hooks install | **pass** (`install.mjs` + `plugin install offcut@offcut`) | **pass** | **pass** |
+| Path resolution | **pass** (absolute settings; **plugin `${CLAUDE_PLUGIN_ROOT}` measured**) | **pass** | **pass** |
 | Windows / command form | **pass** (`node "…"`) | **pass** | **pass** (args fail) |
 | Mode activates | **pass** (`active=full`) | **pass** | **pass** (state written; context not delivered) |
 | Reminder appears | **pass** (quoted verbatim) | not separately quoted | **fail** (stdout ignored) |
-| `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | **pass** | unverified |
-| `/offcut default` survives restart | unverified (CLI intercept) | **pass** (default strict → activate) | unverified |
+| `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | **pass** | **pass** (`active=lite` via `grok -p`) |
+| `/offcut default` survives restart | **retired** (CLI intercept; state machine proven on Codex) | **pass** (default strict → activate) | **pass** (default persists; `-p` SessionStart re-seed unobserved) |
 | Over-engineered write → challenge | **pass** (transcript) | **pass** (transcript) | **fail** (fires silently; no model delivery) |
 | Once-per-session suppression | **pass** (`fired-*` state) | **pass** (`fired-*`) | **pass** (state only) |
-| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | unverified | unverified |
+| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | **retired** (same code path; no cheap headless measure) | **retired** (same) |
 | Statusline (Windows) | **pass** (`offcut:full` via `statusline.ps1`) | — | — |
 | `/clear` preserves mode | **pass** (activate source=`clear`) | same activate path | same activate path |
 | Compaction preserves mode | **pass** (activate source=`compact`) | same activate path | same activate path |
 | Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
 | `permissionDecision` settled | **ask** blocks in `-p`; escalate ignored | **ask/escalate non-blocking** in exec; context works | context-only |
-| Truncation threshold | — | — | **unverified** |
+| Truncation threshold | — | — | **retired** (unforceable; synthetic only) |
 | Command skills discovered | plugin `skills/` | — | **pass** via `.grok/skills/` junctions (`grok inspect`); bare `skills/` miss |
 
 ---
