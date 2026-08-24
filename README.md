@@ -4,7 +4,8 @@
 
 Offcut is a persistent mode for coding agents, delivered through lifecycle hooks.
 The instruction text is the payload. The hooks are the product: the challenge is
-re-asked every turn (and, in a later phase, again before a write).
+re-asked every turn, again before a write, and once more after — naming what was
+added that nobody asked for.
 
 ## Install
 
@@ -72,12 +73,17 @@ Wire the script into your host's statusline setting. Output looks like
 
 ## Modes
 
-| Mode | Reminder |
-|---|---|
-| `full` (default) | Every turn |
-| `lite` | Every third turn |
-| `strict` | Every turn (write-time escalation lands in Phase 2) |
-| `off` | Silent |
+| Mode | Reminder | Write-time |
+|---|---|---|
+| `full` (default) | Every turn | Challenge via context; never blocks |
+| `lite` | Every third turn | Same as full |
+| `strict` | Every turn | Same, plus human prompt on new dependencies |
+| `off` | Silent | Silent |
+
+Write-time signals (deterministic, no model call): new file, large first write,
+new dependency, speculative abstraction, config-for-a-constant. After a write:
+exported-unused, new config surface, single-call wrapper, unused default param.
+Each signal fires at most once per session. Truncated tool payloads stay silent.
 
 ```text
 /offcut full
@@ -89,8 +95,8 @@ Wire the script into your host's statusline setting. Output looks like
 
 Deactivate: `/offcut off`, `stop offcut`, or `normal mode`.
 
-State lives in `~/.offcut/` (`active`, `default`, `turn`). Override with
-`OFFCUT_STATE_DIR` for tests.
+State lives in `~/.offcut/` (`active`, `default`, `turn-<session>`,
+`fired-<session>`). Override with `OFFCUT_STATE_DIR` for tests.
 
 ## What gets installed / created
 
