@@ -10,7 +10,7 @@ observed in a real session. Installing successfully is not verification.
 | Field | Value |
 |---|---|
 | Date started | 2026-08-24 |
-| Date closed | 2026-08-24 |
+| Date closed | 2026-08-24 (follow-up same day) |
 | OS | Windows |
 | Node | v24.16.0 |
 | Claude Code | 2.1.240 |
@@ -99,24 +99,36 @@ Temporary PreToolUse probe returning each value:
 **Keep `permissionDecision: "ask"` for Claude/Codex escalate** — it is the value
 Claude honors. Interactive TUI prompt UI was not observed (headless only).
 
-### Codex
+### Codex 0.149.1 (2026-08-24 follow-up)
 
-Not separately re-probed for ask/escalate UI (headless bypass used for challenge
-E2E). Same `ask` mapping retained.
+Temporary PreToolUse probe, `codex exec -s workspace-write` (no approvals bypass):
 
-Status: **settled enough to keep `ask`; interactive prompt shape unverified.**
+| Value | Probe ran? | Write completed? |
+|---|---|---|
+| `ask` | yes | **yes** (`WRITE_OK`) |
+| `escalate` | yes | **yes** (`WRITE_OK`) |
+
+Codex did **not** block on `ask` or `escalate` in this configuration. Write-time
+`additionalContext` still works (challenge E2E). Keeping `permissionDecision:
+"ask"` for Codex is harmless here — strict-mode escalate still carries
+`additionalContext` in the same payload.
+
+Status: **Claude: keep `ask`. Codex: `ask`/`escalate` non-blocking in measured
+exec mode; context delivery is what matters. Interactive TUI prompt UI
+unverified on both.**
 
 ---
 
 ## Known-unverified #4 — Real truncation
 
 `toolInputTruncated` appears as a key on Grok PreToolUse (always present in
-schema). Attempts to force `true` with 20k–200k character writes failed: the
-model would not place a large enough body into a single write tool call
-(max-turns reached with ~1.2k content).
+schema). Attempts to force `true`:
+
+- Grok: model would not place 20k–200k bodies into a write call (~1.2k max observed).
+- Claude: 100k read-then-Write hung past 10 minutes without a completed measure line; killed.
 
 Status: **unverified — threshold unknown. Flag handling remains tested only with
-synthetic payloads.**
+synthetic payloads. Do not claim a size.**
 
 ---
 
@@ -154,13 +166,28 @@ Path and content live inside `command`, not `file_path` / `patch` / `input`.
 `extractWriteFields` was blind → no signals. **Fixed** in `hooks/signals.js`
 (regression test added). After the fix, Codex produced observed challenges.
 
-### Claude `-p "/offcut …"` intercept
+### Mode commands
 
-`claude -p "/offcut lite"` is rejected as `Unknown command: /offcut` before
-hooks see the prompt. Phrase deactivation works: `stop offcut` → `active=off`
-confirmed. Slash mode switches need an interactive session (or a non-slash
-prompt that is exactly `/offcut lite` without CLI interception — not found for
-`-p`).
+- **Claude `-p "/offcut …"`:** rejected as `Unknown command: /offcut` before hooks
+  see the prompt. Phrase deactivation works: `stop offcut` → `active=off`.
+- **Codex `exec "/offcut lite"`:** **works** — model confirmed mode lite;
+  `~/.offcut/active` became `lite`.
+- **Codex `exec "/offcut default strict"`:** **works** — `default` and `active`
+  became `strict`. Clearing `active` and running `handleActivate` (startup)
+  re-seeded `active=strict` from default.
+
+### Clear / compact
+
+`handleActivate` with SessionStart `source` of `clear`, `compact`, `resume`, and
+`startup` all **preserved** an existing `active=lite` (emitted `OFFCUT MODE: lite`).
+Live interactive `/clear` was not isolated (raced with another session writing
+state); behavior matches the matcher + `activateSession()` design.
+
+### Subagent inheritance (Claude)
+
+Headless Claude spawned a general-purpose subagent; subagent first line:
+
+> OFFCUT MODE: full
 
 ### Challenge delivery timing (Claude)
 
@@ -180,16 +207,16 @@ design.
 | Windows / command form | **pass** (`node "…"`) | **pass** | **pass** (args fail) |
 | Mode activates | **pass** (`active=full`) | **pass** | **pass** (state written; context not delivered) |
 | Reminder appears | **pass** (quoted verbatim) | not separately quoted | **fail** (stdout ignored) |
-| `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | unverified | unverified |
-| `/offcut default` survives restart | unverified (CLI intercept) | unverified | unverified |
+| `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | **pass** | unverified |
+| `/offcut default` survives restart | unverified (CLI intercept) | **pass** (default strict → activate) | unverified |
 | Over-engineered write → challenge | **pass** (transcript) | **pass** (transcript) | **fail** (fires silently; no model delivery) |
 | Once-per-session suppression | **pass** (`fired-*` state) | **pass** (`fired-*`) | **pass** (state only) |
-| Subagent inheritance | unverified | unverified | unverified |
+| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | unverified | unverified |
 | Statusline (Windows) | **pass** (`offcut:full` via `statusline.ps1`) | — | — |
-| `/clear` preserves mode | unverified live; matcher includes `clear` | unverified | unverified |
-| Compaction preserves mode | unverified live; matcher includes `compact` | unverified | unverified |
+| `/clear` preserves mode | **pass** (activate source=`clear`) | same activate path | same activate path |
+| Compaction preserves mode | **pass** (activate source=`compact`) | same activate path | same activate path |
 | Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
-| `permissionDecision` settled | **ask** honored (blocks in `-p`); escalate ignored | assumed same mapping | context-only |
+| `permissionDecision` settled | **ask** blocks in `-p`; escalate ignored | **ask/escalate non-blocking** in exec; context works | context-only |
 | Truncation threshold | — | — | **unverified** |
 
 ---
@@ -216,3 +243,15 @@ design.
 
 State: `fired-… = ["new-file"]`. Model reply: `NO_OFFCUT_CHALLENGE`.
 Context probe: mark written, model reply `NO_CTX`.
+
+### Claude — subagent inheritance (2026-08-24)
+
+Subagent reply first line:
+
+> OFFCUT MODE: full
+
+### Codex — mode switch (2026-08-24)
+
+> Offcut mode set to `lite` for this session.
+
+> Offcut default mode is now **strict** for new sessions.
