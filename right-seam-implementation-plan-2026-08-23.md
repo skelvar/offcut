@@ -311,48 +311,73 @@ design problem rather than a packaging detail.
 
 ### 5.1 What the divergence actually looks like
 
-Verified August 24, 2026 — from each host's own shipped documentation and from
-real hook configs found on disk, not from third-party summaries.
+**Measured, not read.** The table below comes from `tools/probe.mjs` running
+inside real sessions on August 24, 2026 — 28 captured events across three
+harnesses. Where the vendor documentation and the wire disagree, the wire wins,
+and it disagreed on the single most important point.
 
-| | Claude Code | Codex | Grok Build | Cursor | ChatGPT |
-|---|---|---|---|---|---|
-| Config path | `~/.claude/settings.json`, plugin | `~/.codex/hooks.json` | `~/.grok/hooks/*.json` | `~/.cursor/hooks.json` | — |
-| Event naming | `SessionStart` | `SessionStart` | `SessionStart` | `sessionStart` | — |
-| Prompt event | `UserPromptSubmit` | `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` | — |
-| Write event | `PreToolUse` + matcher | `PreToolUse` + matcher | `PreToolUse` + matcher | `preToolUse`, `afterFileEdit` | — |
-| Timeout key | `timeout` | `timeout` | `timeout` | — | — |
-| Gate field | `permissionDecision` | `permissionDecision` | decision + `deny` | `permission` | — |
-| Gate values | `allow`/`deny`/`escalate` | same | `deny` blocks | `allow`/`deny`/`ask` | — |
-| Context field | `additionalContext` | `additionalContext` | `additionalContext` | `additional_context` | — |
+#### Config schema — all three identical
 
-**Two dialects, not five.** Claude Code, Codex, and Grok Build share one
-PascalCase schema — confirmed by reading a real `~/.codex/hooks.json` and Grok's
-shipped hooks reference, both of which use `matcher`, nested `hooks`, `type:
-"command"`, and `timeout` exactly as Claude Code does. Cursor is the sole
-outlier, and ChatGPT has no hooks at all.
+Claude Code, Codex, and Grok Build all accept the same `hooks.json`: PascalCase
+event keys, optional `matcher`, nested `hooks` array, `type: "command"`,
+`timeout`. One config file installs on all three.
 
-**Grok Build is the most permissive host and needs no adapter of its own.** It
-reads `~/.claude/settings.json` *and* `~/.cursor/hooks.json` natively as
-compatibility sources, merges every discovered source, accepts Cursor's
-camelCase event names and maps them to its own, and aliases Claude's tool names
-(`Write`, `Edit`, `MultiEdit` → its internal `search_replace`) while keeping the
-original names matchable. A RightSeam config written for Claude Code loads in
-Grok unchanged.
+#### Payload — two dialects, and the split is not where the docs implied
 
-Two Grok-specific behaviors do need handling, and neither is a schema problem:
+| | Claude Code | Codex | Grok Build |
+|---|---|---|---|
+| Event field | `hook_event_name` | `hook_event_name` | `hookEventName` |
+| Event value | `PreToolUse` | `PreToolUse` | `pre_tool_use` |
+| Key casing | snake_case | snake_case | **camelCase** |
+| Tool name | `tool_name` | `tool_name` | `toolName` |
+| Tool value | `Write`, `Edit` | `apply_patch` | `write` |
+| Tool result | `tool_response` | `tool_response` | `toolResult` |
+| Session | `session_id` | `session_id` | `sessionId` |
+| Working dir | `cwd` | `cwd` | `cwd` + `workspaceRoot` |
+| Distinctive keys | `prompt_id`, `session_title`, `duration_ms`, `effort` | `turn_id` | `isBackgrounded`, `timestamp`, `toolInputTruncated`, `toolResultTruncated` |
+| Identifying env | `CLAUDECODE`, `CLAUDE_PROJECT_DIR` | **none** | `GROK_SESSION_ID` |
 
-- **Folder trust.** Project-level hooks are silently skipped until the folder is
-  trusted via `/hooks-trust` or `--trust`. Silently — so a user whose hooks
-  "do nothing" is the expected failure, and the README must say so. Global hooks
-  in `~/.grok/hooks/` are always trusted.
-- **Fail-open by contract.** Timeouts, crashes, and malformed output never block
-  a tool call; only an explicit `deny` does. This matches §4.3's design, which
-  never denies — so RightSeam degrades correctly on Grok by construction.
+**Grok Build takes a PascalCase config and sends a camelCase payload with
+snake_case event values.** Its documentation describes the config schema and
+does not make the payload distinction; nothing short of probing would have
+caught it. An adapter written from the docs would have read `hook_event_name`
+off a Grok payload, got `undefined`, and failed silently on every event.
 
-Event *availability* still differs even where naming agrees. Some hosts have no
-session-start event, forcing activation into the prompt event; some have no
-subagent event, forcing subagent injection through a tool matcher. An adapter
-cannot assume the event it wants exists.
+#### Three findings that change the design
+
+**1. Environment variables cannot identify the host.** Codex sets *none* — it
+was captured as `UNKNOWN` and only identified by `model: gpt-5.6-sol` and a
+`transcript_path` under `~/.codex/sessions/`. Worse, `CLAUDE_PROJECT_DIR` leaked
+into the Grok capture, so env vars are both absent when needed and present when
+wrong.
+
+Detect from the payload, which is intrinsic:
+
+```text
+payload.hookEventName present        → Grok Build
+transcript_path contains ".codex"    → Codex
+otherwise (hook_event_name present)  → Claude Code
+```
+
+**2. Grok truncates tool payloads and says so.** `toolInputTruncated` and
+`toolResultTruncated` are booleans on the payload. §4.3's write-time signals
+inspect `tool_input` content — against a truncated payload they would read
+partial code and fire wrongly. **Every content-based signal must check the
+truncation flag first and skip when set.** A missed challenge is acceptable; a
+confident challenge based on half a file is not.
+
+**3. Tool names differ per host and cannot be hardcoded.** The same write
+arrives as `Write`/`Edit` on Claude, `apply_patch` on Codex, and `write` on
+Grok. Matchers still fire correctly on all three — the matcher `Write|Edit`
+produced events everywhere — but any code reading `tool_name` to decide
+behavior must normalize through `host.js` rather than compare literals.
+
+#### Not yet verified
+
+`SubagentStart` was registered on all three and **fired on none** — no subagent
+was spawned during the capture. §4.5 is therefore unproven on every host, and
+must not be claimed as working until a probe run spawns a subagent. Cursor is
+unmeasured entirely (§5.4).
 
 ### 5.2 Tiers
 
@@ -362,7 +387,8 @@ plainly rather than implying every host gets the full product.
 **Tier 1 — Full.** Lifecycle hooks available. Persistent mode, per-turn
 reminder, write-time challenge, subagent inheritance, statusline. This is
 RightSeam as designed.
-→ Claude Code, Codex, Grok Build (one shared config); Cursor (second dialect).
+→ **v0.1: Claude Code, Codex, Grok Build** — one config file, two payload
+dialects, all three measured (§5.1). Cursor is deferred (§5.4).
 
 **Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. RightSeam
 becomes an on-demand skill: the challenge fires when the description matches or
@@ -411,28 +437,27 @@ point at the same hook scripts.
 
 **v0.1 ships one hook config, three Tier 1 hosts, plus `AGENTS.md`.**
 
-The PascalCase config covers **Claude Code, Codex, and Grok Build** at once
-(§5.1). That is not scope creep — it is one artifact that three hosts read.
+One PascalCase config file installs on **Claude Code, Codex, and Grok Build**.
 `AGENTS.md` adds Tier 3 for one generated file.
 
-Cursor is deliberately held to v0.2 even though it is the same amount of JSON,
-because it is the *second dialect* and therefore the thing that proves or
-disproves `host.js`:
+**Cursor is deferred, and the measurement is why.** The earlier argument for
+shipping Cursor early was that a seam validated against a single implementation
+proves nothing, and three hosts sharing one schema would not exercise `host.js`.
+Probing killed that argument: Grok Build sends a **different payload dialect**
+from Claude and Codex (§5.1), so `host.js` has two real branches on day one and
+is genuinely tested by the v0.1 set.
 
-- **One dialect does not prove a seam.** An abstraction validated against a
-  single implementation is the speculative abstraction §3 question 1 exists to
-  prevent. Shipping three hosts that share one schema does not test `host.js`
-  at all — it only tests that the schema works.
-- **Cursor diverges on every axis at once** — `beforeSubmitPrompt`,
-  `permission: ask`, `additional_context`, flat handler arrays, no timeout key.
-  It is the strongest available test, which is exactly why it goes second rather
-  than never.
-- **An adapter you cannot test is a liability.** Every host added is a schema
-  that can change unilaterally and break users silently.
+Cursor adds a third *config* schema, which is real work, but it no longer
+unblocks anything architectural. It ships when someone asks for it and a
+maintainer can test it.
 
-Beyond Cursor, hosts are demand-driven: one ships when someone asks and a
-maintainer can test it. **A host is never listed as supported without a dated
-manual smoke test.** Untested hosts are listed as untested.
+What deferring Cursor costs, stated plainly: nothing architecturally, one host's
+worth of reach.
+
+Beyond that, hosts are demand-driven. **A host is never listed as supported
+without a probe run and a dated manual smoke test.** Untested hosts are listed
+as untested — and per §5.1, "the docs say it works" is not a substitute for
+either.
 
 ### 5.5 Testing across hosts
 
@@ -730,23 +755,25 @@ is unreachable by construction and there is a test asserting it; `escalate`
 fires only in `strict` for a new dependency; one-challenge-per-signal-per-session
 holds; the write path stays under 50ms.
 
-### Phase 3 — Second dialect, and the seam gets tested
+### Phase 3 — Close what the probe left open
 
-Add Cursor: `adapters/cursor/hooks.json` and Cursor's branch in `host.js`.
-Cursor is chosen deliberately as the second host because its vocabulary diverges
-most from Claude Code's — `beforeSubmitPrompt`, `permission: ask`,
-`additional_context` — so it is the strongest available test of whether the
-adapter seam abstracts anything.
+The v0.1 host set already spans two payload dialects, so the adapter seam is
+exercised from Phase 1. What Phase 3 closes are the gaps §5.1 named as unproven:
 
-**The acceptance criterion is a constraint on the diff, not a feature:** adding
-Cursor must touch `host.js` and `adapters/` and *nothing else*. If a hook script
-needs to change, the seam is in the wrong place — move it before considering a
-third host.
+1. **Subagent inheritance is unverified on every host.** `SubagentStart` was
+   registered on all three and fired on none. Re-run the probe with a session
+   that actually spawns a subagent, and either confirm §4.5 or replace it — on
+   at least one host the subagent path may need a tool matcher instead of a
+   dedicated event.
+2. **Truncation handling needs a real case.** Construct a write large enough to
+   trip Grok's `toolInputTruncated`, and confirm every content-based signal
+   declines to fire rather than firing on a fragment.
+3. **Tool-name normalization needs all three names.** `Write`, `apply_patch`,
+   and `write` must map to one internal concept, asserted by contract test.
 
-**Done when:** contract tests pass for both hosts including the negative
-assertions in §5.5; adapter config validation passes; the manual smoke test runs
-clean on Cursor and is recorded with version and date; the diff touched no hook
-script.
+**Done when:** a probe capture exists containing a subagent event and a
+truncated payload; contract tests cover all three tool-name spellings; the
+README's host table cites probe dates rather than vendor documentation.
 
 ### Phase 4 — Commands
 
