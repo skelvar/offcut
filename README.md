@@ -176,6 +176,15 @@ Wire them with directory junctions/symlinks into `.grok/skills/`, or add the
 repo `skills/` directory to `[skills].paths` in `~/.grok/config.toml`. See
 `HOSTS.md`.
 
+## Does it change what the agent builds?
+
+Phase 5 measured that on Claude Code with model `claude-sonnet-5`: four small
+Node tasks, arms `off` vs `full`, five runs each, interleaved. Offcut fired on
+every `full` run and on no `off` run. **No detectable effect** on size metrics
+(files created, lines, abstractions, unused exports, deps, config keys) in that
+sample — all 40 runs passed acceptance. Details: `bench/RESULTS.md`. Re-run with
+`node bench/schedule.mjs` (costs model money; dry-run with `--stub-matrix` first).
+
 ## Develop
 
 ```bash

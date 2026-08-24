@@ -5,62 +5,62 @@ medians and reported separately.
 
 ## Run metadata
 
-- Host versions: stub
-- Model IDs: stub:elaborate; stub:lean
+- Host versions: 2.1.241 (Claude Code)
+- Model IDs: claude-sonnet-5
 - Dates: 2026-08-24
 - Total runs: 40
 
 ## Prompt integrity
 
-- **config-fallback**: identical prompt sha256 across arms (`2282461e0a2622ee7a477432d659394529c313f686d0569c4037760ee541da0c`); arms=full,off
+- **config-fallback**: identical prompt sha256 across arms (`2282461e0a2622ee7a477432d659394529c313f686d0569c4037760ee541da0c`); arms=off,full
 - **retry-backoff**: identical prompt sha256 across arms (`90230ecd4023f2970dc3609c823ffc3ffd14fcd5532ef49a5c3cf0be3a007e69`); arms=off,full
-- **shared-validate**: identical prompt sha256 across arms (`1a9027f23e190f5fdf58ef9cdaa4a6049740022a1c44f1be68435b05e1025047`); arms=off,full
+- **shared-validate**: identical prompt sha256 across arms (`1a9027f23e190f5fdf58ef9cdaa4a6049740022a1c44f1be68435b05e1025047`); arms=full,off
 - **ttl-cache**: identical prompt sha256 across arms (`381a5309ba9d5c30868deeaa15c68ecfa3bb0b556b1af64c9ca138595ce1f300`); arms=full,off
 
 ## All runs
 
-| run_id | task | arm | rep | passed | files+ | deps+ | exports∅ | abstr | cfg+ | +lines | -lines | model |
+| run_id | task | arm | rep | passed | files+ | deps+ | exp_unused | abstr | cfg+ | +lines | -lines | model |
 |---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
-| 25fa17e1adaac58d | config-fallback | full | 1 | yes | 5 | 0 | 3 | 0 | 8 | 68 | 2 | stub:elaborate |
-| 2c822d378ff492b4 | config-fallback | off | 1 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | stub:lean |
-| 6c71639d84d35506 | config-fallback | full | 2 | yes | 5 | 0 | 3 | 0 | 8 | 68 | 2 | stub:elaborate |
-| 41b274281817345a | config-fallback | off | 2 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | stub:lean |
-| 777264b147a9c162 | config-fallback | full | 3 | yes | 5 | 0 | 3 | 0 | 8 | 68 | 2 | stub:elaborate |
-| 7f21bb767c910596 | config-fallback | off | 3 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | stub:lean |
-| 37b73043b957be4f | config-fallback | full | 4 | yes | 5 | 0 | 3 | 0 | 8 | 68 | 2 | stub:elaborate |
-| 6eb7ae6591426be8 | config-fallback | off | 4 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | stub:lean |
-| b63c82565666a893 | config-fallback | full | 5 | yes | 5 | 0 | 3 | 0 | 8 | 68 | 2 | stub:elaborate |
-| 6163b0eb5d469cf9 | config-fallback | off | 5 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | stub:lean |
-| af2dfbdc1f0cf48f | retry-backoff | full | 1 | yes | 2 | 0 | 1 | 1 | 0 | 48 | 3 | stub:elaborate |
-| 4524e0c07f048a7e | retry-backoff | off | 1 | yes | 0 | 0 | 0 | 0 | 0 | 16 | 3 | stub:lean |
-| 6757046620af432d | retry-backoff | full | 2 | yes | 2 | 0 | 1 | 1 | 0 | 48 | 3 | stub:elaborate |
-| 0b6d436a2520f5f3 | retry-backoff | off | 2 | yes | 0 | 0 | 0 | 0 | 0 | 16 | 3 | stub:lean |
-| f3f6b30028744ed5 | retry-backoff | full | 3 | yes | 2 | 0 | 1 | 1 | 0 | 48 | 3 | stub:elaborate |
-| 3ba1a132122d016e | retry-backoff | off | 3 | yes | 0 | 0 | 0 | 0 | 0 | 16 | 3 | stub:lean |
-| be240cb900a5b24e | retry-backoff | full | 4 | yes | 2 | 0 | 1 | 1 | 0 | 48 | 3 | stub:elaborate |
-| 3addd4d2567a37f9 | retry-backoff | off | 4 | yes | 0 | 0 | 0 | 0 | 0 | 16 | 3 | stub:lean |
-| 698ae6e84d8abe21 | retry-backoff | full | 5 | yes | 2 | 0 | 1 | 1 | 0 | 48 | 3 | stub:elaborate |
-| e8f504b44ed9f58c | retry-backoff | off | 5 | yes | 0 | 0 | 0 | 0 | 0 | 16 | 3 | stub:lean |
-| c61ba6fc38b884d1 | shared-validate | full | 1 | yes | 4 | 0 | 1 | 3 | 5 | 42 | 2 | stub:elaborate |
-| 0c679d85d52bd7d7 | shared-validate | off | 1 | yes | 1 | 0 | 0 | 0 | 0 | 16 | 2 | stub:lean |
-| 11fb4ef1fe8745c0 | shared-validate | full | 2 | yes | 4 | 0 | 1 | 3 | 5 | 42 | 2 | stub:elaborate |
-| 6c4db89d8a1fb601 | shared-validate | off | 2 | yes | 1 | 0 | 0 | 0 | 0 | 16 | 2 | stub:lean |
-| ab7460874b866353 | shared-validate | full | 3 | yes | 4 | 0 | 1 | 3 | 5 | 42 | 2 | stub:elaborate |
-| 0bfb5bfbcff7d881 | shared-validate | off | 3 | yes | 1 | 0 | 0 | 0 | 0 | 16 | 2 | stub:lean |
-| 8d0b33f28e2f58b3 | shared-validate | full | 4 | yes | 4 | 0 | 1 | 3 | 5 | 42 | 2 | stub:elaborate |
-| a3994cdc18a34a5c | shared-validate | off | 4 | yes | 1 | 0 | 0 | 0 | 0 | 16 | 2 | stub:lean |
-| a4010eaa291d5711 | shared-validate | full | 5 | yes | 4 | 0 | 1 | 3 | 5 | 42 | 2 | stub:elaborate |
-| 2a6a34d28970ab6c | shared-validate | off | 5 | yes | 1 | 0 | 0 | 0 | 0 | 16 | 2 | stub:lean |
-| cd183be4da290280 | ttl-cache | full | 1 | yes | 4 | 0 | 1 | 1 | 4 | 54 | 3 | stub:elaborate |
-| 73b15013a4851a58 | ttl-cache | off | 1 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | stub:lean |
-| fd6369702f282d39 | ttl-cache | full | 2 | yes | 4 | 0 | 1 | 1 | 4 | 54 | 3 | stub:elaborate |
-| 4fc9d30b522d3999 | ttl-cache | off | 2 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | stub:lean |
-| 199c55edd3b202f4 | ttl-cache | full | 3 | yes | 4 | 0 | 1 | 1 | 4 | 54 | 3 | stub:elaborate |
-| 1709c8453ebb4f56 | ttl-cache | off | 3 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | stub:lean |
-| 4dac233c43b6d707 | ttl-cache | full | 4 | yes | 4 | 0 | 1 | 1 | 4 | 54 | 3 | stub:elaborate |
-| cf4218766f8bbfba | ttl-cache | off | 4 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | stub:lean |
-| 0a1f4b1c6c6f0793 | ttl-cache | full | 5 | yes | 4 | 0 | 1 | 1 | 4 | 54 | 3 | stub:elaborate |
-| 3751b561aec7462b | ttl-cache | off | 5 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | stub:lean |
+| 480f50bb45031dcb | config-fallback | full | 1 | yes | 0 | 0 | 0 | 0 | 1 | 16 | 2 | claude-sonnet-5 |
+| 7a44129cb96071bf | config-fallback | off | 1 | yes | 0 | 0 | 0 | 0 | 1 | 16 | 2 | claude-sonnet-5 |
+| ca5a944dbc59172c | config-fallback | full | 2 | yes | 0 | 0 | 0 | 0 | 1 | 16 | 2 | claude-sonnet-5 |
+| 314a7b584d9b9e20 | config-fallback | off | 2 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | claude-sonnet-5 |
+| 886d36237943d87e | config-fallback | full | 3 | yes | 0 | 0 | 0 | 0 | 1 | 14 | 2 | claude-sonnet-5 |
+| 3e8ad0f6154dd3fa | config-fallback | off | 3 | yes | 0 | 0 | 0 | 0 | 1 | 16 | 2 | claude-sonnet-5 |
+| 0cc0cd3690c79e30 | config-fallback | full | 4 | yes | 0 | 0 | 0 | 0 | 1 | 13 | 2 | claude-sonnet-5 |
+| 0b3d536590ee1b45 | config-fallback | off | 4 | yes | 0 | 0 | 0 | 0 | 1 | 15 | 2 | claude-sonnet-5 |
+| 777ab6d3e137f4d1 | config-fallback | full | 5 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | claude-sonnet-5 |
+| 119213e2f77f6765 | config-fallback | off | 5 | yes | 0 | 0 | 0 | 0 | 1 | 17 | 2 | claude-sonnet-5 |
+| 8c69e1e7742e8302 | retry-backoff | full | 1 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| a0da7b19096c6624 | retry-backoff | off | 1 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| 3d6c14a0aefc7d92 | retry-backoff | full | 2 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| 0903398cd9c189b8 | retry-backoff | off | 2 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| d9f37cd4ef0445ec | retry-backoff | full | 3 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| a84359330ef25af3 | retry-backoff | off | 3 | yes | 0 | 0 | 0 | 0 | 0 | 11 | 3 | claude-sonnet-5 |
+| d217d1933673ddae | retry-backoff | full | 4 | yes | 0 | 0 | 0 | 0 | 0 | 11 | 3 | claude-sonnet-5 |
+| bdeda714c90033e5 | retry-backoff | off | 4 | yes | 0 | 0 | 0 | 0 | 0 | 9 | 3 | claude-sonnet-5 |
+| c6c4a742499559ad | retry-backoff | full | 5 | yes | 0 | 0 | 0 | 0 | 0 | 11 | 3 | claude-sonnet-5 |
+| 4d13a8d6620509f7 | retry-backoff | off | 5 | yes | 0 | 0 | 0 | 0 | 0 | 15 | 3 | claude-sonnet-5 |
+| 9b717d11520b3707 | shared-validate | full | 1 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| 283d3616ad7a1cd1 | shared-validate | off | 1 | yes | 1 | 0 | 0 | 0 | 0 | 14 | 2 | claude-sonnet-5 |
+| 73ad171b149f3781 | shared-validate | full | 2 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| 3f4fd80b3947c6b9 | shared-validate | off | 2 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| bc7284c85f3ab7c3 | shared-validate | full | 3 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| 05a332ee42bbdbb5 | shared-validate | off | 3 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| f232936e107b4f7b | shared-validate | full | 4 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| e3068477af497c9c | shared-validate | off | 4 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| 046c675b3bc821cc | shared-validate | full | 5 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| dfcce38ff3b49697 | shared-validate | off | 5 | yes | 1 | 0 | 0 | 0 | 0 | 13 | 2 | claude-sonnet-5 |
+| 1a35ffaf11e46ecb | ttl-cache | full | 1 | yes | 0 | 0 | 1 | 1 | 0 | 33 | 3 | claude-sonnet-5 |
+| 68c7e9c0057fbad5 | ttl-cache | off | 1 | yes | 0 | 0 | 1 | 1 | 0 | 33 | 3 | claude-sonnet-5 |
+| 25dd69cd1e0fb443 | ttl-cache | full | 2 | yes | 0 | 0 | 1 | 1 | 0 | 33 | 3 | claude-sonnet-5 |
+| 56e81882d0cb05c5 | ttl-cache | off | 2 | yes | 0 | 0 | 1 | 1 | 0 | 31 | 3 | claude-sonnet-5 |
+| 51ff712b560c0fac | ttl-cache | full | 3 | yes | 0 | 0 | 1 | 1 | 0 | 23 | 3 | claude-sonnet-5 |
+| 88f1f78cb52ed906 | ttl-cache | off | 3 | yes | 0 | 0 | 1 | 1 | 0 | 31 | 3 | claude-sonnet-5 |
+| d5290afef81485e5 | ttl-cache | full | 4 | yes | 0 | 0 | 1 | 1 | 0 | 23 | 3 | claude-sonnet-5 |
+| efc5588aebe8cb31 | ttl-cache | off | 4 | yes | 0 | 0 | 1 | 1 | 0 | 33 | 3 | claude-sonnet-5 |
+| a086eaf6beaba06c | ttl-cache | full | 5 | yes | 0 | 0 | 1 | 1 | 0 | 22 | 3 | claude-sonnet-5 |
+| 81ce3ae8764ed66a | ttl-cache | off | 5 | yes | 0 | 0 | 1 | 1 | 0 | 23 | 3 | claude-sonnet-5 |
 
 ## Failures (excluded from size comparison)
 
@@ -77,17 +77,17 @@ _None._
 - exported_unused: [0, 0, 0, 0, 0] median=0
 - abstraction_layers: [0, 0, 0, 0, 0] median=0
 - config_keys_added: [1, 1, 1, 1, 1] median=1
-- lines_added: [17, 17, 17, 17, 17] median=17
+- lines_added: [15, 17, 17, 16, 16] median=16
 - lines_removed: [2, 2, 2, 2, 2] median=2
 
 **arm=full** passed=5 failed=0
 
-- files_created: [5, 5, 5, 5, 5] median=5
+- files_created: [0, 0, 0, 0, 0] median=0
 - dependencies_added: [0, 0, 0, 0, 0] median=0
-- exported_unused: [3, 3, 3, 3, 3] median=3
+- exported_unused: [0, 0, 0, 0, 0] median=0
 - abstraction_layers: [0, 0, 0, 0, 0] median=0
-- config_keys_added: [8, 8, 8, 8, 8] median=8
-- lines_added: [68, 68, 68, 68, 68] median=68
+- config_keys_added: [1, 1, 1, 1, 1] median=1
+- lines_added: [13, 16, 17, 14, 16] median=16
 - lines_removed: [2, 2, 2, 2, 2] median=2
 
 ### retry-backoff
@@ -99,17 +99,17 @@ _None._
 - exported_unused: [0, 0, 0, 0, 0] median=0
 - abstraction_layers: [0, 0, 0, 0, 0] median=0
 - config_keys_added: [0, 0, 0, 0, 0] median=0
-- lines_added: [16, 16, 16, 16, 16] median=16
+- lines_added: [9, 15, 9, 11, 9] median=9
 - lines_removed: [3, 3, 3, 3, 3] median=3
 
 **arm=full** passed=5 failed=0
 
-- files_created: [2, 2, 2, 2, 2] median=2
+- files_created: [0, 0, 0, 0, 0] median=0
 - dependencies_added: [0, 0, 0, 0, 0] median=0
-- exported_unused: [1, 1, 1, 1, 1] median=1
-- abstraction_layers: [1, 1, 1, 1, 1] median=1
+- exported_unused: [0, 0, 0, 0, 0] median=0
+- abstraction_layers: [0, 0, 0, 0, 0] median=0
 - config_keys_added: [0, 0, 0, 0, 0] median=0
-- lines_added: [48, 48, 48, 48, 48] median=48
+- lines_added: [9, 9, 11, 11, 9] median=9
 - lines_removed: [3, 3, 3, 3, 3] median=3
 
 ### shared-validate
@@ -121,17 +121,17 @@ _None._
 - exported_unused: [0, 0, 0, 0, 0] median=0
 - abstraction_layers: [0, 0, 0, 0, 0] median=0
 - config_keys_added: [0, 0, 0, 0, 0] median=0
-- lines_added: [16, 16, 16, 16, 16] median=16
+- lines_added: [13, 14, 13, 13, 13] median=13
 - lines_removed: [2, 2, 2, 2, 2] median=2
 
 **arm=full** passed=5 failed=0
 
-- files_created: [4, 4, 4, 4, 4] median=4
+- files_created: [1, 1, 1, 1, 1] median=1
 - dependencies_added: [0, 0, 0, 0, 0] median=0
-- exported_unused: [1, 1, 1, 1, 1] median=1
-- abstraction_layers: [3, 3, 3, 3, 3] median=3
-- config_keys_added: [5, 5, 5, 5, 5] median=5
-- lines_added: [42, 42, 42, 42, 42] median=42
+- exported_unused: [0, 0, 0, 0, 0] median=0
+- abstraction_layers: [0, 0, 0, 0, 0] median=0
+- config_keys_added: [0, 0, 0, 0, 0] median=0
+- lines_added: [13, 13, 13, 13, 13] median=13
 - lines_removed: [2, 2, 2, 2, 2] median=2
 
 ### ttl-cache
@@ -143,43 +143,81 @@ _None._
 - exported_unused: [1, 1, 1, 1, 1] median=1
 - abstraction_layers: [1, 1, 1, 1, 1] median=1
 - config_keys_added: [0, 0, 0, 0, 0] median=0
-- lines_added: [22, 22, 22, 22, 22] median=22
+- lines_added: [31, 33, 23, 31, 33] median=31
 - lines_removed: [3, 3, 3, 3, 3] median=3
 
 **arm=full** passed=5 failed=0
 
-- files_created: [4, 4, 4, 4, 4] median=4
+- files_created: [0, 0, 0, 0, 0] median=0
 - dependencies_added: [0, 0, 0, 0, 0] median=0
 - exported_unused: [1, 1, 1, 1, 1] median=1
 - abstraction_layers: [1, 1, 1, 1, 1] median=1
-- config_keys_added: [4, 4, 4, 4, 4] median=4
-- lines_added: [54, 54, 54, 54, 54] median=54
+- config_keys_added: [0, 0, 0, 0, 0] median=0
+- lines_added: [33, 33, 23, 22, 23] median=23
 - lines_removed: [3, 3, 3, 3, 3] median=3
 
 ## Aggregate (all tasks, passed runs)
 
 **arm=off** n=20
-- files_created: [0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0] median=0
+- files_created: [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0] median=0
 - dependencies_added: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] median=0
-- exported_unused: [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0] median=0
-- abstraction_layers: [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0] median=0
-- config_keys_added: [0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0] median=0
-- lines_added: [16, 16, 16, 22, 16, 17, 22, 16, 16, 17, 16, 22, 17, 16, 17, 22, 17, 16, 22, 16] median=16.5
-- lines_removed: [3, 2, 2, 3, 2, 2, 3, 3, 3, 2, 3, 3, 2, 2, 2, 3, 2, 2, 3, 3] median=2.5
+- exported_unused: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1] median=0
+- abstraction_layers: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1] median=0
+- config_keys_added: [0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] median=0
+- lines_added: [13, 9, 15, 17, 14, 17, 16, 13, 15, 31, 33, 16, 23, 31, 9, 11, 9, 13, 13, 33] median=15
+- lines_removed: [2, 3, 2, 2, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 3, 3, 2, 2, 3] median=2.5
 
 **arm=full** n=20
-- files_created: [4, 4, 4, 5, 5, 4, 2, 2, 5, 5, 4, 4, 4, 2, 5, 2, 4, 4, 2, 4] median=4
+- files_created: [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1] median=0
 - dependencies_added: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] median=0
-- exported_unused: [1, 1, 1, 3, 3, 1, 1, 1, 3, 3, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1] median=1
-- abstraction_layers: [1, 3, 1, 0, 0, 1, 1, 1, 0, 0, 3, 3, 3, 1, 0, 1, 3, 1, 1, 1] median=1
-- config_keys_added: [4, 5, 4, 8, 8, 4, 0, 0, 8, 8, 5, 5, 5, 0, 8, 0, 5, 4, 0, 4] median=4.5
-- lines_added: [54, 42, 54, 68, 68, 54, 48, 48, 68, 68, 42, 42, 42, 48, 68, 48, 42, 54, 48, 54] median=51
-- lines_removed: [3, 2, 3, 2, 2, 3, 3, 3, 2, 2, 2, 2, 2, 3, 2, 3, 2, 3, 3, 3] median=2.5
+- exported_unused: [0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0] median=0
+- abstraction_layers: [0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0] median=0
+- config_keys_added: [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0] median=0
+- lines_added: [13, 13, 33, 33, 9, 16, 23, 13, 17, 14, 9, 13, 22, 13, 11, 16, 11, 23, 9, 13] median=13
+- lines_removed: [2, 2, 3, 3, 3, 2, 3, 2, 2, 2, 3, 2, 3, 2, 3, 2, 3, 3, 3, 2] median=2.5
 
 ## Conclusion
 
-**Dry-run / stub only.** These numbers validate the harness (isolation, blind scoring, failure gating). They are not evidence about Offcut. Paid Claude Code runs replace this section when executed.
+**No detectable effect** in this sample.
+
+Offcut's mechanism worked: every `full` run wrote at least one `fired-*`
+signal under the per-run state dir; every `off` run wrote none. Acceptance
+passed on all 40 runs (0 failures either arm), so size comparisons are not
+contaminated by broken lean diffs.
+
+Across passed runs, medians do not separate the arms in a consistent direction:
+
+| metric | off median | full median |
+|---|---:|---:|
+| files_created | 0 | 0 |
+| lines_added | 15 | 13 |
+| abstraction_layers | 0 | 0 |
+| exported_unused | 0 | 0 |
+| dependencies_added | 0 | 0 |
+| config_keys_added | 0 | 0 |
+
+Per-task, three of four tasks are essentially tied. `ttl-cache` shows a lower
+`lines_added` median under `full` (23 vs 31) with identical abstraction and
+export counts — interesting, not enough alone to claim an effect. Fail counts:
+off=0, full=0.
+
+Five runs per cell is enough to notice a large effect and not enough to claim
+a small one. This experiment does not support claiming that Offcut makes agent
+output smaller or simpler under these prompts on Claude Code + `claude-sonnet-5`.
 
 ## Findings (process)
 
-- Real `~/.offcut/` can accumulate many `fired-*` / `turn-*` files; this bench always uses a fresh `OFFCUT_STATE_DIR` and never touches the real state dir. Pruning remains the upgrade path named by the `offcut:` marker in `hooks/state.js`.
+- Real `~/.offcut/` can accumulate many `fired-*` / `turn-*` files; this bench
+  always uses a fresh `OFFCUT_STATE_DIR` and never touches the real state dir.
+  Pruning remains the upgrade path named by the `offcut:` marker in
+  `hooks/state.js`.
+- First paid batch hit Claude session rate limit (429) mid-grid; failed cells
+  were discarded and re-run with `--resume-failed` after the limit reset.
+  Published cells are the successful completions only (no rate-limit empties
+  folded into size medians).
+- Mid-experiment the harness switched to `--effort low` and zero inter-run
+  pause to finish under the limit. Arms stayed interleaved, so the arm
+  comparison remains paired; absolute style may differ across early vs late
+  reps.
+- Host recorded as Claude Code **2.1.241** (HOSTS.md Phase 3 used 2.1.240).
+- Model ID recorded exactly: **`claude-sonnet-5`** (not a marketing alias).
