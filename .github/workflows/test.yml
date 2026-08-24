@@ -1,0 +1,79 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit and contract tests
+        run: node --test tests/*.test.js
+
+      - name: AGENTS.md must not be stale
+        run: |
+          node scripts/build-agents-md.js
+          git diff --exit-code -- AGENTS.md
+
+      - name: Versions must match
+        run: |
+          node -e '
+            const fs = require("fs");
+            const plugin = JSON.parse(fs.readFileSync("plugin.json","utf8"));
+            const cp = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8"));
+            const m = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8"));
+            const skill = fs.readFileSync("skills/offcut/SKILL.md","utf8");
+            const ver = skill.match(/version:\s*"([^"]+)"/)[1];
+            if (plugin.version !== ver) throw new Error("plugin.json mismatch");
+            if (cp.version !== ver) throw new Error(".claude-plugin/plugin.json mismatch");
+            if (m.plugins[0].version !== ver) throw new Error("marketplace mismatch");
+            console.log("version", ver);
+          '
+
+      - name: No host identifiers outside host.js and adapters/
+        run: |
+          if grep -RInE '\b(claude|codex|grok|cursor)\b' hooks \
+            --exclude='host.js' \
+            --exclude-dir='*' 2>/dev/null; then
+            echo "Host identifier found outside hooks/host.js"
+            exit 1
+          fi
+          # Broader: any tracked file under hooks/ except host.js
+          ! grep -RInE '\b(claude|codex|grok|cursor)\b' hooks --exclude=host.js
+
+      - name: Zero runtime dependencies
+        run: |
+          if [ -f package.json ]; then
+            node -e '
+              const p = require("./package.json");
+              const deps = Object.assign({}, p.dependencies, p.optionalDependencies);
+              if (Object.keys(deps).length) {
+                console.error(deps);
+                process.exit(1);
+              }
+            '
+          fi
+          test ! -d node_modules || (echo "node_modules must not ship" && exit 1)
+
+      - name: Adapter scripts exist
+        run: |
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("adapters/claude/hooks.json","utf8"));
+            for (const [event, groups] of Object.entries(cfg.hooks)) {
+              for (const g of groups) {
+                for (const h of g.hooks) {
+                  const rel = h.args[0].replace("${CLAUDE_PLUGIN_ROOT}/","");
+                  if (!fs.existsSync(rel)) throw new Error("missing "+rel+" for "+event);
+                }
+              }
+            }
+            console.log("adapter paths ok");
+          '

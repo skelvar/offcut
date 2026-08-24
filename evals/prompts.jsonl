@@ -1,0 +1,40 @@
+{"id":"q01","prompt":"what does this function do?","expect":"quiet","note":"conversational"}
+{"id":"q02","prompt":"rename this variable","expect":"quiet","note":"rename-only"}
+{"id":"q03","prompt":"fix this typo","expect":"quiet","note":"typo fix"}
+{"id":"q04","prompt":"explain the error","expect":"quiet","note":"explanation"}
+{"id":"q05","prompt":"summarize the README","expect":"quiet","note":"summary"}
+{"id":"q06","prompt":"format this file","expect":"quiet","note":"formatting"}
+{"id":"q07","prompt":"why did the tests fail?","expect":"quiet","note":"diagnosis question"}
+{"id":"q08","prompt":"what is the return type of parseConfig?","expect":"quiet","note":"lookup"}
+{"id":"q09","prompt":"show me the call graph for authenticate","expect":"quiet","note":"navigation"}
+{"id":"q10","prompt":"who last edited hooks/host.js?","expect":"quiet","note":"history"}
+{"id":"q11","prompt":"is this thread-safe?","expect":"quiet","note":"review question"}
+{"id":"q12","prompt":"translate this comment to English","expect":"quiet","note":"translation"}
+{"id":"q13","prompt":"how do I install dependencies?","expect":"quiet","note":"howto"}
+{"id":"q14","prompt":"list the exported symbols in state.js","expect":"quiet","note":"inventory"}
+{"id":"q15","prompt":"what version are we on?","expect":"quiet","note":"meta"}
+{"id":"q16","prompt":"compare these two approaches in prose","expect":"quiet","note":"analysis"}
+{"id":"q17","prompt":"read the file and tell me what it imports","expect":"quiet","note":"read-only"}
+{"id":"q18","prompt":"does this match the style guide?","expect":"quiet","note":"style question"}
+{"id":"q19","prompt":"spell-check the error messages","expect":"quiet","note":"copy edit"}
+{"id":"q20","prompt":"where is DEFAULT_MODE defined?","expect":"quiet","note":"search"}
+{"id":"b01","prompt":"add caching to this endpoint","expect":"fire","note":"feature"}
+{"id":"b02","prompt":"write a function that parses this","expect":"fire","note":"new function"}
+{"id":"b03","prompt":"we need retry logic","expect":"fire","note":"reliability"}
+{"id":"b04","prompt":"build a config loader","expect":"fire","note":"new module"}
+{"id":"b05","prompt":"implement rate limiting for the API","expect":"fire","note":"feature"}
+{"id":"b06","prompt":"create a middleware that logs requests","expect":"fire","note":"new middleware"}
+{"id":"b07","prompt":"add a database migration for users","expect":"fire","note":"schema"}
+{"id":"b08","prompt":"refactor this into a strategy pattern","expect":"fire","note":"abstraction risk"}
+{"id":"b09","prompt":"introduce an interface for the payment provider","expect":"fire","note":"abstraction"}
+{"id":"b10","prompt":"wire up authentication with JWT","expect":"fire","note":"integration"}
+{"id":"b11","prompt":"add a new CLI command for export","expect":"fire","note":"CLI"}
+{"id":"b12","prompt":"build a small cache with TTL","expect":"fire","note":"new component"}
+{"id":"b13","prompt":"write unit tests for state.js","expect":"fire","note":"tests are construction"}
+{"id":"b14","prompt":"extract a shared validation helper","expect":"fire","note":"extract"}
+{"id":"b15","prompt":"add pagination to the list endpoint","expect":"fire","note":"feature"}
+{"id":"b16","prompt":"implement the webhook receiver","expect":"fire","note":"new endpoint"}
+{"id":"b17","prompt":"create a factory for notification channels","expect":"fire","note":"factory risk"}
+{"id":"b18","prompt":"add dependency on lodash for deep merge","expect":"fire","note":"dependency"}
+{"id":"b19","prompt":"build an abstract base class for handlers","expect":"fire","note":"abstraction"}
+{"id":"b20","prompt":"set up a configuration system with env overrides","expect":"fire","note":"config surface"}
