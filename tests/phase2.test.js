@@ -200,11 +200,11 @@ test('deny is unreachable across modes and inputs', async () => {
 
 // --- signals: positive + negative each ---
 
-test('signal new-file: positive when path missing; negative when exists', () => {
-  const sig = PRE_SIGNALS.find((s) => s.id === 'new-file');
-  assert.equal(sig.check(view({ pathExists: false })), true);
-  assert.equal(sig.check(view({ pathExists: true })), false);
-  assert.equal(sig.check(view({ pathExists: null })), false);
+test('signal new-file was deleted: creating a file is not evidence', () => {
+  assert.equal(
+    PRE_SIGNALS.find((s) => s.id === 'new-file'),
+    undefined,
+  );
 });
 
 test('signal large-first-write: positive on big new full write; negative otherwise', () => {
@@ -280,6 +280,14 @@ class DiskStore implements Store { get(k: string) { return k } }
   assert.equal(sig.check(view({ content: one })), true);
   assert.equal(sig.check(view({ content: two })), false);
   assert.equal(sig.check(view({ content: 'function add(a,b){return a+b}' })), false);
+  // Name-shape alone is not an abstraction (ttl-cache false positive).
+  const factory = `
+export function createCache({ defaultTtlMs = 1000 } = {}) {
+  const store = new Map();
+  return { get() { return store }, set() { store.set(1, 1) } };
+}
+`;
+  assert.equal(sig.check(view({ content: factory })), false);
 });
 
 test('signal config-for-constant: positive unread key; negative when key is read', () => {
@@ -306,27 +314,45 @@ test('signal config-for-constant: positive unread key; negative when key is read
   );
 });
 
-test('post signal exported-unused: positive and negative', () => {
+test('post signal exported-unused: needs corpus; silent without one', () => {
   const sig = POST_SIGNALS.find((s) => s.id === 'exported-unused');
-  assert.equal(
-    sig.check(view({ content: 'export function helper(){ return 1 }\n' })),
-    true,
-  );
+  const orphan = 'export function helper(){ return 1 }\n';
+  // Write-time: no corpus → not decidable.
+  assert.equal(sig.check(view({ content: orphan })), false);
+  // Multi-module corpus with no caller → fire.
   assert.equal(
     sig.check(
       view({
-        content: 'export function helper(){ return 1 }\nhelper();\n',
+        content: orphan,
+        corpus: `${orphan}\nimport { other } from "./x.js";\n`,
+      }),
+    ),
+    true,
+  );
+  // Caller present in corpus → silent.
+  assert.equal(
+    sig.check(
+      view({
+        content: orphan,
+        corpus: `${orphan}\nimport { helper } from "./h.js";\nhelper();\n`,
       }),
     ),
     false,
   );
+  // Write context must not select the signal.
+  assert.ok(!sig.contexts.includes('write'));
 });
 
 test('post signal new-config-surface: positive and negative', () => {
   const sig = POST_SIGNALS.find((s) => s.id === 'new-config-surface');
   assert.equal(
-    sig.check(view({ addedContent: 'const x = process.env.NEW_FLAG;\n' })),
+    sig.check(view({ addedContent: 'import { cosmiconfig } from "cosmiconfig";\n' })),
     true,
+  );
+  // process.env alone is often the requested surface — not a new framework.
+  assert.equal(
+    sig.check(view({ addedContent: 'const x = process.env.NEW_FLAG;\n' })),
+    false,
   );
   assert.equal(
     sig.check(view({ addedContent: 'const x = 1 + 2;\n' })),
@@ -391,9 +417,9 @@ test('truncated payloads produce silence for content signals', async () => {
       toolInputTruncated: true,
     });
     // Content looks like it should trip large-first-write + speculative etc.
-    // Truncation must silence content-based signals. new-file does not need content.
+    // Truncation must silence content-based signals.
     const decision = decidePreWrite(norm, 'full');
-    // new-file may still fire (needsContent: false). Force content-only by existing path:
+    assert.equal(decision, null);
     fs.writeFileSync(path.join(dir, 'huge-new.js'), 'x');
     const norm2 = normalize({
       hookEventName: 'pre_tool_use',
@@ -430,16 +456,19 @@ test('truncated payloads produce silence for content signals', async () => {
 test('one challenge per signal per session', async () => {
   await withStateDir(async (dir) => {
     writeMode('full');
-    const target = path.join(dir, 'fresh.js');
+    const target = path.join(dir, 'fresh.ts');
+    const content =
+      'interface Store { get(k: string): string }\n' +
+      'class MemoryStore implements Store { get(k: string) { return k } }\n';
     const payload = {
       hook_event_name: 'PreToolUse',
       session_id: 'once-a',
       cwd: dir,
       tool_name: 'Write',
-      tool_input: { file_path: target, content: 'x=1\n' },
+      tool_input: { file_path: target, content },
     };
     const first = await handlePreWrite(normalize(payload));
-    assert.ok(first?.hookSpecificOutput?.additionalContext.includes('new file'));
+    assert.ok(first?.hookSpecificOutput?.additionalContext.includes('one implementation'));
     const second = await handlePreWrite(normalize(payload));
     assert.equal(second, null, 'same signal must not re-fire in session');
 
@@ -447,7 +476,7 @@ test('one challenge per signal per session', async () => {
     const other = await handlePreWrite(
       normalize({ ...payload, session_id: 'once-b' }),
     );
-    assert.ok(other?.hookSpecificOutput?.additionalContext.includes('new file'));
+    assert.ok(other?.hookSpecificOutput?.additionalContext.includes('one implementation'));
   });
 });
 
@@ -499,12 +528,14 @@ test('non-dependency signals never escalate even in strict', async () => {
         cwd: dir,
         tool_name: 'Write',
         tool_input: {
-          file_path: path.join(dir, 'n.js'),
-          content: 'x=1\n',
+          file_path: path.join(dir, 'n.ts'),
+          content:
+            'interface Store { get(k: string): string }\n' +
+            'class MemoryStore implements Store { get(k: string) { return k } }\n',
         },
       }),
     );
-    assert.ok(out?.hookSpecificOutput?.additionalContext.includes('new file'));
+    assert.ok(out?.hookSpecificOutput?.additionalContext.includes('one implementation'));
     assert.equal(out.hookSpecificOutput.permissionDecision, undefined);
   });
 });
@@ -549,16 +580,22 @@ test('silent exit when nothing fires or mode off', async () => {
 test('contract: all four write spellings reach pre-write handler', async () => {
   await withStateDir(async (dir) => {
     writeMode('full');
+    const body =
+      'interface Store { get(k: string): string }\n' +
+      'class MemoryStore implements Store { get(k: string) { return k } }\n';
     const spellings = [
       { hook_event_name: 'PreToolUse', tool_name: 'Write', session_id: 'w1',
-        tool_input: { file_path: path.join(dir, 'a1.js'), content: '1\n' } },
+        tool_input: { file_path: path.join(dir, 'a1.ts'), content: body } },
       { hook_event_name: 'PreToolUse', tool_name: 'Edit', session_id: 'w2',
-        tool_input: { file_path: path.join(dir, 'a2.js'), old_string: '', new_string: '1\n' } },
+        tool_input: { file_path: path.join(dir, 'a2.ts'), old_string: '', new_string: body } },
       { hook_event_name: 'PreToolUse', tool_name: 'apply_patch', session_id: 'w3',
         transcript_path: '/tmp/.codex/sessions/t.jsonl',
-        tool_input: { path: path.join(dir, 'a3.js'), patch: '*** Add File\n+1\n' } },
+        tool_input: {
+          path: path.join(dir, 'a3.ts'),
+          patch: `*** Begin Patch\n*** Add File: ${path.join(dir, 'a3.ts').replace(/\\/g, '/')}\n${body.split('\n').map((l) => `+${l}`).join('\n')}\n*** End Patch`,
+        } },
       { hookEventName: 'pre_tool_use', toolName: 'write', sessionId: 'w4',
-        toolInput: { path: path.join(dir, 'a4.js'), content: '1\n' } },
+        toolInput: { path: path.join(dir, 'a4.ts'), content: body } },
     ];
     for (const p of spellings) {
       const out = await handlePreWrite(normalize({ ...p, cwd: dir }));
