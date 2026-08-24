@@ -165,3 +165,38 @@ test('ttl-cache diff no longer trips speculative-abstraction at write', () => {
   assert.equal(counts.get('speculative-abstraction') || 0, 0);
   assert.equal(counts.get('unused-default-param') || 0, 0);
 });
+
+test('signals: structural matching ignores comments (dogfood regression)', () => {
+  // Found by scanning Offcut's own source: the comment
+  // "an interface / abstract class with exactly one" parses as an abstract
+  // class named `with`, so speculative-abstraction flagged hooks/signals.js.
+  // Prose describing a pattern is not the pattern.
+  const sig = ALL_SIGNALS.find((s) => s.id === 'speculative-abstraction');
+  const v = (t) => ({
+    path: 's.js', content: t, addedContent: t,
+    shape: 'full', pathExists: true, truncated: false, context: 'write',
+  });
+
+  const prose = [
+    '// Only structural indirection: an interface / abstract class with exactly one',
+    '// implementor in view.',
+    'const names = [];',
+    'for (const name of names) {',
+    '  const re = new RegExp(name);',
+    '}',
+  ].join('\n');
+  assert.equal(sig.check(v(prose)), false, 'fired on comment prose');
+
+  const blockProse = '/* interface Store with one implementor */\nexport const x = 1;\n';
+  assert.equal(sig.check(v(blockProse)), false, 'fired on block-comment prose');
+
+  // Real structure must still fire.
+  const real = 'export interface Store { get(k: string): string }\n'
+    + 'export class MemoryStore implements Store { get(k) { return k } }\n';
+  assert.equal(sig.check(v(real)), true, 'stopped detecting real abstraction');
+
+  // And Offcut's own source must stay clean.
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const own = fs.readFileSync(path.join(repoRoot, 'hooks', 'signals.js'), 'utf8');
+  assert.equal(sig.check(v(own)), false, 'Offcut flags its own source');
+});

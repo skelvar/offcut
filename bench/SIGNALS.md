@@ -91,3 +91,56 @@ those signals were deleted or moved to diff/repo with corpus requirements
 rather than approximated.
 
 Re-run: `node bench/fp.mjs`.
+
+## Review findings (2026-08-25)
+
+### The 40-run corpus is necessary but not sufficient
+
+0/40 is real, and it is weaker evidence than it looks. All four bench tasks
+produce 10–30 line solutions with no comments, no prose, and one module. A
+signal can score 0/40 and still misfire constantly on ordinary code.
+
+Dogfooding proved it: scanning Offcut's own `hooks/` and `scripts/` produced
+**9 findings**, one of which was a genuine false positive the corpus could
+never have caught.
+
+**`speculative-abstraction` fired on `hooks/signals.js` because of a comment.**
+The line
+
+```
+// Only structural indirection: an interface / abstract class with exactly one
+```
+
+parses as an abstract class named `with`. The signal matched prose describing
+the pattern rather than the pattern. Bisected to lines 166–178 of the file.
+
+Fixed by stripping line and block comments before structural matching
+(`stripComments`). Verified: own source no longer fires, the positive corpus
+still does, 0/40 unchanged, regression test fails against the unfixed code.
+
+**Recommendation:** add a real-code negative corpus. Offcut's own source is the
+cheapest one available and it is already in the repo — every signal change
+should be scanned against it, not only against the bench runs.
+
+### `exported-unused` is scope-dependent, by construction
+
+Scanning `hooks/ scripts/ bench/lib.mjs` flags `hooks/state.js` exports as
+unused. Adding `tests/` to the same scan clears them, because the callers live
+there.
+
+This is inherent to a corpus-based check: **an audit of a subdirectory will
+report false dead exports for anything its callers reference from outside the
+scan.** Not a bug to fix at this level, but `/offcut-audit` should say what was
+in scope, and users should point it at a whole project rather than a folder.
+
+### Two positive examples are thin
+
+`large-first-write`'s example is 93 lines of literal
+`// padding to exceed large-first-write threshold`, and `config-for-constant`'s
+is the single line `export const MAX_RETRIES = 3;`. Both fire, and neither is
+convincing evidence of over-engineering — they are the smallest inputs that
+satisfy the check.
+
+Both signals are 0/40 on negatives so they are not noisy, but their value is
+unproven. If a real-code corpus shows either firing on ordinary code, delete it
+rather than tuning it.

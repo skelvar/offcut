@@ -159,8 +159,18 @@ function looksLikeNewDependency(view) {
   return false;
 }
 
+function stripComments(text) {
+  // Structural signals must match code, not prose. Dogfooding caught
+  // `speculative-abstraction` firing on this very file: the comment
+  // "an interface / abstract class with exactly one" parses as an abstract
+  // class named `with`. Comments describing a pattern are not the pattern.
+  return String(text || '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*/g, '$1 ');
+}
+
 function speculativeAbstraction(view) {
-  const text = view.content || '';
+  const text = stripComments(view.content || '');
   if (!text.trim()) return false;
 
   // Only structural indirection: an interface / abstract class with exactly one
