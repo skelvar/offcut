@@ -372,12 +372,36 @@ Grok. Matchers still fire correctly on all three — the matcher `Write|Edit`
 produced events everywhere — but any code reading `tool_name` to decide
 behavior must normalize through `host.js` rather than compare literals.
 
-#### Not yet verified
+#### Subagent inheritance — verified on all three
 
-`SubagentStart` was registered on all three and **fired on none** — no subagent
-was spawned during the capture. §4.5 is therefore unproven on every host, and
-must not be claimed as working until a probe run spawns a subagent. Cursor is
-unmeasured entirely (§5.4).
+`SubagentStart` fires on every v0.1 host, but the payload disagrees a third time:
+
+| | Claude Code | Codex | Grok Build |
+|---|---|---|---|
+| Event value | `SubagentStart` | `SubagentStart` | `subagent_start` |
+| Agent id | `agent_id` | `agent_id` | `subagentId` |
+| Agent type | `agent_type` | `agent_type` | `subagentType` |
+| Default type value | `general-purpose` | `default` | `general-purpose` |
+| Extra keys | `prompt_id` | `turn_id`, `model`, `permission_mode` | `description`, `workspaceRoot`, `timestamp` |
+
+Two consequences for §4.5. The agent-type *value* differs across hosts even for
+an equivalent agent, so **a matcher on agent type is not portable** — match
+everything and filter in `host.js` if filtering is ever needed. And the id/type
+field names differ, so subagent metadata must be read through the adapter like
+everything else.
+
+#### One more wire-only finding
+
+**Codex prints hook lifecycle lines to its own stdout** (`hook: SessionStart
+Completed`). Anything a hook writes to stdout risks appearing in the user's
+transcript on that host. RightSeam's hooks emit context through the documented
+JSON field and write nothing to stdout directly — which the probe follows, and
+which every shipped hook must too.
+
+#### Still unmeasured
+
+Cursor, entirely (§5.4). Every claim about it in this plan is documentation-based
+and carries the same risk that the Grok payload finding just demonstrated.
 
 ### 5.2 Tiers
 
@@ -760,19 +784,19 @@ holds; the write path stays under 50ms.
 The v0.1 host set already spans two payload dialects, so the adapter seam is
 exercised from Phase 1. What Phase 3 closes are the gaps §5.1 named as unproven:
 
-1. **Subagent inheritance is unverified on every host.** `SubagentStart` was
-   registered on all three and fired on none. Re-run the probe with a session
-   that actually spawns a subagent, and either confirm §4.5 or replace it — on
-   at least one host the subagent path may need a tool matcher instead of a
-   dedicated event.
+1. ~~Subagent inheritance~~ — **done.** `SubagentStart` verified on Claude Code,
+   Codex, and Grok Build; field-name and value differences recorded in §5.1.
+   `host.js` must normalize `agent_id`/`subagentId` and `agent_type`/`subagentType`,
+   and must not match on agent-type values.
 2. **Truncation handling needs a real case.** Construct a write large enough to
    trip Grok's `toolInputTruncated`, and confirm every content-based signal
    declines to fire rather than firing on a fragment.
-3. **Tool-name normalization needs all three names.** `Write`, `apply_patch`,
-   and `write` must map to one internal concept, asserted by contract test.
+3. **Tool-name normalization needs all four spellings.** `Write`, `Edit`,
+   `apply_patch`, and `write` must map to one internal concept, asserted by
+   contract test.
 
-**Done when:** a probe capture exists containing a subagent event and a
-truncated payload; contract tests cover all three tool-name spellings; the
+**Done when:** a probe capture exists containing a truncated payload; contract
+tests cover all four tool-name spellings and both subagent dialects; the
 README's host table cites probe dates rather than vendor documentation.
 
 ### Phase 4 — Commands
