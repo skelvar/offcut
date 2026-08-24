@@ -95,6 +95,27 @@ evidence that the turn progressed, rather than to the emit itself.
 
 ---
 
+### 5. State files are never pruned — the project's own debt markers
+
+`hooks/state.js` carries two `offcut:` markers, the convention this project
+defines for a deliberate shortcut with a known ceiling:
+
+```
+// offcut: turn files are never pruned - one small file per session id, which is
+// fine at human session counts; prune on SessionEnd if a state dir ever grows.
+// offcut: fired files are never pruned - same ceiling as turn files.
+```
+
+**The ceiling was reached.** After one day of development the real `~/.offcut/`
+held 46 files. The upgrade path named in the marker — prune on `SessionEnd` — is
+now due.
+
+This is separate from failure 1 (suppression surviving compaction) even though
+both touch `fired-*`. That one is about *when* suppression resets; this is about
+files accumulating forever. Fix both, and remove the markers when you do — a
+marker left behind after its debt is paid is worse than no marker, because it
+trains readers to ignore them.
+
 ## Scope
 
 Fix the four above. Add a diagnostic. Do not add features.

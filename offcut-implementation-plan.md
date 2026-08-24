@@ -891,11 +891,11 @@ bounded by what was measured.
 | Deferred | Return when |
 |---|---|
 | `references/` files | An eval shows the agent missing a question that more detail fixes |
-| Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient *and* latency budget allows |
-| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density in real repositories |
-| `gain` command (impact scoreboard) | Phase 4 has produced numbers worth showing |
+| Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient. As of Phase 7 they do not: 4.4% fire rate on 1662 real files, 0/40 on labeled negatives |
+| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density. Currently 2 in-repo, both state-file pruning, both owned by Phase 8 |
+| `gain` command (impact scoreboard) | A benchmark shows a real effect. Phase 5 measured no detectable effect, and its signals were later found to be 30/30 false positives, so there is still nothing to show |
 | Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
-| Repository-wide scanning | Never — it is a different product |
+| Repository-wide scanning *by the persistent mode* | Never — it is a different product. Shipped as the user-invoked `/offcut-audit` command in Phase 4; the distinction is who initiates it |
 | Cross-host verification beyond Claude Code | A second host has users asking |
 | Benchmark against other tools | Offcut has independent reproducible results first |
 | Signed releases, marketplace listing | There are users to protect |
