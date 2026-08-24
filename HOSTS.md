@@ -291,11 +291,15 @@ type `/offcut default` without CLI intercept — not worth blocking Phase 7.5.
 
 ### Subagent inheritance (Codex + Grok) — retired with reason
 
-Claude already **pass**. Codex/Grok lack a cheap, deterministic headless
-subagent spawn comparable to Claude's measured path; a dedicated harness is
-out of Phase 7.5 scope. Inheritance is the same `SubagentStart` →
-`hooks/subagent.js` code path on all three hosts when the host fires the event.
-Re-open if product claims depend on Codex/Grok subagent delivery specifically.
+Claude already **pass** (`OFFCUT MODE: full` on subagent first line).
+
+Codex `exec` (2026-08-25): parent spawned a collab subagent; the quoted reply
+was the generated `AGENTS.md` offcut header line, **not** the
+`OFFCUT MODE: full` SubagentStart banner. So project skills/docs reached the
+child; hook-banner inheritance was not observed in that run. Grok not
+re-measured (Tier 3 for hook stdout). Inheritance shares `hooks/subagent.js`
+when the host fires `SubagentStart`. Re-open if product claims depend on
+Codex/Grok hook-banner delivery specifically.
 
 ### State-pruning debt
 
