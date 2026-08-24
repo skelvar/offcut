@@ -43,6 +43,36 @@ export function detect(payload) {
 }
 
 /**
+ * Normalize the four write-tool spellings onto one concept.
+ * Never compare toolName to a literal in a signal — branch on this.
+ *
+ * shape:
+ *   'full'     — whole-file content (Write / write)
+ *   'fragment' — patch / old→new edit (Edit / apply_patch / search_replace)
+ *
+ * @param {string | null | undefined} toolName
+ * @returns {{ isWrite: boolean, shape: 'full' | 'fragment' | null }}
+ */
+export function classifyWriteTool(toolName) {
+  const n = String(toolName ?? '');
+  // Whole-file writes
+  if (n === 'Write' || n === 'write') {
+    return { isWrite: true, shape: 'full' };
+  }
+  // Fragments. MultiEdit is Claude's batch edit; search_replace is the Grok
+  // alias for Edit|Write|MultiEdit (matcher Write|Edit still matches it).
+  if (
+    n === 'Edit' ||
+    n === 'MultiEdit' ||
+    n === 'apply_patch' ||
+    n === 'search_replace'
+  ) {
+    return { isWrite: true, shape: 'fragment' };
+  }
+  return { isWrite: false, shape: null };
+}
+
+/**
  * Normalize a raw host payload into a single internal shape.
  * @param {object} payload
  */
@@ -50,6 +80,7 @@ export function normalize(payload) {
   const host = detect(payload || {});
   if (host === 'grok') {
     const eventRaw = payload.hookEventName;
+    const toolName = payload.toolName ?? null;
     return {
       host,
       event: EVENT_CANONICAL[eventRaw] || eventRaw || null,
@@ -59,7 +90,8 @@ export function normalize(payload) {
       workspaceRoot: payload.workspaceRoot ?? null,
       prompt: payload.prompt ?? null,
       source: payload.source ?? null,
-      toolName: payload.toolName ?? null,
+      toolName,
+      writeTool: classifyWriteTool(toolName),
       toolInput: payload.toolInput ?? null,
       toolResult: payload.toolResult ?? null,
       toolInputTruncated: Boolean(payload.toolInputTruncated),
@@ -72,6 +104,7 @@ export function normalize(payload) {
   }
 
   const eventRaw = payload.hook_event_name;
+  const toolName = payload.tool_name ?? null;
   return {
     host,
     event: EVENT_CANONICAL[eventRaw] || eventRaw || null,
@@ -81,7 +114,8 @@ export function normalize(payload) {
     workspaceRoot: null,
     prompt: payload.prompt ?? null,
     source: payload.source ?? null,
-    toolName: payload.tool_name ?? null,
+    toolName,
+    writeTool: classifyWriteTool(toolName),
     toolInput: payload.tool_input ?? null,
     toolResult: payload.tool_response ?? null,
     toolInputTruncated: false,
@@ -134,16 +168,22 @@ export function gate(host, decision) {
     return emit(host, decision.event || 'pre_tool_use', decision.context || '');
   }
   if (decision.kind === 'escalate') {
-    // Claude/Codex: permissionDecision escalate. Grok: decision field.
+    // Measured 2026-08-24 (Grok Build session):
+    //   permissionDecision "ask"     → write completed, no permission gate
+    //   permissionDecision "escalate"→ write completed, no permission gate
+    // Grok PreToolUse only documents decision allow|deny. Anything else is
+    // ignored. Degrade escalate to additionalContext so strict mode still
+    // challenges rather than silently doing nothing.
+    //
+    // Claude Code docs (same day): permissionDecision is allow|deny|ask|defer.
+    // "ask" prompts the user. "escalate" is not a documented value. Phase 2
+    // task assumed docs said escalate; they say ask. Keep ask for Claude/Codex.
     if (host === 'grok') {
-      return {
-        decision: 'ask',
-        reason: decision.reason || '',
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          additionalContext: decision.context || decision.reason || '',
-        },
-      };
+      return emit(
+        host,
+        decision.event || 'pre_tool_use',
+        decision.context || decision.reason || '',
+      );
     }
     return {
       hookSpecificOutput: {

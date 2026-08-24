@@ -198,14 +198,20 @@ test('contract: adapters/claude/hooks.json wires SessionStart matcher and script
   assert.match(ss.matcher, /compact/);
   assert.match(ss.matcher, /clear/);
   assert.match(ss.matcher, /fork/);
-  for (const event of ['SessionStart', 'UserPromptSubmit', 'SubagentStart']) {
+  for (const event of [
+    'SessionStart',
+    'UserPromptSubmit',
+    'SubagentStart',
+    'PreToolUse',
+    'PostToolUse',
+  ]) {
     const hook = cfg.hooks[event][0].hooks[0];
     assert.equal(hook.type, 'command');
     assert.equal(hook.command, 'node');
     assert.ok(fs.existsSync(path.join(root, hook.args[0].replace('${CLAUDE_PLUGIN_ROOT}/', ''))));
   }
-  // No PreToolUse in Phase 1
-  assert.equal(cfg.hooks.PreToolUse, undefined);
+  assert.match(cfg.hooks.PreToolUse[0].matcher, /Write\|Edit/);
+  assert.match(cfg.hooks.PostToolUse[0].matcher, /Write\|Edit/);
 });
 
 test('contract: versions match across manifests and skill metadata', () => {
