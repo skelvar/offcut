@@ -11,7 +11,20 @@ added that nobody asked for.
 
 Requires **Node.js** on `PATH`. Zero runtime dependencies.
 
-### Claude Code
+### All three hosts (recommended)
+
+```bash
+node tools/install.mjs            # merge into Claude / Codex / Grok configs
+node tools/install.mjs --uninstall
+```
+
+The installer writes **absolute** script paths as a single `command` string
+(with a Windows `where node` guard). That is required: `${CLAUDE_PLUGIN_ROOT}`
+is not set for settings/hooks-dir installs, and Grok silently ignores an `args`
+array. See `HOSTS.md`. Hooks load at session start — open a **new** session
+after installing.
+
+### Claude Code (plugin)
 
 ```bash
 # from a clone of this repo, or add it as a marketplace
@@ -20,34 +33,9 @@ claude plugin install offcut
 ```
 
 The plugin wires `adapters/claude/hooks.json` automatically via
-`.claude-plugin/plugin.json`.
-
-### Codex
-
-Install the same PascalCase hooks config. Codex accepts the Claude-shaped
-`hooks.json` unchanged:
-
-```bash
-# point Codex at adapters/claude/hooks.json using its hooks install path
-# (see Codex docs for project vs user hooks)
-```
-
-Copy or symlink `adapters/claude/hooks.json` into the Codex hooks location, and
-ensure the `node …/hooks/*.js` paths resolve (set `CLAUDE_PLUGIN_ROOT` or
-`PLUGIN_ROOT` to this repo root, or edit the paths).
-
-### Grok Build
-
-Grok Build also accepts the same PascalCase config. Install
-`adapters/claude/hooks.json` as a project or user hook file. Grok sends a
-**camelCase** payload at runtime — Offcut's `hooks/host.js` detects that from
-the payload and adapts. Do not rewrite the config to camelCase event keys.
-
-```bash
-# e.g. project hooks
-cp adapters/claude/hooks.json .grok/hooks/offcut.json
-# ensure CLAUDE_PLUGIN_ROOT or PLUGIN_ROOT points at this checkout
-```
+`.claude-plugin/plugin.json` (placeholder `${CLAUDE_PLUGIN_ROOT}`). Prefer
+`tools/install.mjs` when sharing one checkout across Claude settings, Codex,
+and Grok.
 
 ### Skill-only hosts (no hooks)
 
