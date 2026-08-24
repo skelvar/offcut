@@ -52,9 +52,8 @@ only because the user asked.
 - **Do not write Offcut state.** Commands leave the mode exactly as found.
 - **Do not re-implement signals in prose.** `hooks/signals.js` via
   `scripts/scan.mjs` is the only definition.
-- `new-file` and `large-first-write` **cannot** fire here — every audited file
-  already exists. That is intentional; those checks only mean something at
-  write/diff time.
-- `exported-unused` uses a cross-file corpus in this context (stronger than a
-  single-write check). Treat its output as authoritative for this scan.
+- `large-first-write` **cannot** fire here — every audited file already exists.
+  That check only means something at write/diff time.
+- `exported-unused` uses a cross-file corpus and requires evidence of a
+  multi-module program. Treat its output as authoritative for this scan.
 - No network. The scanner must not modify files.

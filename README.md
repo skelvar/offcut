@@ -68,9 +68,11 @@ Wire the script into your host's statusline setting. Output looks like
 | `strict` | Every turn | Same, plus human prompt on new dependencies |
 | `off` | Silent | Silent |
 
-Write-time signals (deterministic, no model call): new file, large first write,
-new dependency, speculative abstraction, config-for-a-constant. After a write:
-exported-unused, new config surface, single-call wrapper, unused default param.
+Write-time signals (deterministic, no model call): large first write, new
+dependency, speculative abstraction, config-for-a-constant. After a write:
+new config surface, single-call wrapper, unused default param. `exported-unused`
+runs on diff/repo scans only (not decidable from a single write). `new-file` was
+deleted in Phase 6 — creating a file is not evidence of over-engineering.
 Each signal fires at most once per session. Truncated tool payloads stay silent.
 
 ```text
@@ -100,7 +102,7 @@ mode exactly as they found it. Invoked as Agent Skills (`/offcut-review`,
 
 The scanner imports the same `hooks/signals.js` definitions the write hooks use.
 Signals declare which contexts they apply to (`write` / `diff` / `repo`):
-`new-file` and `large-first-write` never fire in a repo audit.
+`large-first-write` never fires in a repo audit.
 
 **Mode vs scan:** the persistent mode never initiates a repository scan. It
 reacts to the turn and the write in front of it. An explicit review/audit
