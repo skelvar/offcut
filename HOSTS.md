@@ -10,6 +10,7 @@ observed in a real session. Installing successfully is not verification.
 | Field | Value |
 |---|---|
 | Date started | 2026-08-24 |
+| Date closed | 2026-08-24 |
 | OS | Windows |
 | Node | v24.16.0 |
 | Claude Code | 2.1.240 |
@@ -18,7 +19,11 @@ observed in a real session. Installing successfully is not verification.
 | Branch | `phase-3-real` |
 | Repo | `D:\rightseam` |
 
-Synthetic suite at start of Phase 3: **75/75 passing** (`node --test tests/*.test.js`).
+Synthetic suite: started at **75/75**, ended at **79+/79+** after Phase 3 tests
+(`node --test tests/*.test.js`).
+
+Install path used for E2E: `node tools/install.mjs` (absolute single-string
+commands). Uninstall verified clean afterward.
 
 ---
 
@@ -26,36 +31,26 @@ Synthetic suite at start of Phase 3: **75/75 passing** (`node --test tests/*.tes
 
 ### Measurement (2026-08-24)
 
-Reused existing `tools/probe.mjs` install (absolute single-string commands). Across
-**261** prior probe entries, hook subprocess env contained only:
+Across **261** prior probe entries plus fresh measure runs, hook subprocess env
+contained only:
 
 - Claude (settings.json hooks): `CLAUDECODE`, `CLAUDE_PROJECT_DIR`
 - Grok (`~/.grok/hooks/`): `GROK_SESSION_ID`, `CLAUDE_PROJECT_DIR` (leak)
 
-**`CLAUDE_PLUGIN_ROOT` and `PLUGIN_ROOT` never appeared** in any settings/hooks-dir
-install. Confirmed again with `tools/measure-command-form.mjs` headless runs:
-both fields stay `null` on Claude settings hooks and Grok hooks-dir hooks.
+**`CLAUDE_PLUGIN_ROOT` and `PLUGIN_ROOT` never appeared** for settings/hooks-dir
+installs. Empty expansion → `node /hooks/activate.js` → fail-open, no challenge.
 
-That is the silent-failure mode: `${CLAUDE_PLUGIN_ROOT}` expands empty
-→ `node /hooks/activate.js` → fail-open, no challenge.
+Claude Code docs: `${CLAUDE_PLUGIN_ROOT}` is for **plugin-installed** hooks. Not
+re-measured under `claude plugin install` in this phase.
 
-Grok docs (`~/.grok/docs/user-guide/10-hooks.md`): command strings support `${VAR}` /
-`$VAR` expansion at run time; there is no documented `args` array. Empty var → bad path.
+### Fix
 
-Claude Code docs: `${CLAUDE_PLUGIN_ROOT}` is for **plugin-installed** hooks. Not yet
-re-measured under `claude plugin install` (settings-path installs are the Codex/Grok path).
+Packaging only — hook scripts unchanged for path concerns:
 
-### Decision (cheapest that works)
+1. `adapters/claude/hooks.json` — single `command` string with `${CLAUDE_PLUGIN_ROOT}` for plugin installs.
+2. `tools/install.mjs` — absolute paths as `node "…/hooks/….js"` for Claude settings / Codex / Grok.
 
-Packaging concern only — hook scripts unchanged:
-
-1. `adapters/claude/hooks.json` keeps `${CLAUDE_PLUGIN_ROOT}` for Claude **plugin** install,
-   but now as a **single `command` string** (no `args`).
-2. `tools/install.mjs` (same safety contract as `install-probe.mjs`): backup, merge, tag,
-   reversible — writes **absolute** paths as a single `command` string for settings /
-   Codex / Grok installs.
-
-Status: **fixed via installer; E2E activation still pending.**
+Status: **fixed for settings installs. Claude plugin-install path still unmeasured.**
 
 ---
 
@@ -63,70 +58,161 @@ Status: **fixed via installer; E2E activation still pending.**
 
 ### Measurement (2026-08-24) — controlled A/B
 
-Harness: `tools/measure-command-form.mjs` writes `~/.offcut-cmd-form-mark` on run.
-Undo of measure hooks verified before each reliance (strip by tag; impeccable left on Codex).
+Harness: `tools/measure-command-form.mjs` → `~/.offcut-cmd-form-mark`.
+Undo verified before relying on installs.
 
 | Host | Single-string `node "…/script" LABEL` | `command:"node"` + `args:[script, LABEL]` |
 |---|---|---|
-| Grok 1.0.5 | **fires** (mark=`STRING-FORM`) | **silent fail** — write succeeds, no mark |
-| Claude 2.1.240 | **fires** | **fires** (mark=`ARGS-FORM`) |
-| Codex 0.149.1 | (not re-run; string form already proven by prior probes) | **fires** (mark=`ARGS-FORM`) |
+| Grok 1.0.5 | **fires** | **silent fail** — write succeeds, no mark |
+| Claude 2.1.240 | **fires** | **fires** |
+| Codex 0.149.1 | proven by prior probes + later measure | **fires** (`CODEX-WRITE-EDIT`) |
 
-**Grok ignores `args`.** The previous `adapters/claude/hooks.json` shape would have
-installed as bare `node` on Grok and done nothing — fail-open, no challenge.
+**Grok ignores `args`.** Nested `cmd /c "where node && node …"` works on Grok but
+**fails silently under Claude Code** (bash spawn + nested quoting). Final installer
+uses plain `node "abs"` on every host; missing Node fails open.
 
-Windows Node guard measured on Grok:
+Hooks load at **session start** on Grok — mid-session file drops are invisible
+until a new session.
 
-```text
-cmd /c "where node >nul 2>&1 && node ""D:/…/script.mjs"" WIN-GUARD"
-```
-
-→ mark=`WIN-GUARD`. Missing `node` → `where` fails → hook exits non-zero → host fail-open.
-
-Mid-session hook file drops are **not** picked up on Grok; hooks load at session start.
-Fresh headless `grok -p` sessions were used for measurement.
-
-Status: **fixed — adapter + installer use single-string (+ win32 where-guard).**
+Status: **fixed — single-string absolute commands.**
 
 ---
 
 ## Known-unverified #3 — `permissionDecision`
 
-Grok (measured earlier, recorded in `host.js`): only `allow`|`deny`; `ask`/`escalate` ignored;
-strict mode already degrades to `additionalContext`.
+### Grok (prior + confirmed)
 
-Claude / Codex: pending temporary hooks returning each candidate.
+Only `allow`|`deny`. `ask`/`escalate` ignored. `host.js` degrades escalate to
+`additionalContext`.
 
-Status: **Claude/Codex unsettled.**
+### Claude 2.1.240 (headless `-p`, `--permission-mode default`, 2026-08-24)
+
+Temporary PreToolUse probe returning each value:
+
+| Value | Write completed? | Observation |
+|---|---|---|
+| `ask` | **No** | Surfaced to the model as `<error>perm-probe:ask</error>` — hard block in print mode, not an interactive prompt. `additionalContext` still delivered. |
+| `escalate` | **No** | Probe ran, but decision appears **ignored**; model saw the host's normal permission-deny message instead. No `PERM_PROBE` text. |
+| `defer` | **No** | Probe ran; no clear decision feedback in print output. |
+| `allow` | **Yes** | Write succeeded; `additionalContext` delivered alongside. |
+
+**Keep `permissionDecision: "ask"` for Claude/Codex escalate** — it is the value
+Claude honors. Interactive TUI prompt UI was not observed (headless only).
+
+### Codex
+
+Not separately re-probed for ask/escalate UI (headless bypass used for challenge
+E2E). Same `ask` mapping retained.
+
+Status: **settled enough to keep `ask`; interactive prompt shape unverified.**
 
 ---
 
 ## Known-unverified #4 — Real truncation
 
-Prior probe log: `toolInputTruncated` key appears on Grok PreToolUse payloads, but
-**zero** entries with `toolInputTruncated: true`. Threshold unknown.
+`toolInputTruncated` appears as a key on Grok PreToolUse (always present in
+schema). Attempts to force `true` with 20k–200k character writes failed: the
+model would not place a large enough body into a single write tool call
+(max-turns reached with ~1.2k content).
 
-Status: **unverified — force oversized write pending.**
+Status: **unverified — threshold unknown. Flag handling remains tested only with
+synthetic payloads.**
 
 ---
 
-## Checklist (fill as we go)
+## Grok additionalContext gap (discovered in Phase 3)
 
-| Check | Claude | Codex | Grok |
+Grok docs (`10-hooks.md`):
+
+- `SessionStart` / `PostToolUse`: **stdout ignored**
+- `UserPromptSubmit`: **observe-only — stdout ignored**
+- `PreToolUse`: documents `allow` / `deny` / `updatedInput` only
+
+Empirical: a PreToolUse hook that returned distinctive
+`additionalContext: "OFFCUT_CTX_PROBE_VISIBLE_7f3a9c"` **ran** (mark file written)
+but the model reported `NO_CTX`. Offcut write hooks also recorded `fired-*`
+signals while the model reported `NO_OFFCUT_CHALLENGE`.
+
+**Grok runs Offcut hooks but does not deliver `additionalContext` to the model
+on the events Offcut uses.** Challenge-in-transcript is **not** achievable on
+Grok with the current emit shape. Leave as an honest gap (Phase 4+ may need a
+Grok-specific delivery path that does not use `deny`).
+
+---
+
+## Other findings
+
+### Codex `apply_patch` tool_input shape
+
+Measured PreToolUse payload:
+
+```json
+{ "tool_name": "apply_patch", "tool_input": { "command": "*** Begin Patch\n*** Add File: …\n+…\n*** End Patch" } }
+```
+
+Path and content live inside `command`, not `file_path` / `patch` / `input`.
+`extractWriteFields` was blind → no signals. **Fixed** in `hooks/signals.js`
+(regression test added). After the fix, Codex produced observed challenges.
+
+### Claude `-p "/offcut …"` intercept
+
+`claude -p "/offcut lite"` is rejected as `Unknown command: /offcut` before
+hooks see the prompt. Phrase deactivation works: `stop offcut` → `active=off`
+confirmed. Slash mode switches need an interactive session (or a non-slash
+prompt that is exactly `/offcut lite` without CLI interception — not found for
+`-p`).
+
+### Challenge delivery timing (Claude)
+
+Write-time `additionalContext` arrived **after** the tool result in print mode
+("PreToolUse:Write hook additional context"), so it is observable but does not
+block or reshape the write that triggered it — consistent with context-not-deny
+design.
+
+---
+
+## Checklist
+
+| Check | Claude 2.1.240 | Codex 0.149.1 | Grok 1.0.5 |
 |---|---|---|---|
-| Plugin/hooks install | | | |
-| Path resolution | | | |
-| Windows / command form | | | |
-| Mode activates | | | |
-| Reminder appears | | | |
-| `/offcut` mode switch | | | |
-| `/offcut default` survives restart | | | |
-| Over-engineered write → challenge | | | |
-| Once-per-session suppression | | | |
-| Subagent inheritance | | | |
-| Statusline (Windows) | | | |
-| `/clear` preserves mode | | | |
-| Compaction preserves mode | | | |
-| Uninstall clean | | | |
-| `permissionDecision` settled | | | |
-| Truncation threshold | — | — | |
+| Plugin/hooks install | **pass** (`install.mjs`) | **pass** | **pass** |
+| Path resolution | **pass** (absolute) | **pass** | **pass** |
+| Windows / command form | **pass** (`node "…"`) | **pass** | **pass** (args fail) |
+| Mode activates | **pass** (`active=full`) | **pass** | **pass** (state written; context not delivered) |
+| Reminder appears | **pass** (quoted verbatim) | not separately quoted | **fail** (stdout ignored) |
+| `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | unverified | unverified |
+| `/offcut default` survives restart | unverified (CLI intercept) | unverified | unverified |
+| Over-engineered write → challenge | **pass** (transcript) | **pass** (transcript) | **fail** (fires silently; no model delivery) |
+| Once-per-session suppression | **pass** (`fired-*` state) | **pass** (`fired-*`) | **pass** (state only) |
+| Subagent inheritance | unverified | unverified | unverified |
+| Statusline (Windows) | **pass** (`offcut:full` via `statusline.ps1`) | — | — |
+| `/clear` preserves mode | unverified live; matcher includes `clear` | unverified | unverified |
+| Compaction preserves mode | unverified live; matcher includes `compact` | unverified | unverified |
+| Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
+| `permissionDecision` settled | **ask** honored (blocks in `-p`); escalate ignored | assumed same mapping | context-only |
+| Truncation threshold | — | — | **unverified** |
+
+---
+
+## Transcript excerpts
+
+### Claude — write challenge (2026-08-24)
+
+> Offcut: new file — is a new file needed, or does this belong in an existing one?
+
+### Claude — reminder (2026-08-24)
+
+> OFFCUT ACTIVE — before you build: does it need to exist? does it already exist here? can the platform or stdlib do it? what is the cheapest thing that works? which boundary owns it?
+
+### Codex — write challenges after apply_patch fix (2026-08-24)
+
+> Offcut: new file — is a new file needed, or does this belong in an existing one?
+>
+> Offcut: exported symbol with no caller in this write — did anyone ask for it?
+>
+> Offcut: one implementation — is the indirection carrying its weight?
+
+### Grok — challenge not delivered (2026-08-24)
+
+State: `fired-… = ["new-file"]`. Model reply: `NO_OFFCUT_CHALLENGE`.
+Context probe: mark written, model reply `NO_CTX`.
