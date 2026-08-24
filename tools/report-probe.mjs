@@ -13,8 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const LOG = process.env.RIGHTSEAM_PROBE_LOG
-  || path.join(os.homedir(), '.rightseam-probe.jsonl');
+const LOG = process.env.OFFCUT_PROBE_LOG
+  || path.join(os.homedir(), '.offcut-probe.jsonl');
 
 if (!fs.existsSync(LOG)) {
   console.error(`No probe log at ${LOG}`);
@@ -67,7 +67,7 @@ for (const r of rows) {
   byHost.get(h).push(r);
 }
 
-console.log(`RightSeam host probe — ${rows.length} events across ${byHost.size} harness(es)\n`);
+console.log(`Offcut host probe — ${rows.length} events across ${byHost.size} harness(es)\n`);
 
 for (const [host, recs] of [...byHost].sort()) {
   console.log(`\n${'='.repeat(64)}\n${host.toUpperCase()}  (${recs.length} events)\n${'='.repeat(64)}`);

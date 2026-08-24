@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Installs the RightSeam host probe into every detected harness.
+// Installs the Offcut host probe into every detected harness.
 //
 //   node tools/install-probe.mjs            # install
 //   node tools/install-probe.mjs --uninstall
@@ -16,7 +16,7 @@ import os from 'node:os';
 
 const HOME = os.homedir();
 const PROBE = path.resolve(import.meta.dirname, 'probe.mjs').replace(/\\/g, '/');
-const TAG = 'rightseam-probe';
+const TAG = 'offcut-probe';
 const uninstall = process.argv.includes('--uninstall');
 
 if (!fs.existsSync(PROBE)) {
@@ -60,7 +60,7 @@ function readJson(p) {
 
 function backup(p) {
   if (!fs.existsSync(p)) return 'new';
-  const b = `${p}.rightseam-backup`;
+  const b = `${p}.offcut-backup`;
   if (!fs.existsSync(b)) fs.copyFileSync(p, b);
   return 'backed up';
 }
@@ -136,7 +136,7 @@ apply('cursor', path.join(HOME, '.cursor', 'hooks.json'), (cur) => {
 const w = Math.max(...results.map(([n]) => n.length));
 for (const [n, s, f] of results) console.log(`${n.padEnd(w)}  ${s.padEnd(28)}  ${f}`);
 
-console.log(`\nprobe log: ${path.join(HOME, '.rightseam-probe.jsonl')}`);
+console.log(`\nprobe log: ${path.join(HOME, '.offcut-probe.jsonl')}`);
 console.log(uninstall
-  ? 'Removed. Backups kept as *.rightseam-backup — delete them when satisfied.'
+  ? 'Removed. Backups kept as *.offcut-backup — delete them when satisfied.'
   : 'Now run one prompt in each harness that edits a file, then: node tools/report-probe.mjs');

@@ -1,7 +1,7 @@
-# RightSeam — Implementation Plan
+# Offcut — Implementation Plan
 
-**Project name:** RightSeam
-**Skill identifier:** `right-seam`
+**Project name:** Offcut
+**Skill identifier:** `offcut`
 **Tagline:** *Ask what the cheapest thing that works is. Every turn. Before the code lands.*
 **Plan version:** 3.0 — revised August 24, 2026
 **Status:** Implementation-ready
@@ -10,11 +10,11 @@
 
 ## 0. What changed in v3.0
 
-Versions 1.0 and 2.0 described the wrong product. Both treated RightSeam as an
+Versions 1.0 and 2.0 described the wrong product. Both treated Offcut as an
 instruction file that an agent reads when it decides the task looks relevant.
 That is a *document*. It is not a mechanism.
 
-**RightSeam is a persistent mode enforced through agent lifecycle hooks.** The
+**Offcut is a persistent mode enforced through agent lifecycle hooks.** The
 instruction text matters, but it is the payload, not the product. The product is
 *when and how often the agent is made to answer for what it is about to build.*
 
@@ -28,13 +28,13 @@ What v3.0 adds:
 4. **A closing check.** `PostToolUse` inspects what was actually written and
    names what was added that nobody asked for (§4.4).
 
-What v3.0 removes: the static-analysis framing. RightSeam does not scan
+What v3.0 removes: the static-analysis framing. Offcut does not scan
 repositories, index symbols, or produce reports. It sits in the agent's decision
 loop and asks questions at the moments that matter.
 
 ---
 
-## 1. What RightSeam is
+## 1. What Offcut is
 
 A persistent mode that forces one question into every build decision:
 
@@ -43,14 +43,21 @@ A persistent mode that forces one question into every build decision:
 Not as advice the agent may recall. As a question the agent is made to answer,
 at session start, at every prompt, before every file write, and after.
 
-RightSeam exists because agents over-build by default. They reach for a class
+Offcut exists because agents over-build by default. They reach for a class
 when a function works, a config flag when a constant works, a dependency when
 four lines work, an abstraction for one caller. Every one of those decisions
 feels locally reasonable and compounds into a codebase nobody wants to open.
 
-The name is the second half of the question. Cheapest is not enough — the
-cheapest change in the wrong place is a second bug. **Cheap, and at the seam
-that owns it.**
+The name is what the tool looks for. An **offcut** is the material left over
+when something is cut to size — the piece nobody asked for and nobody uses.
+Question 6 of §3 makes the agent name its own offcuts; the write-time hooks
+exist to catch them before they land.
+
+Naming a tool after the thing it finds rather than the thing it does follows
+`lint`, which is named for the fuzz it detects.
+
+Cheapest alone is still not the goal: the cheapest change in the wrong place is
+a second bug. Placement first, then size.
 
 ### 1.1 What it is not
 
@@ -66,7 +73,7 @@ that owns it.**
 ## 2. How lifecycle hooks deliver a persistent mode
 
 Researched August 24, 2026 against Claude Code's documented hook API. This
-section records the platform capability RightSeam builds on. Implementing a
+section records the platform capability Offcut builds on. Implementing a
 documented API is not derivative work; see §9.
 
 ### 2.1 The events that matter
@@ -105,7 +112,7 @@ The established way to ship a persistent mode is:
 - a **statusline** command that reads the state file so the mode is visible.
 
 That covers activation, persistence across compaction, subagent inheritance, and
-visibility. It is a sound foundation and RightSeam adopts all five.
+visibility. It is a sound foundation and Offcut adopts all five.
 
 **Where it stops is the whole opportunity.** In that pattern:
 
@@ -121,14 +128,14 @@ visibility. It is a sound foundation and RightSeam adopts all five.
 3. **No feedback.** Nothing measures whether output was actually minimal. A
    statusline badge proves the mode is *enabled*. It does not prove it *worked*.
 
-The result is a suggestion delivered once. RightSeam's contribution is closing
+The result is a suggestion delivered once. Offcut's contribution is closing
 all three, using events the platform already exposes.
 
 ---
 
 ## 3. The challenge
 
-RightSeam's payload is not a persona. It is a fixed set of questions the agent
+Offcut's payload is not a persona. It is a fixed set of questions the agent
 must answer before code exists.
 
 **Before writing anything:**
@@ -158,7 +165,7 @@ checks it.
 
 **Mark deliberate shortcuts.** When a cheap answer knowingly cuts a real corner
 with a known ceiling — a coarse lock, a linear scan that will not stay linear, a
-heuristic that holds only for current inputs — leave a `rightseam:` comment
+heuristic that holds only for current inputs — leave a `offcut:` comment
 naming the ceiling and what to do when it is reached. Cheap and *known* cheap is
 a decision. Cheap and unmarked is a landmine, and the person who finds it will
 not be the person who left it.
@@ -179,7 +186,7 @@ not cheap — it is a second bug at a discount.
 
 ## 4. Hook architecture
 
-Five hooks. Three of them are the thing that makes RightSeam different.
+Five hooks. Three of them are the thing that makes Offcut different.
 
 ### 4.1 `SessionStart` — activate
 
@@ -200,15 +207,15 @@ Matcher: none; fires on every prompt.
 
 Two jobs:
 
-**Mode commands.** Parse `/rightseam <off|lite|full|strict>` and
-`/rightseam default <mode>`, update the state file, confirm.
+**Mode commands.** Parse `/offcut <off|lite|full|strict>` and
+`/offcut default <mode>`, update the state file, confirm.
 
 **The per-turn reminder.** This is the fix for drift. On every prompt where the
 mode is active and the prompt is not a mode command, inject a **compact**
 reminder — not the full ruleset.
 
 ```text
-RIGHTSEAM ACTIVE — before you build: does it need to exist? does it already
+OFFCUT ACTIVE — before you build: does it need to exist? does it already
 exist here? can the platform or stdlib do it? what is the cheapest thing that
 works? which boundary owns it?
 ```
@@ -218,7 +225,7 @@ every turn would cost more context than it saves, and would train the model to
 skim it. One compact question every turn beats one long lecture at turn one.
 
 **Skip the reminder when it cannot help.** No injection when the prompt is a
-mode command, when the prompt invokes a RightSeam command (§13, Phase 4), when the mode
+mode command, when the prompt invokes a Offcut command (§13, Phase 4), when the mode
 is `off`, or when the prompt is plainly conversational rather than a build
 request. A reminder on "what does this function do?" is noise, and noise is how
 a mode gets turned off. During a command the reminder is worse than noise — the
@@ -236,7 +243,7 @@ The event the prevailing pattern leaves unused, and the one that matters most.
 It fires between the agent deciding to write and the file existing, and it can
 `allow`, `deny`, or `escalate`.
 
-RightSeam runs cheap deterministic checks on `tool_input` — never a model call,
+Offcut runs cheap deterministic checks on `tool_input` — never a model call,
 never a repository scan. Each check is a text-level fact about the write itself:
 
 | Signal | Check | Response |
@@ -253,7 +260,7 @@ never a repository scan. Each check is a text-level fact about the write itself:
   work gets uninstalled within a day. The agent is asked, not stopped.
 - **`escalate` only in `strict` mode, and only for adding a dependency** — the
   one decision that is genuinely hard to reverse and genuinely warrants a human.
-- **Never `deny`.** RightSeam has no mechanism for knowing the requirement is
+- **Never `deny`.** Offcut has no mechanism for knowing the requirement is
   wrong. It only knows the shape of the write.
 - **One challenge per signal per session.** Repeating the same nudge on every
   write is nagging, and the model starts ignoring it. Track fired signals in
@@ -289,7 +296,7 @@ event.
 
 ### 4.6 Failure contract — every hook, without exception
 
-A hook that breaks the agent is worse than no hook. Every RightSeam hook:
+A hook that breaks the agent is worse than no hook. Every Offcut hook:
 
 - **never blocks the session** — a timer bounds the run and exits 0 on expiry,
 - **exits 0 on any internal error**, silently,
@@ -394,7 +401,7 @@ everything else.
 
 **Codex prints hook lifecycle lines to its own stdout** (`hook: SessionStart
 Completed`). Anything a hook writes to stdout risks appearing in the user's
-transcript on that host. RightSeam's hooks emit context through the documented
+transcript on that host. Offcut's hooks emit context through the documented
 JSON field and write nothing to stdout directly — which the probe follows, and
 which every shipped hook must too.
 
@@ -405,16 +412,16 @@ and carries the same risk that the Grok payload finding just demonstrated.
 
 ### 5.2 Tiers
 
-RightSeam's value is not uniformly deliverable. The plan states the tiers
+Offcut's value is not uniformly deliverable. The plan states the tiers
 plainly rather than implying every host gets the full product.
 
 **Tier 1 — Full.** Lifecycle hooks available. Persistent mode, per-turn
 reminder, write-time challenge, subagent inheritance, statusline. This is
-RightSeam as designed.
+Offcut as designed.
 → **v0.1: Claude Code, Codex, Grok Build** — one config file, two payload
 dialects, all three measured (§5.1). Cursor is deferred (§5.4).
 
-**Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. RightSeam
+**Tier 2 — Skill.** Agent Skills discovery, no lifecycle hooks. Offcut
 becomes an on-demand skill: the challenge fires when the description matches or
 the user invokes it explicitly. **No persistence, no per-turn reminder, no
 write-time enforcement.** Scripts may be bundled but only run when the agent
@@ -449,7 +456,7 @@ whether that becomes `additionalContext`, `additional_context`, or nothing
 because the host has no such field. A hook that emits raw JSON for a specific
 host is a bug.
 
-This is question 5 of §3 applied to RightSeam itself: host divergence is real
+This is question 5 of §3 applied to Offcut itself: host divergence is real
 complexity, so it goes at the one boundary that owns it, instead of into five
 hook scripts that each learn the whole matrix.
 
@@ -529,7 +536,7 @@ pretending otherwise is how a support matrix becomes fiction. Three checks per
 host, ten minutes each. That cost is the reason §5.4 keeps the host count low.
 
 **Regression trigger:** when a host ships a new version, its smoke test is
-re-run before RightSeam claims support for it. A host whose smoke test has not
+re-run before Offcut claims support for it. A host whose smoke test has not
 been run against a current version gets marked stale in the README rather than
 quietly left claiming support.
 
@@ -537,7 +544,7 @@ quietly left claiming support.
 
 ## 6. Modes and state
 
-One file, `.rightseam-active`, holding one mode string, in the agent's config
+One file, `.offcut-active`, holding one mode string, in the agent's config
 directory. Absent file means off. The statusline command reads it.
 
 | Mode | Per-turn reminder | `PreToolUse` | Escalation |
@@ -547,17 +554,17 @@ directory. Absent file means off. The statusline command reads it.
 | `full` | every turn | context only | never |
 | `strict` | every turn | context + escalate | new dependencies |
 
-`full` is the default. `/rightseam <mode>` switches for the session;
-`/rightseam default <mode>` persists to config for new sessions.
+`full` is the default. `/offcut <mode>` switches for the session;
+`/offcut default <mode>` persists to config for new sessions.
 
-Deactivation must be easy and obvious: `/rightseam off`, "stop rightseam", or
+Deactivation must be easy and obvious: `/offcut off`, "stop offcut", or
 "normal mode". A mode that is hard to turn off gets uninstalled instead.
 
 ---
 
 ## 7. The ruleset file
 
-`skills/right-seam/SKILL.md` holds the full challenge text. Hooks read it at
+`skills/offcut/SKILL.md` holds the full challenge text. Hooks read it at
 runtime and emit it — the file is the source, the hook is delivery. There is
 exactly one copy of the instructions in the repository.
 
@@ -575,8 +582,8 @@ read — a broken install must degrade to a working mode, not to silence.
 ## 8. Repository structure
 
 ```text
-rightseam/
-├── skills/right-seam/SKILL.md      # the challenge, single source
+offcut/
+├── skills/offcut/SKILL.md      # the challenge, single source
 ├── AGENTS.md                       # Tier 3, generated from SKILL.md
 ├── hooks/
 │   ├── activate.js                 # session start
@@ -627,7 +634,7 @@ where they support it, and go unsupported where they do not.
 
 ## 9. Originality constraint
 
-RightSeam is an original work. Not a fork, rename, re-skin, or derivative.
+Offcut is an original work. Not a fork, rename, re-skin, or derivative.
 
 **Not permitted:** copying instruction text, phrasing, persona framing, or
 structure from another skill; copying source code from another project;
@@ -654,7 +661,7 @@ instruction text or code is rejected regardless of the source license.
 
 ```json
 {
-  "name": "right-seam",
+  "name": "offcut",
   "version": "0.1.0",
   "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
   "author": { "name": "xyzbk" },
@@ -665,7 +672,7 @@ instruction text or code is rejected regardless of the source license.
 Root `plugin.json` follows Agent Plugins 1.0: `$schema` and `name` are required;
 `version`, `description`, `author`, `homepage`, `repository`, `license`, and
 `keywords` are optional. Skills are auto-discovered from `skills/` — immediate
-children only, which `skills/right-seam/SKILL.md` satisfies.
+children only, which `skills/offcut/SKILL.md` satisfies.
 
 `.claude-plugin/marketplace.json` uses the self-rooted `"source": "./"` form,
 verified working in production.
@@ -725,7 +732,7 @@ on the conversational set.
 Hooks execute on the user's machine on every turn. That is a higher bar than an
 instruction file, and the plan states it plainly.
 
-RightSeam's hooks must:
+Offcut's hooks must:
 
 - make **no network calls**, ever,
 - **install no dependencies** — Node standard library only,
@@ -742,7 +749,7 @@ RightSeam's hooks must:
 - **contain no binaries**, so the whole surface is readable in a diff.
 
 The README states exactly which files are installed, which are created at
-runtime, and how to remove all of them. Uninstall removes only RightSeam files.
+runtime, and how to remove all of them. Uninstall removes only Offcut files.
 
 ---
 
@@ -765,7 +772,7 @@ and build the adapter from what it records rather than from the doc table.
 
 **Done when:** the probe report confirms the PascalCase schema on all three
 hosts; the mode activates on install; survives `/clear` and compaction;
-`/rightseam` switches modes and the statusline follows; the reminder fires per
+`/offcut` switches modes and the statusline follows; the reminder fires per
 §4.2 and meets §11.2's gates; every hook honors §4.6; nothing hangs; `AGENTS.md`
 regenerates from `SKILL.md` and CI fails when it is stale; no hook script
 contains a host name.
@@ -812,14 +819,14 @@ what already exists.
 
 | Command | Does | Ships in |
 |---|---|---|
-| `/right-seam review` | Applies the §4.3 signals to a diff instead of a single write | v0.3 |
-| `/right-seam audit` | Applies them across the repository, ranked | v0.3 |
-| `/right-seam help` | Modes, commands, how to turn it off | v0.3 |
+| `/offcut review` | Applies the §4.3 signals to a diff instead of a single write | v0.3 |
+| `/offcut audit` | Applies them across the repository, ranked | v0.3 |
+| `/offcut help` | Modes, commands, how to turn it off | v0.3 |
 
 **Automatic invocation is already solved — do not build it.** A skill's
 `description` is the activation mechanism: the agent reads it and fires on
-"audit this repo for bloat" with no hook involvement. RightSeam's
-`UserPromptSubmit` hook parses **explicit** `/right-seam <command>` invocations
+"audit this repo for bloat" with no hook involvement. Offcut's
+`UserPromptSubmit` hook parses **explicit** `/offcut <command>` invocations
 only. Adding intent detection there would reimplement the platform's matcher and
 cause both paths to fire on the same prompt.
 
@@ -830,11 +837,11 @@ extend §11.2's corpus to cover command activation — a command that fires on
 **On `audit` and §1.1.** The non-goal stands: the *persistent mode* never scans
 a repository. It reacts to the turn and the write in front of it. An explicit
 command is the user asking for a scan, which is a different act with a different
-cost profile. The line is who initiated it — never RightSeam on its own.
+cost profile. The line is who initiated it — never Offcut on its own.
 
 **Not in scope.** A benchmark scoreboard command needs numbers, and Phase 3 has
 not produced any; shipping one earlier is marketing ahead of evidence. A
-shortcut-harvesting command needs `rightseam:` markers (§3) to reach meaningful
+shortcut-harvesting command needs `offcut:` markers (§3) to reach meaningful
 density in real repositories first. Both are parked in §14.
 
 ### Phase 5 — Prove it changes behavior
@@ -861,12 +868,12 @@ bounded by what was measured.
 |---|---|
 | `references/` files | An eval shows the agent missing a question that more detail fixes |
 | Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient *and* latency budget allows |
-| `debt` command (harvest `rightseam:` markers) | Markers reach meaningful density in real repositories |
+| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density in real repositories |
 | `gain` command (impact scoreboard) | Phase 4 has produced numbers worth showing |
 | Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
 | Repository-wide scanning | Never — it is a different product |
 | Cross-host verification beyond Claude Code | A second host has users asking |
-| Benchmark against other tools | RightSeam has independent reproducible results first |
+| Benchmark against other tools | Offcut has independent reproducible results first |
 | Signed releases, marketplace listing | There are users to protect |
 
 ---

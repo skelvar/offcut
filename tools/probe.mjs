@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// RightSeam host probe — records what each harness actually sends to a hook.
+// Offcut host probe — records what each harness actually sends to a hook.
 //
 // Purpose: the host capability table in the plan (§5.1) is derived from vendor
 // docs. Docs drift and omit things. This probe captures the real payload from a
@@ -12,8 +12,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const LOG = process.env.RIGHTSEAM_PROBE_LOG
-  || path.join(os.homedir(), '.rightseam-probe.jsonl');
+const LOG = process.env.OFFCUT_PROBE_LOG
+  || path.join(os.homedir(), '.offcut-probe.jsonl');
 
 // Which harness are we inside? Recorded rather than assumed — the point of the
 // probe is to find out which of these actually appear.
