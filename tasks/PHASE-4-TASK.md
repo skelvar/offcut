@@ -1,6 +1,6 @@
 # Phase 4 — Commands
 
-Task specification for the implementing agent. Read this, `PHASE-2-TASK.md`
+Task specification for the implementing agent. Read this, `tasks/PHASE-2-TASK.md`
 (the signals), `HOSTS.md` (what each host can actually do), and
 `offcut-implementation-plan.md` §13 Phase 4 before writing code.
 

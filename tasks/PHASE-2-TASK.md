@@ -1,6 +1,6 @@
 # Phase 2 — Write-time enforcement
 
-Task specification for the implementing agent. Read this, `PHASE-1-TASK.md`, and
+Task specification for the implementing agent. Read this, `tasks/PHASE-1-TASK.md`, and
 `offcut-implementation-plan.md` §4.3 and §4.4 before writing code.
 
 Phase 1 is merged into `main`: the mode activates, persists, switches, reminds

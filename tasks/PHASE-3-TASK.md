@@ -1,7 +1,7 @@
 # Phase 3 — Make it real
 
-Task specification for the implementing agent. Read this, `PHASE-1-TASK.md`,
-`PHASE-2-TASK.md`, and `offcut-implementation-plan.md` §5 before writing code.
+Task specification for the implementing agent. Read this, `tasks/PHASE-1-TASK.md`,
+`tasks/PHASE-2-TASK.md`, and `offcut-implementation-plan.md` §5 before writing code.
 
 ---
 
@@ -59,7 +59,7 @@ concern, not a `host.js` concern. If you find yourself editing a hook, stop.
 
 ### 2. No Windows command variant
 
-`PHASE-1-TASK.md` asked for a Windows variant guarded on Node being present, so
+`tasks/PHASE-1-TASK.md` asked for a Windows variant guarded on Node being present, so
 a machine without Node degrades to no hooks rather than a broken session. The
 config has none, and uses `"command": "node", "args": [...]`.
 
