@@ -1,161 +1,172 @@
-# Phase 6 — Resilience audit
+# Phase 6 — Signal quality
 
-Task specification for the implementing agent. Read this, `HOSTS.md`, and
-`bench/RESULTS.md` before writing code.
+Task specification for the implementing agent. Read this and `bench/RESULTS.md`
+(especially "Every challenge issued was a false positive") before writing code.
 
 ---
 
 ## The situation
 
-Phases 1–5 are merged. 101 tests pass. The mechanism is verified on two hosts.
-Phase 5 showed no detectable effect on output, and found that on 5/5 runs the
-challenge fired and was ignored.
+Phases 1–5 are merged. The mechanism is verified: hooks fire, state is written,
+context is delivered to the model on two hosts. 101 tests pass.
 
-Every phase so far tested the **happy path**: does the hook fire, does the
-payload parse, does the context get delivered. Nobody tested what happens when
-the turn dies, the context is wiped, or the hook never starts.
+Phase 5 ran 40 paid runs and found no change in output. The reason was not that
+the challenge failed to persuade. **Every challenge it issued was wrong.**
 
-A short audit found four failures, all measured, all reproducible from a clean
-state dir. They share one root cause.
+30 signals fired across 20 `full` runs. Checked against the prompts and diffs,
+none identified real over-engineering:
 
-## The root cause
+| signal | fires | why it was wrong |
+|---|---:|---|
+| `post:exported-unused` | **20/20 runs** | flagged exports that were imported *in the same diff* |
+| `speculative-abstraction` | 5/5 ttl-cache | flagged the factory **the prompt explicitly specified** |
+| `new-file` | 5/5 shared-validate | flagged the shared module **the prompt asked for** |
 
-**Offcut's state records that a challenge was *emitted*, never that it was
-*delivered and seen*. And absence of state is indistinguishable from a healthy
-default.**
+The output did not change because the agent was **correct** to ignore the
+advice. A tool that challenges correct code is worse than one that stays quiet:
+it trains the reader to dismiss it, and then it cannot help when it is right.
 
-Everything below follows from that.
+**This phase fixes the signals or deletes them. Nothing else.**
+
+## Diagnosis — why each one fires unconditionally
+
+Read the implementations before changing them; the bug in each is small and
+specific.
+
+**`exportedUnused`** — it searches `view.corpus` when present, otherwise the
+single file being written. In the **write** context (where the hooks actually
+run) `corpus` is null, so "no caller" means "no caller *inside this one file*".
+That is true of essentially every module's public API. The code comment already
+anticipates this ("would fire on almost every export") but the corpus is only
+supplied for `diff` and `repo`.
+
+**`speculativeAbstraction`** — it treats any identifier matching `create[A-Z]\w*`
+or `\w*Factory` as a factory, then fires when it cannot find an `implements`/
+`extends` pairing. `createCache` matches on name alone. This is a naming
+convention detector, not an abstraction detector.
+
+**`new-file`** — the check is `view.pathExists === false`. It fires on every new
+file, unconditionally. It is not a heuristic; it is a constant.
+
+A signal that fires on nearly every input carries no information regardless of
+how it is worded.
 
 ---
 
-## Confirmed failures
+## You already have a free corpus — use it
 
-### 1. Suppression survives compaction — the mode goes quiet when the model forgets
+`bench/runs/` holds 40 runs with diffs, prompts, and per-run metrics, committed
+to the repo. Every task was completed correctly and passed its acceptance check.
 
-`SessionStart` re-injects the ruleset on `clear`/`compact`, but does **not**
-clear `fired-*`. Reproduced:
+**Therefore any signal firing on that corpus is a false positive, by
+construction.** That is 40 labeled negative examples, runnable in milliseconds,
+with zero model cost.
 
-```
-fire a signal        -> challenge emitted, fired-<sid> written
-SessionStart(compact) -> ruleset re-injected, fired-<sid> untouched
-fire same signal      -> SILENT
-```
+Build `bench/fp.mjs` (or extend `scan.mjs`) to replay the signal set over those
+diffs and report the false-positive rate per signal. Run it on every change.
 
-If the session id survives compaction, every signal already fired stays
-suppressed for the rest of the session — precisely when the model's memory of
-the challenge has just been erased. This is the drift problem Offcut exists to
-solve, occurring inside Offcut.
+### You must also build a positive corpus
 
-**First, measure what you are fixing.** The probe log has no `compact` or
-`clear` SessionStart events, so *whether the session id is stable across
-compaction is unverified on every host*. Capture it with `tools/probe.mjs`
-before choosing a fix — if the id always changes, the practical impact is
-smaller than it looks and the fix is still worth making for `resume`.
+Without true positives, deleting every signal scores a perfect 0% false-positive
+rate. That is the degenerate solution and the metric must make it visible.
 
-Note the asymmetry when you fix it: `clear`, `compact`, and `fork` wipe the
-model's context, so suppression should reset. `resume` restores the transcript,
-so the challenge is arguably still in context and suppression should persist.
-Use `source` to distinguish. Do not reset blindly on every `SessionStart`.
+Add `bench/corpus/positive/` — small, hand-written examples of the
+over-engineering Offcut claims to catch: an interface with one implementation
+and no second caller in sight, a genuinely dead export, a config key read
+nowhere, a wrapper around a single call, a dependency added for four lines of
+work.
 
-### 2. The statusline lies when the hooks never ran
+Write them from the failure the signal is *supposed* to catch, not from the
+regex you are about to write. If you cannot construct a convincing positive
+example for a signal, that is strong evidence the signal should be deleted.
 
-With an empty state dir — hooks never executed, node missing, plugin path wrong,
-harness silently ignored the config — `readMode()` returns `"full"` and the
-statusline prints `offcut:full`.
+**Report both numbers together, always.** A signal is only useful if it fires on
+the positive corpus and stays silent on the negative one.
 
-The badge claims protection that does not exist. This is the worst failure in
-the set because it is **actively misleading**: a user whose install is broken
-sees exactly what a working install shows.
+---
 
-`activateSession()` writes `active` on every `SessionStart`, so in normal
-operation the file always exists. **Absence genuinely means activation never
-ran**, and the statusline must say so — blank, or a distinct inactive marker,
-never a mode name.
+## Deleting a signal is a correct outcome
 
-Keep `readMode()`'s fail-safe default for the *hooks* — degrading to `full` is
-the right direction there. This is about display honesty, not enforcement.
+This is not a failure mode, it is the expected result for at least one of them.
 
-### 3. A corrupt state file is indistinguishable from a healthy default
+`new-file` in particular has no defensible form: "you created a file" is not
+evidence of anything, and the prompt often asks for the file. Unless someone can
+state a version that stays silent on `shared-validate`, delete it.
 
-`active` containing binary garbage returns `"full"`, same as absent, same as a
-real `full`. Failing safe is correct; failing *invisibly* is not. A corrupt
-state file should be detectable — at minimum by the statusline and by a
-diagnostic.
-
-### 4. A challenge lost to a dead turn is never re-issued
-
-`fired-*` is written when the challenge is emitted. If the turn dies after that
-— network drop, rate limit, user interrupt, host crash — the user never saw the
-challenge, the write never happened, and the retry is silent. Reproduced: fire,
-simulate death, fire again → nothing.
-
-Marking fired at emit time is the bug. There is no delivery receipt available
-from any host, so a perfect fix is impossible; a good fix ties suppression to
-evidence that the turn progressed, rather than to the emit itself.
+Prefer deleting a signal over weakening it into vagueness. Three signals that
+are right are worth more than nine that are ignored.
 
 ---
 
 ## Scope
 
-Fix the four above. Add a diagnostic. Do not add features.
-
 ```
-hooks/state.js       delivery-aware fired tracking; corrupt-state detection
-hooks/activate.js    reset suppression on context-wiping sources only
-hooks/statusline.*   never report a mode that was never activated
-hooks/doctor.js      new — one command that says whether Offcut is actually working
+hooks/signals.js         fix or delete; adjust the view so checks get what they need
+bench/fp.mjs             replay signals over the negative corpus, report rates
+bench/corpus/positive/   hand-written true positives, one dir per signal
+bench/SIGNALS.md         per-signal: fires-on-positive, fires-on-negative, verdict
 tests/phase6.test.js
 ```
 
-**Do NOT build:** new signals, new hosts, Cursor support, benchmark changes, or
-anything addressing Phase 5's persuasion finding. That is a product question,
-not a resilience one, and it belongs in its own phase.
+**Do NOT build:** resilience fixes (that is Phase 7), new hosts, intervention
+experiments, or any paid benchmark run. Do not tune the message wording — a
+better-phrased wrong answer is still wrong.
 
-## `hooks/doctor.js`
-
-The missing piece behind failures 2 and 3: there is no way for a user to ask
-"is this actually working?"
-
-It should report, from evidence rather than assumption: whether the state dir
-exists and is writable, whether `active` exists and parses, when activation last
-ran, which host was detected, whether the ruleset file is readable, and whether
-the hook scripts are where the installed config points.
-
-Keep it read-only and dependency-free like everything else. It is a diagnostic,
-not a repair tool.
+If a signal needs information the write context cannot provide — repo-wide
+usage, for instance — say so plainly rather than approximating it. "This is not
+decidable at write time" is a legitimate and valuable finding.
 
 ---
 
 ## Definition of done
 
-- [ ] `compact`/`clear`/`fork` reset signal suppression; `resume` does not —
-      with a test per source
-- [ ] Session-id behavior across compaction **measured** with the probe on at
-      least Claude Code, and recorded in `HOSTS.md`
-- [ ] Statusline reports nothing (or an explicit inactive marker) when `active`
-      is absent — never a mode name
-- [ ] Corrupt state is detectable by statusline and doctor; hooks still fail
-      safe to the default mode
-- [ ] Suppression is not established by emit alone; a challenge lost to a dead
-      turn can be re-issued, with a test simulating the death
-- [ ] `node hooks/doctor.js` reports honest status from evidence
-- [ ] All 101 existing tests still pass
+- [ ] False-positive rate measured per signal against the 40-run corpus, before
+      and after, recorded in `bench/SIGNALS.md`
+- [ ] A positive corpus exists per surviving signal, and each surviving signal
+      fires on it
+- [ ] `post:exported-unused` either sees the whole change or is deleted — it may
+      not ship at a 20/20 fire rate
+- [ ] `speculative-abstraction` no longer fires on name shape alone
+- [ ] `new-file` fixed or deleted, with the reasoning written down
+- [ ] Every surviving signal has both numbers published; none is kept on
+      intuition
+- [ ] All 101 existing tests pass
 - [ ] Every fix has a regression test that fails against the unfixed code
+
+---
+
+## The stopping condition
+
+State it in the PR, honestly:
+
+**If the false-positive rate does not drop sharply while at least some signals
+still fire on real over-engineering, the write-time deterministic-signal
+approach has a ceiling and the project should stop building.**
+
+Every signal in the set is a text-level pattern match against one file at one
+moment. It is entirely possible that "public API" versus "dead export", or
+"requested structure" versus "invented structure", is not decidable from that
+vantage point. If that is what the numbers show, say it.
+
+That would not be a wasted project. The probe caught three vendor
+documentations being wrong on the wire, the benchmark has blind scoring and
+published evidence, and the negative result is real and reproducible. Most tools
+in this space ship confident claims with none of that.
 
 ---
 
 ## Working agreement
 
-- Branch: `phase-6-resilience`, off current `main`. Do not merge it yourself.
+- Branch: `phase-6-signal-quality`, off current `main`. Do not merge it yourself.
 - Commit in logical steps, not one squashed commit.
 - **No AI attribution in commit messages** — no `Co-Authored-By`, no "Generated
   with" footer. Author is the repo owner alone. Hard requirement.
-- Measure before fixing where a measurement is available. Item 1 has an
-  unverified premise; the probe can settle it.
-- This project has been wrong five times by trusting something over
-  measurement — a field name, a value, a host tier, a scan that reported clean
-  without scanning, and a badge that reports healthy without checking. The
-  pattern is always the same: **absence of a signal read as success.** Look for
-  more of it while you are in here.
-- Open a PR against `main` describing what you fixed, what you measured, and
-  what remains unverified.
+- Measure first, change second. The corpus is free and instant; there is no
+  excuse for changing a signal without a before number.
+- This project has been wrong six times by reading the absence of a negative
+  signal as success — a field name, a value, a host tier, a scan that reported
+  clean without scanning, a badge that reports healthy without checking, and a
+  benchmark whose null result was actually a broken detector. Assume there is a
+  seventh in here.
+- Open a PR against `main` with the per-signal numbers in the description and a
+  plain statement of whether the approach is working.
