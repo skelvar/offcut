@@ -73,7 +73,7 @@ export function scoreDiff(diffText, workDir) {
     for (const sig of findings) {
       if (sig.id === 'exported-unused') exportedUnused += 1;
       if (sig.id === 'speculative-abstraction') abstractionLayers += 1;
-      if (sig.id === 'config-for-constant' || sig.id === 'new-config-surface') configKeys += 1;
+      if (sig.id === 'new-config-surface') configKeys += 1;
     }
 
     // Extra abstraction heuristic: new *Factory / *Provider / *Strategy / abstract class files

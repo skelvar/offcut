@@ -28,11 +28,18 @@
  *   shapes: 'full' | 'fragment' | 'both',
  *   needsContent: boolean,
  *   contexts: SignalContext[],
+ *   extensions: string[] | '*',
  *   check: (view: WriteView) => boolean,
  * }} Signal
  */
 
 export const LARGE_FIRST_WRITE_LINES = 80;
+
+/** JS/TS source extensions — structural signals reason about export/function/interface. */
+export const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'];
+
+/** Dependency manifest extensions for new-dependency. */
+export const DEP_EXTENSIONS = ['.json', '.txt', '.toml', '.mod'];
 
 const DEP_BASENAMES = new Set([
   'package.json',
@@ -194,36 +201,6 @@ function speculativeAbstraction(view) {
   return false;
 }
 
-function configForConstant(view) {
-  const text = view.addedContent || view.content || '';
-  if (!text.trim()) return false;
-
-  // New config-looking keys: KEY: value, "key": value, key = value in config-ish files.
-  const base = basenameOf(view.path).toLowerCase();
-  const configish =
-    /config|settings|\.env|constants|options/i.test(base) ||
-    /\b(?:config|settings|options)\b/i.test(view.path || '');
-
-  const keys = [];
-  for (const m of text.matchAll(/["']([A-Za-z_][\w.-]*)["']\s*:/g)) keys.push(m[1]);
-  for (const m of text.matchAll(/(?:^|[\s;])([A-Z][A-Z0-9_]+)\s*=/gm)) keys.push(m[1]);
-  for (const m of text.matchAll(/\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*)\s*=/g)) keys.push(m[1]);
-  for (const m of text.matchAll(/^\s*([a-z][\w]*)\s*[:=]\s*["'`0-9truefalse]/gm)) {
-    if (configish) keys.push(m[1]);
-  }
-  if (!keys.length) return false;
-
-  const unique = [...new Set(keys)];
-  // A key is "config for a constant" when its name never appears again as a read
-  // in the same write (beyond the declaration line).
-  for (const key of unique) {
-    const re = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-    const hits = [...text.matchAll(re)];
-    if (hits.length === 1) return true;
-  }
-  return false;
-}
-
 function exportedUnused(view) {
   // Not decidable on a single write: every module's public API looks unused
   // inside its own file. Requires a cross-file corpus (diff/repo only).
@@ -305,6 +282,8 @@ export const PRE_SIGNALS = [
     contexts: ['write', 'diff'],
     // Whole-file only: a fragment over the threshold is an edit, not a "first write".
     shapes: 'full',
+    // Line-count check is language-agnostic; still skip JSON/Markdown via '*'? Keep all text.
+    extensions: '*',
     needsContent: true,
     message: 'Offcut: large first write — name the cheapest version of this.',
     check: (view) =>
@@ -315,6 +294,7 @@ export const PRE_SIGNALS = [
     phase: 'pre',
     contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
+    extensions: DEP_EXTENSIONS,
     needsContent: true,
     message:
       'Offcut: new dependency — what does this replace that four lines could not do?',
@@ -325,20 +305,15 @@ export const PRE_SIGNALS = [
     phase: 'pre',
     contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message:
       'Offcut: one implementation — is the indirection carrying its weight?',
     check: speculativeAbstraction,
   },
-  {
-    id: 'config-for-constant',
-    phase: 'pre',
-    contexts: ['write', 'diff', 'repo'],
-    shapes: 'both',
-    needsContent: true,
-    message: 'Offcut: config for a constant — does this value ever change?',
-    check: configForConstant,
-  },
+  // config-for-constant deleted (Phase 7): syntax match on ALLCAPS / "key": fired on
+  // 47.9% of real files (100% of .json). Knowing a value is never read needs a
+  // cross-file corpus and language-aware config parsing we do not have at scan time.
 ];
 
 /** @type {Signal[]} */
@@ -349,6 +324,7 @@ export const POST_SIGNALS = [
     // Write context has no corpus — not decidable at write time (was 20/20 FP).
     contexts: ['diff', 'repo'],
     shapes: 'both',
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message:
       'Offcut: exported symbol with no caller — did anyone ask for it?',
@@ -359,6 +335,7 @@ export const POST_SIGNALS = [
     phase: 'post',
     contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message: 'Offcut: new configuration surface — was this requested?',
     check: newConfigSurface,
@@ -368,6 +345,7 @@ export const POST_SIGNALS = [
     phase: 'post',
     contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message: 'Offcut: wrapper around a single call — is the wrapper earning its keep?',
     check: singleCallWrapper,
@@ -377,6 +355,7 @@ export const POST_SIGNALS = [
     phase: 'post',
     contexts: ['write', 'diff', 'repo'],
     shapes: 'both',
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message:
       'Offcut: parameter with a default that no call site passes — was the flexibility needed?',
@@ -387,8 +366,35 @@ export const POST_SIGNALS = [
 export const ALL_SIGNALS = [...PRE_SIGNALS, ...POST_SIGNALS];
 
 /**
+ * @param {string | null | undefined} filePath
+ * @returns {string | null} lowercased extension including dot, '' if none, null if no path
+ */
+export function pathExtension(filePath) {
+  if (filePath == null || filePath === '') return null;
+  const base = basenameOf(filePath);
+  const i = base.lastIndexOf('.');
+  if (i <= 0) return '';
+  return base.slice(i).toLowerCase();
+}
+
+/**
+ * @param {Signal} signal
+ * @param {string | null | undefined} filePath
+ */
+export function extensionApplies(signal, filePath) {
+  const exts = signal?.extensions;
+  if (exts == null || exts === '*') return true;
+  if (!Array.isArray(exts)) return true;
+  if (exts.includes('*')) return true;
+  // Unknown path (some write hooks): do not suppress — check() still gates.
+  if (filePath == null || filePath === '') return true;
+  const ext = pathExtension(filePath);
+  return ext != null && exts.includes(ext);
+}
+
+/**
  * Run signals against a view. Returns findings in definition order.
- * Filters by shape, truncation, and `contexts` (default view context: write).
+ * Filters by shape, truncation, `contexts` (default: write), and `extensions`.
  *
  * @param {Signal[]} signals
  * @param {WriteView} view
@@ -402,6 +408,7 @@ export function runSignals(signals, view) {
     if (!signal || typeof signal.check !== 'function') continue;
     if (Array.isArray(signal.contexts) && !signal.contexts.includes(ctx)) continue;
     if (signal.shapes !== 'both' && signal.shapes !== view.shape) continue;
+    if (!extensionApplies(signal, view.path)) continue;
     if (signal.needsContent && view.truncated) continue;
     let hit = false;
     try {

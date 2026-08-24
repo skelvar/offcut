@@ -130,6 +130,24 @@ node scripts/scan.mjs hooks skills scripts
 Uninstall: remove the plugin / hooks config and delete `~/.offcut/`. Only Offcut
 files are involved.
 
+## Language coverage
+
+The write-time challenge is JavaScript/TypeScript only.
+
+| | |
+|---|---|
+| **Full** — reminder + write-time challenge | `.js` `.mjs` `.cjs` `.ts` `.tsx` `.jsx`, plus dependency manifests |
+| **Reminder only** — no write-time challenge | everything else: `.py` `.go` `.rs` `.rb` `.php` `.java` `.kt` `.swift` `.sh` `.sql` |
+
+The signals are syntax-level checks written against JS/TS. Run against other
+languages ungated they produced 65% false positives on Python and 100% on JSON,
+so they are gated by file extension.
+
+On a non-JS project Offcut still activates, switches modes, shows a statusline,
+and re-asks the question every turn — but it will not challenge an individual
+write. Measured 2026-08-25: a Python one-implementor `ABC` plus a single-call
+wrapper produces no challenge, where the identical TypeScript does.
+
 ## Host support matrix
 
 | Host | Status | Notes |
