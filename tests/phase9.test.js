@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
 import { fileURLToPath } from 'node:url';
 
 import { gate, normalize } from '../hooks/host.js';
