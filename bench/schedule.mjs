@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Interleaved schedule runner for Phase 5.
+// Interleaved schedule runner for Phase 5 / Phase 0.
 //
 //   node bench/schedule.mjs --stub-matrix     # dry-run: lean under off, elaborate under full (harness check)
 //   node bench/schedule.mjs --stub lean       # all cells with same stub style
 //   node bench/schedule.mjs                  # paid Claude runs (costs money)
+//   node bench/schedule.mjs --premise        # Phase 0: PREMISE_TASK_IDS × off × 3
+//   node bench/schedule.mjs --premise --stub-matrix
 //   node bench/schedule.mjs --resume-failed  # re-run cells that errored or failed accept
 //   node bench/schedule.mjs --print          # print schedule only
 
@@ -13,6 +15,9 @@ import {
   BENCH_ROOT,
   MANIFEST_PATH,
   MODEL_ID,
+  PREMISE_ARMS,
+  PREMISE_REPS,
+  PREMISE_TASK_IDS,
   RUNS_DIR,
   interleaveSchedule,
   listTaskIds,
@@ -29,6 +34,7 @@ function parseArgs(argv) {
     limit: null,
     resumeFailed: false,
     pauseMs: 0,
+    premise: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -39,6 +45,7 @@ function parseArgs(argv) {
     else if (a === '--limit') out.limit = Number(argv[++i]);
     else if (a === '--resume-failed') out.resumeFailed = true;
     else if (a === '--pause-ms') out.pauseMs = Number(argv[++i]);
+    else if (a === '--premise') out.premise = true;
   }
   return out;
 }
@@ -110,7 +117,9 @@ function prepareResume(allJobs) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  let jobs = interleaveSchedule(listTaskIds());
+  let jobs = opts.premise
+    ? interleaveSchedule(PREMISE_TASK_IDS, PREMISE_REPS, PREMISE_ARMS)
+    : interleaveSchedule(listTaskIds());
 
   if (opts.resumeFailed) {
     fs.mkdirSync(RUNS_DIR, { recursive: true });
