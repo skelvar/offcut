@@ -47,8 +47,46 @@ export const PREMISE_TASK_IDS = ['open-store', 'open-slug', 'open-cache', 'open-
 export const PREMISE_ARMS = ['off'];
 export const PREMISE_REPS = 3;
 
+// Phase 10: does justification framing beat cheapness framing?
+// Tier A = positive control (known unrequested has/delete base rate).
+// Tier B = multi-file / placement-ambiguous (where over-building plausibly lives).
+export const JUSTIFY_TIER_A_TASK_IDS = ['open-cache'];
+export const JUSTIFY_TIER_B_TASK_IDS = [
+  'spent-token',
+  'dual-alert',
+  'format-cents',
+  'assert-role',
+  'parse-row',
+];
+export const JUSTIFY_TASK_IDS = [...JUSTIFY_TIER_A_TASK_IDS, ...JUSTIFY_TIER_B_TASK_IDS];
+/** Experiment arms — not Offcut mode names. Mapped to mode+ruleset in run.mjs. */
+export const JUSTIFY_ARMS = ['off', 'cheap', 'justify'];
+export const JUSTIFY_REPS = 5;
+
 export const ARMS = ['off', 'full'];
 export const REPS = 5;
+
+/**
+ * Map a Phase 10 experiment arm onto Offcut mode + optional ruleset override.
+ * cheap/justify both run mode `full` so reminders fire; only the ruleset differs.
+ */
+export function justifyArmConfig(arm) {
+  if (arm === 'off') {
+    return { mode: 'off', rulesetPath: null, reminder: null };
+  }
+  if (arm === 'cheap') {
+    return { mode: 'full', rulesetPath: null, reminder: null };
+  }
+  if (arm === 'justify') {
+    return {
+      mode: 'full',
+      rulesetPath: path.join(REPO_ROOT, 'skills', 'offcut-justify', 'SKILL.md'),
+      reminder:
+        'OFFCUT ACTIVE — before you build: is this change justified? does it already exist here? can the platform or stdlib do it? is there a better solution? which boundary owns it?',
+    };
+  }
+  throw new Error(`bad justify arm: ${arm}`);
+}
 
 /** Exact model ID for paid runs — never a marketing alias. */
 export const MODEL_ID = 'claude-sonnet-5';

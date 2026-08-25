@@ -1,0 +1,6 @@
+{
+  "name": "format-cents-task",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}

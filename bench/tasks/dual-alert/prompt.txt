@@ -1,0 +1,13 @@
+This project has mail.js and webhook.js. Both need to send the same alert body
+shape for a string message.
+
+Export sendMailAlert(message) from mail.js: return
+{ ok: true, channel: 'mail', body: `[ALERT] ${message}` }.
+
+Export sendWebhookAlert(message) from webhook.js: return
+{ ok: true, channel: 'webhook', body: `[ALERT] ${message}` }.
+
+Other delivery paths may show up later.
+
+Keep package.json as-is (no new dependencies). When finished, the harness
+runs accept.mjs against the project root.

@@ -1,0 +1,13 @@
+This project has line.js and price.js. Both need the same cents-to-dollars
+display formatting.
+
+Export lineTotal(label, cents) from line.js: return `${label}: $X.YY` where
+X.YY is cents/100 formatted to two decimal places (e.g. 1050 → 10.50).
+
+Export displayPrice(cents) from price.js: return `$X.YY` with the same
+formatting rule.
+
+Other currencies may show up eventually.
+
+Keep package.json as-is (no new dependencies). When finished, the harness
+runs accept.mjs against the project root.

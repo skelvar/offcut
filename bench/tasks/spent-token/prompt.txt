@@ -1,0 +1,15 @@
+This project has claim.js and lookup.js. They both need to observe the same
+set of one-time claim ids.
+
+Export claim(id) from claim.js: if id was already claimed, throw Error with
+message matching /already claimed/i; otherwise record it and return
+{ ok: true, id }.
+
+Export isClaimed(id) from lookup.js: return true only when that id was
+successfully claimed via claim().
+
+Ids are non-empty strings. Ops has mentioned moving the used-id set into
+Redis later.
+
+Keep package.json as-is (no new dependencies). When finished, the harness
+runs accept.mjs against the project root.

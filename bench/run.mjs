@@ -19,12 +19,16 @@ import {
   captureDiff,
   copyTree,
   initGitRepo,
+  justifyArmConfig,
   loadTask,
   opaqueId,
   tmpName,
   writeMode,
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
+
+const LEGACY_ARMS = new Set(['off', 'full']);
+const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
 
 // Reasoning effort for paid runs. Named so the manifest can record it.
 const RUN_EFFORT = 'low';
@@ -124,10 +128,11 @@ function parseClaudeResult(stdout, status, spawnErr) {
   };
 }
 
-function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0 }) {
+function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0, envExtra = {} }) {
   const env = {
     ...process.env,
     OFFCUT_STATE_DIR: stateDir,
+    ...envExtra,
   };
   // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
   const args = [
@@ -172,7 +177,14 @@ function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0
 export function runOne(opts) {
   const { task: taskId, arm, rep, stub, model, keepWork } = opts;
   if (!taskId || !arm) throw new Error('--task and --arm required');
-  if (arm !== 'off' && arm !== 'full') throw new Error(`bad arm: ${arm}`);
+  if (!LEGACY_ARMS.has(arm) && !JUSTIFY_ARMS.has(arm)) {
+    throw new Error(`bad arm: ${arm}`);
+  }
+
+  // Phase 10 arms are experiment labels. Map to Offcut mode + optional ruleset.
+  // Legacy Phase 5/7.5 arms (off|full) write the arm string as the mode.
+  const armCfg = JUSTIFY_ARMS.has(arm) && arm !== 'off' ? justifyArmConfig(arm) : null;
+  const modeForState = armCfg ? armCfg.mode : arm === 'off' ? 'off' : arm;
 
   const task = loadTask(taskId);
   const runId = opaqueId();
@@ -203,13 +215,17 @@ export function runOne(opts) {
     effort: RUN_EFFORT,
     prompt_sha256: task.promptSha256,
     prompt_path: path.relative(BENCH_ROOT, path.join(task.dir, 'prompt.txt')).replace(/\\/g, '/'),
+    offcut_mode: modeForState,
+    ruleset_path: armCfg?.rulesetPath
+      ? path.relative(BENCH_ROOT, armCfg.rulesetPath).replace(/\\/g, '/')
+      : null,
     error: null,
     retried: false,
   };
 
   try {
     // Isolation asserts
-    writeMode(stateDir, arm);
+    writeMode(stateDir, modeForState);
     const stateFiles = fs.readdirSync(stateDir).sort();
     if (!stateFiles.includes('active') || !stateFiles.includes('default')) {
       throw new Error('state dir missing active/default after writeMode');
@@ -245,12 +261,16 @@ export function runOne(opts) {
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();
+      const envExtra = {};
+      if (armCfg?.rulesetPath) envExtra.OFFCUT_RULESET_PATH = armCfg.rulesetPath;
+      if (armCfg?.reminder) envExtra.OFFCUT_REMINDER = armCfg.reminder;
       agent = runClaude({
         workDir,
         prompt: task.prompt,
         stateDir,
         settingsPath,
         model,
+        envExtra,
       });
       record.model_id = agent.modelId || model;
     }
@@ -312,7 +332,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help || !opts.task || !opts.arm) {
     console.log(`Usage:
-  node bench/run.mjs --task <id> --arm off|full --rep N [--stub lean|elaborate] [--model ID]
+  node bench/run.mjs --task <id> --arm off|full|cheap|justify --rep N [--stub lean|elaborate] [--model ID]
 
 Opaque results land in bench/runs/<id>/. Manifest appends arm mapping to bench/manifest.jsonl.`);
     process.exit(opts.help ? 0 : 2);

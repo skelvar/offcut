@@ -1,0 +1,12 @@
+This project has import.js and preview.js. Both need to parse the same
+simple row shape.
+
+A valid row is an object with string name (non-empty) and number qty
+(finite, >= 0). Export parseImport(row) from import.js and parsePreview(row)
+from preview.js: return { name, qty } for valid rows; throw Error with
+message matching /invalid row/i otherwise.
+
+More import formats are on the roadmap.
+
+Keep package.json as-is (no new dependencies). When finished, the harness
+runs accept.mjs against the project root.

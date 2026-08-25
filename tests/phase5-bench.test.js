@@ -128,9 +128,64 @@ test('premise schedule is one arm, three reps, four tasks', async () => {
   assert.ok(jobs.every((j) => j.arm === 'off'));
 });
 
+test('justify schedule is three arms, five reps, tier A+B tasks', async () => {
+  const {
+    JUSTIFY_ARMS,
+    JUSTIFY_REPS,
+    JUSTIFY_TASK_IDS,
+    JUSTIFY_TIER_A_TASK_IDS,
+    JUSTIFY_TIER_B_TASK_IDS,
+    justifyArmConfig,
+    interleaveSchedule,
+  } = await import('../bench/lib.mjs');
+  assert.deepEqual(JUSTIFY_ARMS, ['off', 'cheap', 'justify']);
+  assert.equal(JUSTIFY_REPS, 5);
+  assert.equal(JUSTIFY_TIER_A_TASK_IDS.length, 1);
+  assert.equal(JUSTIFY_TIER_B_TASK_IDS.length, 5);
+  assert.equal(JUSTIFY_TASK_IDS.length, 6);
+  const jobs = interleaveSchedule(JUSTIFY_TASK_IDS, JUSTIFY_REPS, JUSTIFY_ARMS);
+  assert.equal(jobs.length, 90);
+  assert.equal(justifyArmConfig('off').mode, 'off');
+  assert.equal(justifyArmConfig('cheap').mode, 'full');
+  assert.equal(justifyArmConfig('cheap').rulesetPath, null);
+  assert.equal(justifyArmConfig('justify').mode, 'full');
+  assert.match(justifyArmConfig('justify').rulesetPath, /offcut-justify/);
+});
+
+test('OFFCUT_RULESET_PATH loads justify variant; reminder override works', async () => {
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const justifySkill = path.join(root, 'skills', 'offcut-justify', 'SKILL.md');
+  const prevPath = process.env.OFFCUT_RULESET_PATH;
+  const prevRem = process.env.OFFCUT_REMINDER;
+  try {
+    process.env.OFFCUT_RULESET_PATH = justifySkill;
+    process.env.OFFCUT_REMINDER = 'JUSTIFY_REMINDER_PROBE';
+    const { loadRuleset, reminderText, stripFrontmatter } = await import('../hooks/rules.js');
+    const { text, source } = loadRuleset(root);
+    assert.equal(source, 'env');
+    assert.match(text, /Is this change justified/);
+    assert.doesNotMatch(text, /What is the cheapest thing that actually works — and where does it belong\?/);
+    assert.equal(reminderText(), 'JUSTIFY_REMINDER_PROBE');
+    const cheap = stripFrontmatter(
+      await import('node:fs').then((fs) => fs.readFileSync(path.join(root, 'skills', 'offcut', 'SKILL.md'), 'utf8')),
+    );
+    const just = stripFrontmatter(
+      await import('node:fs').then((fs) => fs.readFileSync(justifySkill, 'utf8')),
+    );
+    assert.ok(Math.abs(just.length - cheap.length) / cheap.length <= 0.1);
+  } finally {
+    if (prevPath === undefined) delete process.env.OFFCUT_RULESET_PATH;
+    else process.env.OFFCUT_RULESET_PATH = prevPath;
+    if (prevRem === undefined) delete process.env.OFFCUT_REMINDER;
+    else process.env.OFFCUT_REMINDER = prevRem;
+  }
+});
+
 test('stub lean solutions pass accept for every task', async () => {
-  const { listTaskIds, PREMISE_TASK_IDS } = await import('../bench/lib.mjs');
-  const tasks = [...listTaskIds(), ...PREMISE_TASK_IDS];
+  const { listTaskIds, PREMISE_TASK_IDS, JUSTIFY_TASK_IDS } = await import('../bench/lib.mjs');
+  const tasks = [...new Set([...listTaskIds(), ...PREMISE_TASK_IDS, ...JUSTIFY_TASK_IDS])];
   assert.ok(listTaskIds().length >= 6, `expected extended fixture set, got ${listTaskIds().length}`);
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5-${id}-`));
@@ -171,8 +226,8 @@ test('stub lean solutions pass accept for every task', async () => {
 });
 
 test('stub elaborate solutions also pass accept', async () => {
-  const { listTaskIds, PREMISE_TASK_IDS } = await import('../bench/lib.mjs');
-  const tasks = [...listTaskIds(), ...PREMISE_TASK_IDS];
+  const { listTaskIds, PREMISE_TASK_IDS, JUSTIFY_TASK_IDS } = await import('../bench/lib.mjs');
+  const tasks = [...new Set([...listTaskIds(), ...PREMISE_TASK_IDS, ...JUSTIFY_TASK_IDS])];
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5e-${id}-`));
     const repo = path.join(ROOT, 'bench', 'tasks', id, 'repo');
