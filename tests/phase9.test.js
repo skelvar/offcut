@@ -285,3 +285,31 @@ test('install merges Offcut beside existing foreign hooks without dropping them'
   assert.equal(merged.PostToolUse[0].hooks[0].statusMessage, 'impeccable');
   assert.ok(isOurs(merged.PostToolUse[1], root));
 });
+
+test('change-signals do not run in repo audits', () => {
+  // new-dependency and new-config-surface ask "was this ADDED?", which needs a
+  // change to compare against. In a repo audit every package.json has
+  // dependencies and every Vite project has vite.config.js — they produced 4 of
+  // 6 findings on a real 259-file repo (sponsorsync, 2026-08-25), all wrong.
+  for (const id of ['new-dependency', 'new-config-surface']) {
+    const sig = ALL_SIGNALS.find((s) => s.id === id);
+    assert.ok(sig, `${id} missing`);
+    assert.ok(!sig.contexts.includes('repo'), `${id} must not run in repo context`);
+    assert.ok(sig.contexts.includes('diff'), `${id} must still run on a diff`);
+  }
+
+  const pkg = '{\n  "dependencies": {\n    "left-pad": "^1.0.0"\n  }\n}\n';
+  const mk = (ctx) => ({
+    path: 'package.json', content: pkg, addedContent: pkg, shape: 'full',
+    pathExists: true, truncated: false, context: ctx, corpus: pkg,
+  });
+  assert.equal(
+    runSignals(ALL_SIGNALS, mk('repo')).some((h) => h.id === 'new-dependency'),
+    false,
+    'new-dependency fired on an existing manifest in a repo audit',
+  );
+  assert.ok(
+    runSignals(ALL_SIGNALS, mk('diff')).some((h) => h.id === 'new-dependency'),
+    'new-dependency stopped firing on a diff',
+  );
+});

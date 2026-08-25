@@ -278,7 +278,11 @@ export const PRE_SIGNALS = [
   {
     id: 'new-dependency',
     phase: 'pre',
-    contexts: ['write', 'diff', 'repo'],
+    contexts: ['write', 'diff'],
+    // Not 'repo': this asks "was this ADDED?", which needs a change to
+    // compare against. In a repo audit every package.json has dependencies
+    // and every Vite project has a vite.config.js, so it fired on 4/6
+    // findings in a real 259-file repo (sponsorsync, 2026-08-25).
     shapes: 'both',
     extensions: DEP_EXTENSIONS,
     needsContent: true,
@@ -324,7 +328,11 @@ export const POST_SIGNALS = [
   {
     id: 'new-config-surface',
     phase: 'post',
-    contexts: ['write', 'diff', 'repo'],
+    contexts: ['write', 'diff'],
+    // Not 'repo': this asks "was this ADDED?", which needs a change to
+    // compare against. In a repo audit every package.json has dependencies
+    // and every Vite project has a vite.config.js, so it fired on 4/6
+    // findings in a real 259-file repo (sponsorsync, 2026-08-25).
     shapes: 'both',
     extensions: JS_EXTENSIONS,
     needsContent: true,
