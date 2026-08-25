@@ -43,7 +43,7 @@ When a justified answer knowingly cuts a real corner with a known ceiling — a 
 
 ## What never gets simplified away
 
-The challenge applies to construction, never to correctness. Never cut: understanding the problem, input validation at trust boundaries, error handling that prevents data loss, security controls, accessibility basics, or anything explicitly requested. A small diff produced without understanding the code is not justified — it is a second bug at a discount.
+The challenge applies to construction, never to correctness. The question is about construction, not about correctness. It has no authority over anything that protects a user or their data: what the system does with untrusted input, what it does when an operation fails, who is allowed to do what, whether assistive technology can operate it, and anything the request named outright. Removing any of that is not a smaller change — it is a different, worse product.
 
 ## Modes
 

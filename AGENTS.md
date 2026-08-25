@@ -25,13 +25,31 @@ Not as advice you may recall. As a question you answer before code exists.
 
 Questions 1–4 kill over-building. Question 5 keeps cheapness honest — the cheapest diff in the wrong place distributes the cost instead of removing it.
 
-## Deliberate shortcuts
+## Name the shortcuts you take on purpose
 
-When a cheap answer knowingly cuts a real corner with a known ceiling — a coarse lock, a linear scan that will not stay linear, a heuristic that holds only for current inputs — leave an `offcut:` comment naming the ceiling and what to do when it is reached. Cheap and *known* cheap is a decision. Cheap and unmarked is a landmine.
+Sometimes the right answer has a limit you already know about: a lock held
+wider than it needs to be, a lookup that walks the whole list, a rule that only
+holds for the inputs you have today. Taking that answer is fine. Leaving it
+unlabelled is not, because the next reader cannot tell a decision from an
+oversight.
 
-## What never gets simplified away
+Write an `offcut:` comment saying what the limit is and what would force a
+change:
 
-The challenge applies to construction, never to correctness. Never cut: understanding the problem, input validation at trust boundaries, error handling that prevents data loss, security controls, accessibility basics, or anything explicitly requested. A small diff produced without understanding the code is not cheap — it is a second bug at a discount.
+```js
+// offcut: one lock for the whole table; split per row if writes contend
+```
+
+## Where the question does not apply
+
+The question is about construction, not about correctness. It has no authority
+over anything that protects a user or their data: what the system does with
+untrusted input, what it does when an operation fails, who is allowed to do
+what, whether a person using assistive technology can operate it, and anything
+the request named outright.
+
+None of that is surplus, so none of it is subject to the question. Removing it
+is not a smaller change — it is a different, worse product.
 
 ## Modes
 
