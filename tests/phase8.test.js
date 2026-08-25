@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -457,4 +457,27 @@ test('pruneOnSessionEnd is exported and safe on empty dir', () => {
   return withStateDir(() => {
     pruneOnSessionEnd('nope');
   });
+});
+
+test('doctor: stale activation warns rather than reporting OK', async () => {
+  // Every SessionStart rewrites `active`, so its mtime is the last session
+  // start. A checkout moved days ago used to read OK at a 7-day threshold
+  // while the statusline kept printing a mode — hooks silently not running.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-stale-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'active'), 'full\n');
+    const p = path.join(dir, 'active');
+    const old = Date.now() / 1000 - 3 * 86400;
+    fs.utimesSync(p, old, old);
+
+    const r = spawnSync(process.execPath, [path.join(root, 'hooks', 'doctor.js')], {
+      encoding: 'utf8',
+      env: { ...process.env, OFFCUT_STATE_DIR: dir },
+    });
+    const line = (r.stdout || '').split('\n').find((l) => /activation/i.test(l)) || '';
+    assert.match(line, /^WARN/, `stale activation not flagged: ${line}`);
+    assert.match(line, /not running|stopped firing/i);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

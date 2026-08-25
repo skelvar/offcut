@@ -392,3 +392,35 @@ Subagent reply first line:
 > Offcut mode set to `lite` for this session.
 
 > Offcut default mode is now **strict** for new sessions.
+
+## Codex subagent inheritance — closed (2026-08-25)
+
+Previously retired as unverified ("same code path; no cheap headless measure").
+Measured directly with Offcut's hooks installed in `~/.codex/hooks.json`:
+
+```
+codex exec "Use your subagent/task tool to spawn one subagent whose entire task
+is: output the single token FOUND_OFFCUT if your instructions or context contain
+the word OFFCUT, otherwise output ABSENT."
+
+-> FOUND_OFFCUT
+```
+
+Status: **verified — the Codex subagent operates with Offcut context.**
+
+Honest limit: this confirms *delivery*, not *mechanism*. Whether the context
+arrived via `SubagentStart` injection or by inheriting the parent session's
+context was not isolated. For the user-facing question — does a subagent get
+coverage — the answer is yes either way.
+
+## Stale activation was graded OK (2026-08-25)
+
+`doctor` used a 7-day staleness threshold, so an install whose hooks stopped
+firing three days ago reported `OK activation: last touched 3d ago` while the
+statusline kept printing `offcut:full`.
+
+Every `SessionStart` rewrites `active`, so its mtime is the last session start.
+If doctor is running, there is a session — activation older than a long session
+means `SessionStart` did not fire for it. Threshold lowered to 24h and the
+message now says hooks are probably not running. Regression test in
+`tests/phase8.test.js`.

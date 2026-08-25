@@ -160,9 +160,10 @@ export const HOST_FACTS = Object.freeze({
     label: 'Codex',
     tier: 1,
     tierNote: 'hooks deliver additionalContext to the model',
-    subagent: 'unverified',
+    subagent: 'verified',
     subagentNote:
-      'SubagentStart hook path shared; headless measure did not observe the mode banner (2026-08-25)',
+      'Codex subagent reported FOUND_OFFCUT with hooks installed (2026-08-25). '
+      + 'Delivery confirmed; SubagentStart-vs-inherited-parent-context not isolated',
   }),
   grok: Object.freeze({
     label: 'Grok Build',

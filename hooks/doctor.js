@@ -157,13 +157,18 @@ export function runDoctor(opts = {}) {
   // 3. when activation last ran
   if (active.state === 'ok' || active.state === 'corrupt') {
     const age = formatAge(active.mtime);
-    const staleMs = 7 * 24 * 60 * 60 * 1000;
+    // Every SessionStart rewrites `active`, so its mtime is the last session
+    // start. If you are running doctor you are in a session — activation older
+    // than a long session means SessionStart did not fire for it. 7 days was
+    // far too generous: a checkout moved days ago read as OK while the
+    // statusline kept printing a mode.
+    const staleMs = 24 * 60 * 60 * 1000;
     const old = active.mtime && Date.now() - active.mtime.getTime() > staleMs;
     record(
       old ? 'warn' : 'ok',
       'activation',
       old
-        ? `last touched ${age} — hooks may have stopped firing`
+        ? `last touched ${age} — SessionStart has not fired since; hooks are probably not running`
         : `last touched ${age}`,
     );
   } else {
