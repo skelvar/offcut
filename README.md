@@ -1,234 +1,271 @@
+<div align="center">
+
 # Offcut
 
-**Ask what the cheapest thing that works is. Every turn. Before the code lands.**
+**Ask what the cheapest thing that actually works is — before the code lands.**
 
-Offcut is a persistent mode for coding agents, delivered through lifecycle hooks.
-The instruction text is the payload. The hooks are the product: the challenge is
-re-asked every turn, again before a write, and once more after — naming what was
-added that nobody asked for.
+A code-review tool that finds over-engineering, and a persistent agent mode that
+asks the question at every write.
+
+[Install](#install) · [Commands](#commands) · [What we measured](#what-we-measured) · [Honest limits](#honest-limits)
+
+</div>
+
+---
+
+An *offcut* is the material left over when something is cut to size — the piece
+nobody asked for and nobody uses. Offcut looks for those in your code.
+
+It is named after what it finds, like `lint`.
+
+```
+$ offcut audit src/
+
+src/config/loader.ts (2)
+  [speculative-abstraction] one implementation — is the indirection carrying its weight?
+  [new-config-surface]      new configuration surface — was this requested?
+src/util/wrap.ts (1)
+  [exported-unused]         exported symbol with no caller — did anyone ask for it?
+```
 
 ## Install
 
-Requires **Node.js** on `PATH`. Zero runtime dependencies.
+Offcut ships as an Agent Skill plus optional lifecycle hooks.
 
-### All three hosts (recommended)
-
-```bash
-node tools/install.mjs            # merge into Claude / Codex / Grok configs
-node tools/install.mjs --uninstall
-```
-
-The installer writes **absolute** script paths as a single `command` string
-(`node "…/hooks/….js"`). That is required: `${CLAUDE_PLUGIN_ROOT}` is not set
-for settings/hooks-dir installs, and Grok silently ignores an `args` array.
-See `HOSTS.md`. Hooks load at session start — open a **new** session after
-installing. Node.js must be on `PATH`; without it hooks fail open.
-
-### Claude Code (plugin)
+### Claude Code
 
 ```bash
-# from a clone of this repo, or add it as a marketplace
-claude plugin marketplace add ./   # or your fork URL
-claude plugin install offcut
+/plugin marketplace add xyzbk/offcut
+/plugin install offcut@offcut
 ```
 
-The plugin wires `adapters/claude/hooks.json` automatically via
-`.claude-plugin/plugin.json` (placeholder `${CLAUDE_PLUGIN_ROOT}`). Prefer
-`tools/install.mjs` when sharing one checkout across Claude settings, Codex,
-and Grok.
-
-### Skill-only hosts (no hooks)
-
-Hosts that discover Agent Skills but have no lifecycle hooks get
-`skills/offcut/SKILL.md` on demand — **not** the persistent mode. There is no
-per-turn reminder and no write-time enforcement on those hosts.
-
-`AGENTS.md` is a generated Tier-3 projection of the same challenge for agents
-that only read a project rules file.
-
-### Statusline (optional)
+### Codex
 
 ```bash
-# bash
-hooks/statusline.sh
-
-# Windows PowerShell
-powershell -NoProfile -File hooks/statusline.ps1
+git clone https://github.com/xyzbk/offcut ~/.offcut-src
+node ~/.offcut-src/tools/install.mjs
 ```
 
-Wire the script into your host's statusline setting. Output looks like
-`offcut:full`. Paths with shell metacharacters in `OFFCUT_STATE_DIR` are refused.
+### Grok Build
 
-## Modes
+Grok runs the hooks but discards their output ([why](#grok-build)). Use the
+generated ruleset instead — copy `AGENTS.md` to your repo root, and link the
+skills:
 
-| Mode | Reminder | Write-time |
-|---|---|---|
-| `full` (default) | Every turn | Challenge via context; never blocks |
-| `lite` | Every third turn | Same as full |
-| `strict` | Every turn | Same, plus human prompt on new dependencies |
-| `off` | Silent | Silent |
-
-Write-time signals (deterministic, no model call): large first write, new
-dependency, speculative abstraction, config-for-a-constant. After a write:
-new config surface, single-call wrapper, unused default param. `exported-unused`
-runs on diff/repo scans only (not decidable from a single write). `new-file` was
-deleted in Phase 6 — creating a file is not evidence of over-engineering.
-Each signal fires at most once per session. Truncated tool payloads stay silent.
-
-```text
-/offcut full
-/offcut lite
-/offcut strict
-/offcut off
-/offcut default lite    # persist for new sessions
+```bash
+mkdir -p .grok/skills
+ln -s ~/.offcut-src/skills/offcut-review .grok/skills/offcut-review
+ln -s ~/.offcut-src/skills/offcut-audit  .grok/skills/offcut-audit
 ```
 
-Deactivate: `/offcut off`, `stop offcut`, or `normal mode`.
+### Anything else
 
-State lives in `~/.offcut/` (`active`, `default`, `turn-<session>`,
-`fired-<session>`). Override with `OFFCUT_STATE_DIR` for tests.
+Copy `AGENTS.md` to your repo root. Most agents read it as always-on project
+rules. No modes, no commands, no write-time challenge — but the question is in
+context every turn.
 
-## Commands (one-shot)
+### Uninstall
 
-Commands are **not** modes. They run once, touch no Offcut state, and leave the
-mode exactly as they found it. Invoked as Agent Skills (`/offcut-review`,
-`/offcut-audit`, `/offcut-help`) — not via the `UserPromptSubmit` hook.
+```bash
+node ~/.offcut-src/tools/install.mjs --uninstall
+```
+
+Removes only Offcut's own entries; existing hooks from other plugins are
+preserved. Backups are kept as `*.offcut-backup`.
+
+## Commands
 
 | Command | Does |
 |---|---|
-| `/offcut-review` | Apply signals to a unified diff via `scripts/scan.mjs --diff` |
-| `/offcut-audit` | Apply signals across a file set / tree via `scripts/scan.mjs <paths>` |
+| `/offcut-review` | Run the signals against a diff |
+| `/offcut-audit` | Run them across a repository, ranked |
 | `/offcut-help` | Modes, commands, how to turn it off |
 
-The scanner imports the same `hooks/signals.js` definitions the write hooks use.
-Signals declare which contexts they apply to (`write` / `diff` / `repo`):
-`large-first-write` never fires in a repo audit.
-
-**Mode vs scan:** the persistent mode never initiates a repository scan. It
-reacts to the turn and the write in front of it. An explicit review/audit
-command is the user asking for a scan.
+Or use the scanner directly — no agent required:
 
 ```bash
-node scripts/scan.mjs --diff changes.diff
-node scripts/scan.mjs hooks skills scripts
+node scripts/scan.mjs src/            # audit a tree
+git diff | node scripts/scan.mjs --diff -   # review a change
 ```
 
-## What gets installed / created
+Reads only. No network, no writes, no subprocesses, zero dependencies.
 
-| Path | Role |
+## The persistent mode
+
+On hosts with lifecycle hooks, Offcut also runs as a mode: it re-asks the
+question every turn and challenges a write before the file exists.
+
+| Mode | Behavior |
 |---|---|
-| `skills/offcut/SKILL.md` | Challenge text (source of truth) |
-| `skills/offcut-review/` | Diff review command |
-| `skills/offcut-audit/` | Repo audit command |
-| `skills/offcut-help/` | Help command |
-| `scripts/scan.mjs` | Shared scanner for review/audit |
-| `hooks/*.js` | Lifecycle hooks |
-| `adapters/claude/hooks.json` | Hook wiring (Claude / Codex / Grok) |
-| `AGENTS.md` | Generated; do not hand-edit |
-| `~/.offcut/*` | Runtime mode state (created on first activate) |
+| `full` | Reminder every turn (default) |
+| `lite` | Reminder every third turn |
+| `strict` | Every turn + escalation on new dependencies |
+| `off` | Silent |
 
-Uninstall: remove the plugin / hooks config and delete `~/.offcut/`. Only Offcut
-files are involved.
+```
+/offcut lite            # this session
+/offcut default strict  # persist for new sessions
+/offcut off             # or "stop offcut"
+```
 
-## Language coverage
+**Read [Honest limits](#honest-limits) before relying on this.** We measured
+whether the mode changes what an agent builds and could not show that it does.
 
-The write-time challenge is JavaScript/TypeScript only.
+## The signals
+
+Six checks, each one a text-level fact about the code in front of it. No model
+call, no network, under 0.02ms per evaluation.
+
+| Signal | Fires when |
+|---|---|
+| `speculative-abstraction` | an interface or abstract class has exactly one implementor |
+| `new-dependency` | a dependency manifest gains a package |
+| `new-config-surface` | a config system appears where a constant would do |
+| `config-for-constant` | *deleted — fired on 47.9% of real files* |
+| `unused-default-param` | a parameter has a default no call site passes |
+| `large-first-write` | a new file lands over the line threshold |
+| `exported-unused` | an export has no caller anywhere in the repo |
+| `single-call-wrapper` | *deleted — matched the pattern, but the pattern was not a defect* |
+| `new-file` | *deleted — `pathExists === false` is a constant, not a heuristic* |
+
+Three signals were deleted on evidence. That is the process working.
+
+## What we measured
+
+Every number here is reproducible from this repository.
+
+### Detector accuracy
+
+```bash
+node bench/fp.mjs        # labeled negatives
+node bench/realcode.mjs  # real third-party code
+```
+
+| Corpus | What it is | Result |
+|---|---|---|
+| **Labeled negatives** | 95 accepted benchmark solutions — any fire is definitively wrong | **0/95** — every signal, write and diff context |
+| **Real code** | 6,793 files across 19 published projects | **1.3%** of files produce a finding |
+| **Positive corpus** | hand-written true positives, one per signal | every shipping signal fires |
+
+Both numbers matter together. A detector can score 0 on labeled negatives by
+never firing; the positive corpus is what prevents that.
+
+### Host verification
+
+A host is listed only when a challenge was **observed in a real transcript**.
+Installing successfully is not verification.
+
+| Host | Status |
+|---|---|
+| Claude Code | Full mode — verified 2026-08-24 |
+| Codex | Full mode — verified 2026-08-24 |
+| Grok Build | Commands work; mode does not ([why](#grok-build)) |
+| ChatGPT and other skill hosts | Skill only — no persistent mode |
+| Cursor | **Untested** |
+
+### Cost of the evidence
+
+132 paid agent runs, $22.74, all raw transcripts and diffs committed under
+`bench/runs/`.
+
+## Honest limits
+
+This section exists because most tools in this space do not have one.
+
+### We could not show the mode changes what agents build
+
+Two benchmarks, 120 paid runs. Neither could demonstrate that a challenge
+changes the output.
+
+Then we tested the assumption underneath — *do agents over-build at all?* —
+with a rubric committed before any run:
+
+> 12 runs, four deliberately vague prompts, hand-judged.
+> **Zero produced the structural over-engineering Offcut detects.**
+
+On a task written to invite an interface, the agent wrote a `Map` and two
+methods. On one written to invite a wrapper layer, it wrote four lines.
+
+**So the persistent mode is unproven.** Not disproven — unproven, on this class
+of work, for one model. The `/offcut-review` and `/offcut-audit` commands stand
+on their own: you invoke them deliberately, and the accuracy numbers above are
+what they deliver.
+
+### The one thing we did find, we cannot detect
+
+Two of three cache runs nearly doubled their code by adding unrequested `has()`
+and `delete()` methods. That is real over-building — of **scope**, not
+structure.
+
+Offcut fires **nothing** on it. Every signal models structural over-engineering;
+none models "more API than the request asked for."
+
+Full write-up: [`bench/PREMISE.md`](bench/PREMISE.md).
+
+### Language coverage is a cliff
+
+The write-time challenge is **JavaScript/TypeScript only**. The signals are
+syntax-level checks; ungated they produced 65% false positives on Python and
+100% on JSON, so they are gated by file extension.
 
 | | |
 |---|---|
-| **Full** — reminder + write-time challenge | `.js` `.mjs` `.cjs` `.ts` `.tsx` `.jsx`, plus dependency manifests |
-| **Reminder only** — no write-time challenge | everything else: `.py` `.go` `.rs` `.rb` `.php` `.java` `.kt` `.swift` `.sh` `.sql` |
+| Full | `.js` `.mjs` `.cjs` `.ts` `.tsx` `.jsx` + dependency manifests |
+| Reminder only | everything else |
 
-The signals are syntax-level checks written against JS/TS. Run against other
-languages ungated they produced 65% false positives on Python and 100% on JSON,
-so they are gated by file extension.
+On a Python project Offcut still activates, switches modes, and re-asks the
+question — but it will not challenge an individual write.
 
-On a non-JS project Offcut still activates, switches modes, shows a statusline,
-and re-asks the question every turn — but it will not challenge an individual
-write. Measured 2026-08-25: a Python one-implementor `ABC` plus a single-call
-wrapper produces no challenge, where the identical TypeScript does.
+### Grok Build
 
-## Host support matrix
-
-| Host | Status | Notes |
-|---|---|---|
-| Claude Code | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
-| Codex | Tier 1 — measured 2026-08-24 | Full mode. Challenge observed in a real transcript |
-| Grok Build | **Tier 3** mode; **commands work** — measured 2026-08-24 | Hooks discard output; `AGENTS.md` for ruleset. Skills under `.grok/skills/` are discovered (see below) |
-| Cursor | **Untested** | Deferred; different config schema |
-| ChatGPT / other skill hosts | Tier 2 — skill only | No persistent mode |
-| Other AGENTS.md readers | Tier 3 — instructions only | Generated file |
-
-A host is listed as supported only when a challenge was **observed in a real
-transcript**. Installing successfully is not verification, and vendor
-documentation is not either — Grok's payload dialect contradicts its own config
-docs, and its delivery behavior contradicts the tier we assumed.
-
-### Grok Build is Tier 3, not Tier 1
-
-Offcut's hooks install and run correctly on Grok — state is written, signals
-fire, the statusline updates. **The model never sees any of it.** Grok's own
-hook documentation says so:
+Offcut's hooks install and run on Grok. **The model never sees their output.**
+Grok's own documentation:
 
 > `UserPromptSubmit` is observe-only: grok ignores its exit code and its stdout
 
-> For events like `SessionStart` or `PostToolUse`, stdout is ignored. Just exit
-> 0 on success.
+> For events like `SessionStart` or `PostToolUse`, stdout is ignored.
 
-That removes the session ruleset, the per-turn reminder, and the post-write
-check. Only `PreToolUse` reads stdout, and there only a `deny` decision is
-reliably honored — which Offcut never issues by design.
+Only `PreToolUse` reads stdout, and only a `deny` is reliably honored — which
+Offcut never issues by design. Use `AGENTS.md` and the command skills instead.
 
-Measured 2026-08-24: hook fired, `fired-… = ["new-file"]` written to state,
-model replied `NO_OFFCUT_CHALLENGE`. A direct context probe replied `NO_CTX`.
+### No comparison to other tools
 
-**What to use instead for the mode:** Grok auto-loads `AGENTS.md` as project
-rules, and Offcut generates that file. You get the always-on ruleset, without
-modes or write-time challenges. Put `AGENTS.md` at your repo root — no hook
-configuration needed.
+Offcut has not been benchmarked against ponytail or any similar tool. The
+four-arm comparison was planned and never run, so there is no basis for
+claiming it improves on anything. If that comparison happens, the numbers will
+be published here whichever way they fall.
 
-**Commands on Grok:** skills are different from hooks — the agent loads them
-directly, so nothing depends on hook stdout. Measured 2026-08-24 with
-`grok inspect --json`: skills linked under `.grok/skills/` appear as
-`source=project` with `userInvocable=true` (`offcut-review`, `offcut-audit`,
-`offcut-help`). Bare repo-root `skills/` is **not** auto-discovered by Grok.
-Wire them with directory junctions/symlinks into `.grok/skills/`, or add the
-repo `skills/` directory to `[skills].paths` in `~/.grok/config.toml`. See
-`HOSTS.md`.
+## How it works
 
-## Does it change what the agent builds?
+```
+SessionStart   ─→  write mode file, emit the ruleset
+UserPromptSubmit ─→  re-ask the question (~60 tokens)
+PreToolUse     ─→  run signals on the pending write, challenge via context
+PostToolUse    ─→  name what got added
+SubagentStart  ─→  subagents inherit the mode
+```
 
-**No — not as a persistent write-time mode.** Phase 7.5 re-ran the benchmark on
-Claude Code with model `claude-sonnet-5` against the corrected detector (eight
-tasks, arms `off` vs `full`, five runs each). Challenges that fired almost
-always left the flagged pattern in the final diff (4 survived / 1 cleared among
-passed full runs with a challenge). Size medians did not move. Details:
-`bench/RESULTS.md`. Phase 5's earlier null result is archived in
-`bench/RESULTS-phase5.md` — it measured a broken detector and is not evidence
-about the current build.
+One config file installs on Claude Code, Codex, and Grok. Host differences —
+two payload dialects, four tool-name spellings, three subagent field
+conventions — are normalized in `hooks/host.js`; no hook script contains a host
+name, and CI enforces that.
 
-The honest product on this evidence is a **review/audit tool** (`/offcut-review`,
-`/offcut-audit`), not a mode that changes what the agent ships. Re-run with
-`node bench/schedule.mjs` (costs model money; dry-run with `--stub-matrix` first).
+Every hook exits 0 on malformed input, empty stdin, a BOM, and stdin that never
+closes. A hook that hangs freezes a session, so that case is tested explicitly.
 
 ## Develop
 
 ```bash
-node --test tests/*.test.js
-node scripts/build-agents-md.js
-node scripts/scan.mjs --diff - < changes.diff
+node --test tests/*.test.js   # 127 tests
+node bench/fp.mjs             # labeled corpus
+node bench/realcode.mjs       # real-code corpus
+node scripts/scan.mjs hooks   # dogfood
 ```
 
-## Security
+Zero runtime dependencies, Node standard library only.
 
-**Hooks** make no network calls, install no dependencies, spawn no subprocesses,
-read only the state file and ruleset, and write only the state file / session
-markers. No binaries ship in the plugin.
-
-**Commands** are user-invoked and may read the repository because that is what
-the user asked for. `scripts/scan.mjs` still makes no network calls, modifies no
-files, spawns no subprocesses, and does not touch Offcut state. The persistent
-mode never initiates a scan on its own.
+Design and full history: [`offcut-implementation-plan.md`](offcut-implementation-plan.md).
+Per-phase specs: [`tasks/`](tasks/).
 
 ## License
 
