@@ -649,6 +649,286 @@ export function unusedGreetingHelpers(prefix = 'Hi') {
       );
     },
   },
+
+  'open-store': {
+    lean: () => {
+      write(
+        'store.js',
+        `export function createStore() {
+  const data = new Map();
+  return {
+    set(key, value) {
+      data.set(key, value);
+    },
+    get(key) {
+      return data.get(key);
+    },
+  };
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'store/types.js',
+        `/** @typedef {{ set(key: string, value: string): void, get(key: string): string | undefined }} Store */
+export class AbstractStore {
+  set(_key, _value) { throw new Error('abstract'); }
+  get(_key) { throw new Error('abstract'); }
+}
+`,
+      );
+      write(
+        'store/MemoryStore.js',
+        `import { AbstractStore } from './types.js';
+
+export class MemoryStore extends AbstractStore {
+  constructor() {
+    super();
+    this.data = new Map();
+  }
+  set(key, value) { this.data.set(key, value); }
+  get(key) { return this.data.get(key); }
+}
+`,
+      );
+      write(
+        'store.js',
+        `import { MemoryStore } from './store/MemoryStore.js';
+import { AbstractStore } from './store/types.js';
+
+export { AbstractStore, MemoryStore };
+
+export function createStoreFactory() {
+  return () => new MemoryStore();
+}
+
+export const createStore = createStoreFactory();
+
+export function unusedStoreMetrics() {
+  return { size: 0 };
+}
+`,
+      );
+    },
+  },
+
+  'open-slug': {
+    lean: () => {
+      write(
+        'slug.js',
+        `export function slugify(text) {
+  if (typeof text !== 'string') throw new TypeError('text must be a string');
+  return text
+    .toLowerCase()
+    .replace(/\\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'package.json',
+        JSON.stringify(
+          {
+            name: 'open-slug-task',
+            private: true,
+            type: 'module',
+            engines: { node: '>=18' },
+            dependencies: {
+              slugify: '^1.6.6',
+            },
+          },
+          null,
+          2,
+        ),
+      );
+      write(
+        'slug/Slugifier.js',
+        `export class Slugifier {
+  slugify(text) {
+    if (typeof text !== 'string') throw new TypeError('text must be a string');
+    return text
+      .toLowerCase()
+      .replace(/\\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+}
+export function createSlugifier() {
+  return new Slugifier();
+}
+`,
+      );
+      write(
+        'slug.js',
+        `import { createSlugifier } from './slug/Slugifier.js';
+
+const defaultSlugifier = createSlugifier();
+
+export function slugify(text) {
+  return defaultSlugifier.slugify(text);
+}
+
+export function unusedSlugPreview(text) {
+  return slugify(text);
+}
+`,
+      );
+    },
+  },
+
+  'open-cache': {
+    lean: () => {
+      write(
+        'cache.js',
+        `export function createCache() {
+  const store = new Map();
+  return {
+    set(key, value, ttlMs) {
+      store.set(key, { value, expires: Date.now() + ttlMs });
+    },
+    get(key) {
+      const e = store.get(key);
+      if (!e) return undefined;
+      if (Date.now() > e.expires) {
+        store.delete(key);
+        return undefined;
+      }
+      return e.value;
+    },
+  };
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'cache/Clock.js',
+        `export class Clock { now() { return Date.now(); } }
+export class SystemClock extends Clock {}
+export function createClock() { return new SystemClock(); }
+`,
+      );
+      write(
+        'cache/Entry.js',
+        `export class CacheEntry {
+  constructor(value, expiresAt) {
+    this.value = value;
+    this.expiresAt = expiresAt;
+  }
+  isExpired(now) { return now > this.expiresAt; }
+}
+`,
+      );
+      write(
+        'cache.js',
+        `import { createClock } from './cache/Clock.js';
+import { CacheEntry } from './cache/Entry.js';
+
+export function createCacheFactory(deps = {}) {
+  const clock = deps.clock || createClock();
+  return function createCache(options = {}) {
+    const store = new Map();
+    const defaultTtlMs = options.defaultTtlMs ?? 1000;
+    return {
+      set(key, value, ttlMs = defaultTtlMs) {
+        store.set(key, new CacheEntry(value, clock.now() + ttlMs));
+      },
+      get(key) {
+        const e = store.get(key);
+        if (!e) return undefined;
+        if (e.isExpired(clock.now())) {
+          store.delete(key);
+          return undefined;
+        }
+        return e.value;
+      },
+    };
+  };
+}
+
+export const createCache = createCacheFactory();
+export function unusedCacheMetrics() { return { hits: 0, misses: 0 }; }
+`,
+      );
+      write(
+        'cache.config.json',
+        JSON.stringify(
+          {
+            defaultTtlMs: 1000,
+            eviction: 'ttl',
+            maxEntries: 10000,
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  },
+
+  'open-report': {
+    lean: () => {
+      write(
+        'report.js',
+        `export function report(message) {
+  return \`[report] \${message}\`;
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'report/Formatter.js',
+        `export class ReportFormatter {
+  format(message) {
+    return \`[report] \${message}\`;
+  }
+}
+export function createReportFormatter() {
+  return new ReportFormatter();
+}
+`,
+      );
+      write(
+        'report/ReportManager.js',
+        `import { createReportFormatter } from './Formatter.js';
+
+export class ReportManager {
+  constructor(formatter = createReportFormatter()) {
+    this.formatter = formatter;
+  }
+  report(message) {
+    return this.formatter.format(message);
+  }
+}
+
+export function createReportManager() {
+  return new ReportManager();
+}
+`,
+      );
+      write(
+        'report.js',
+        `import { createReportManager } from './report/ReportManager.js';
+
+const defaultManager = createReportManager();
+
+export function report(message) {
+  return defaultManager.report(message);
+}
+
+export function buildReportFacade() {
+  return { report, createReportManager };
+}
+`,
+      );
+    },
+  },
 };
 
 function write(rel, content) {

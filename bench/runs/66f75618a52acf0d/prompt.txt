@@ -1,0 +1,9 @@
+We need a way to cache expensive lookups in cache.js for this Node project.
+
+Callers should be able to store a value and read it back, and entries should
+not live forever — when setting a value, the caller says how many milliseconds
+it should last. Export createCache(). Some of the services that will use this
+are noisier than others.
+
+Keep package.json as-is (no new dependencies). When finished, the harness runs
+accept.mjs against the project root.

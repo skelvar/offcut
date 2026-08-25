@@ -42,6 +42,11 @@ export const INVITE_TASK_IDS = [
   'greet-opts',
 ];
 
+// Phase 0 premise: vague prompts, single arm. Not part of the two-arm TASK_IDS grid.
+export const PREMISE_TASK_IDS = ['open-store', 'open-slug', 'open-cache', 'open-report'];
+export const PREMISE_ARMS = ['off'];
+export const PREMISE_REPS = 3;
+
 export const ARMS = ['off', 'full'];
 export const REPS = 5;
 

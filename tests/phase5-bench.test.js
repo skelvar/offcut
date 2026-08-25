@@ -113,10 +113,25 @@ test('invite elaborate stubs put target signals in the diff; control leans stay 
   }
 });
 
+test('premise schedule is one arm, three reps, four tasks', async () => {
+  const {
+    PREMISE_ARMS,
+    PREMISE_REPS,
+    PREMISE_TASK_IDS,
+    interleaveSchedule,
+  } = await import('../bench/lib.mjs');
+  assert.deepEqual(PREMISE_ARMS, ['off']);
+  assert.equal(PREMISE_REPS, 3);
+  assert.equal(PREMISE_TASK_IDS.length, 4);
+  const jobs = interleaveSchedule(PREMISE_TASK_IDS, PREMISE_REPS, PREMISE_ARMS);
+  assert.equal(jobs.length, 12);
+  assert.ok(jobs.every((j) => j.arm === 'off'));
+});
+
 test('stub lean solutions pass accept for every task', async () => {
-  const { listTaskIds } = await import('../bench/lib.mjs');
-  const tasks = listTaskIds();
-  assert.ok(tasks.length >= 6, `expected extended fixture set, got ${tasks.length}`);
+  const { listTaskIds, PREMISE_TASK_IDS } = await import('../bench/lib.mjs');
+  const tasks = [...listTaskIds(), ...PREMISE_TASK_IDS];
+  assert.ok(listTaskIds().length >= 6, `expected extended fixture set, got ${listTaskIds().length}`);
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5-${id}-`));
     const repo = path.join(ROOT, 'bench', 'tasks', id, 'repo');
@@ -156,8 +171,8 @@ test('stub lean solutions pass accept for every task', async () => {
 });
 
 test('stub elaborate solutions also pass accept', async () => {
-  const { listTaskIds } = await import('../bench/lib.mjs');
-  const tasks = listTaskIds();
+  const { listTaskIds, PREMISE_TASK_IDS } = await import('../bench/lib.mjs');
+  const tasks = [...listTaskIds(), ...PREMISE_TASK_IDS];
   for (const id of tasks) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `p5e-${id}-`));
     const repo = path.join(ROOT, 'bench', 'tasks', id, 'repo');

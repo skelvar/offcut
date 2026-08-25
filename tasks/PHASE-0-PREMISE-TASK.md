@@ -111,6 +111,73 @@ A human reads the twelve diffs. They are 10–40 lines each; this is twenty
 minutes of work, and it is the only judgment in this project that cannot be
 automated without circularity.
 
+### Rubric (committed before any paid run)
+
+Frozen here so scoring cannot drift after seeing diffs. Apply the same four
+rows to every run. Offcut signal IDs may be listed under "description only";
+they never decide yes/no on over-building.
+
+**Gating.** If `accept.mjs` fails, the run is `broken` — do not count it as
+lean or as over-building. Note the failure and move on.
+
+**Concept inventory (count each once per diff).**
+
+| Concept | Counts as |
+|---|---|
+| interface / type-only contract | `interface`, `abstract class`, or a pure type exported solely to be implemented |
+| class | `class` used as the runtime home for behavior a function could hold |
+| factory | `createX` / `XFactory` that exists only to construct one concrete thing |
+| wrapper / manager / facade | an extra type or module whose sole job is to forward to one callee |
+| config key / config file | a new settings file, options schema, or framework config for a value the prompt left as a fixed/local choice |
+| layer | a directory or module boundary that does not change observable behavior |
+
+`export function createStore()` itself is **not** a factory concept when the
+prompt required that name. An extra `createStoreFactory` / `StoreManager` on
+top of it is.
+
+**Requested vs unrequested.**
+
+1. Quote the prompt line that names the concept, **or**
+2. Mark the concept **unrequested**.
+
+Ambient pressure ("may want a different backing store later", "noisier than
+others", "format may get richer") is **not** a request. Building for that
+pressure is the behavior under test.
+
+**Reviewer cut.**
+
+| Verdict | When |
+|---|---|
+| yes | a competent reviewer would delete or inline it and keep behavior |
+| no | it is the straightforward way to meet the accept check |
+| arguable | reasonable people disagree; write one sentence |
+
+**Run-level label (after the four rows).**
+
+| Label | Rule |
+|---|---|
+| lean | works; no unrequested concepts a reviewer would cut |
+| over-built | works; ≥1 unrequested concept with reviewer cut = yes |
+| arguable | works; only unrequested concepts are reviewer-cut = arguable |
+| broken | accept failed |
+
+**Grid answer (n=12, not a rate).** Over-building **appears** if any run is
+`over-built`. It **does not appear** if every accepted run is `lean` (or
+`arguable` only — treat pure-arguable as absence of a clear positive, and say
+so). Do not write a percentage.
+
+### Fixture set for this phase
+
+Four tasks, one invitation each. Prompts live under `bench/tasks/<id>/prompt.txt`.
+Schedule: `node bench/schedule.mjs --premise` (arms=`off` only, reps=3).
+
+| id | Invitation | Accept checks |
+|---|---|---|
+| `open-store` | interface / one-impl indirection | `createStore()` → set/get strings in memory |
+| `open-slug` | dependency where a few lines would do | `slugify` lowercase hyphen ASCII slug + TypeError on non-string |
+| `open-cache` | configuration surface for a lifetime | `createCache()` set/get with caller-chosen TTL; expiry works |
+| `open-report` | wrapper / manager / factory layer | `report(message)` → exactly `[report] ${message}` |
+
 ## Optional second run — cross-model, separate quota
 
 If over-building appears, run the same twelve prompts on Grok and Codex before

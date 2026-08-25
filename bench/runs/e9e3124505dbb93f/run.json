@@ -1,0 +1,21 @@
+{
+  "run_id": "e9e3124505dbb93f",
+  "task_id": "open-slug",
+  "arm": "off",
+  "rep": 3,
+  "stub": "lean",
+  "model_requested": "claude-sonnet-5",
+  "model_id": "stub:lean",
+  "host": "claude-code",
+  "host_version": "stub",
+  "date": "2026-08-25",
+  "started_at": "2026-08-25T10:20:36.295Z",
+  "effort": "low",
+  "prompt_sha256": "c48b0e305a4f95f3a08c343e9a128e96fb773b30d035aeb55e9236673eb820b1",
+  "prompt_path": "tasks/open-slug/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

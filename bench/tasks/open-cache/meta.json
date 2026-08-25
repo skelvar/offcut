@@ -1,0 +1,6 @@
+{
+  "id": "open-cache",
+  "title": "Lookup cache with lifetime (open prompt)",
+  "family": "premise-vague",
+  "invite": "config-surface"
+}
