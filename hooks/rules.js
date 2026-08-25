@@ -43,13 +43,47 @@ export function stripFrontmatter(text) {
 }
 
 /**
+ * Bench override path: OFFCUT_RULESET_PATH env, or `ruleset-path` file under
+ * OFFCUT_STATE_DIR (hooks already read this dir; hosts may drop arbitrary env).
+ */
+function resolveRulesetOverride() {
+  if (process.env.OFFCUT_RULESET_PATH) return process.env.OFFCUT_RULESET_PATH;
+  try {
+    const dir = process.env.OFFCUT_STATE_DIR;
+    if (!dir) return null;
+    const marker = path.join(dir, 'ruleset-path');
+    if (!fs.existsSync(marker)) return null;
+    const p = fs.readFileSync(marker, 'utf8').replace(/^\uFEFF/, '').trim();
+    return p || null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveReminderOverride() {
+  if (process.env.OFFCUT_REMINDER && String(process.env.OFFCUT_REMINDER).trim()) {
+    return String(process.env.OFFCUT_REMINDER).trim();
+  }
+  try {
+    const dir = process.env.OFFCUT_STATE_DIR;
+    if (!dir) return null;
+    const marker = path.join(dir, 'reminder');
+    if (!fs.existsSync(marker)) return null;
+    const t = fs.readFileSync(marker, 'utf8').replace(/^\uFEFF/, '').trim();
+    return t || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load the challenge body from SKILL.md, or the hardcoded fallback.
- * Bench override: OFFCUT_RULESET_PATH points at a variant file (Phase 10 justify arm).
+ * Bench override: OFFCUT_RULESET_PATH or state-dir `ruleset-path` (Phase 10).
  * @param {string} [root]
  * @returns {{ text: string, source: 'file' | 'fallback' | 'env' }}
  */
 export function loadRuleset(root = pluginRoot()) {
-  const override = process.env.OFFCUT_RULESET_PATH;
+  const override = resolveRulesetOverride();
   if (override) {
     try {
       const raw = fs.readFileSync(override, 'utf8');
@@ -71,11 +105,11 @@ export function loadRuleset(root = pluginRoot()) {
 }
 
 /**
- * Compact per-turn reminder. Bench override: OFFCUT_REMINDER.
+ * Compact per-turn reminder. Bench override: OFFCUT_REMINDER or state-dir file.
  */
 export function reminderText() {
-  const override = process.env.OFFCUT_REMINDER;
-  if (override && String(override).trim()) return String(override).trim();
+  const override = resolveReminderOverride();
+  if (override) return override;
   return REMINDER;
 }
 

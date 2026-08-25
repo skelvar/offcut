@@ -23,6 +23,7 @@ import {
   loadTask,
   opaqueId,
   tmpName,
+  writeArmOverrides,
   writeMode,
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
@@ -226,6 +227,12 @@ export function runOne(opts) {
   try {
     // Isolation asserts
     writeMode(stateDir, modeForState);
+    if (armCfg) {
+      writeArmOverrides(stateDir, {
+        rulesetPath: armCfg.rulesetPath,
+        reminder: armCfg.reminder,
+      });
+    }
     const stateFiles = fs.readdirSync(stateDir).sort();
     if (!stateFiles.includes('active') || !stateFiles.includes('default')) {
       throw new Error('state dir missing active/default after writeMode');

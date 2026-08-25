@@ -153,6 +153,16 @@ export function writeMode(stateDir, mode) {
   fs.writeFileSync(path.join(stateDir, 'default'), `${mode}\n`, 'utf8');
 }
 
+/** Phase 10: pin variant ruleset/reminder into the per-run state dir. */
+export function writeArmOverrides(stateDir, { rulesetPath = null, reminder = null } = {}) {
+  if (rulesetPath) {
+    fs.writeFileSync(path.join(stateDir, 'ruleset-path'), `${rulesetPath}\n`, 'utf8');
+  }
+  if (reminder) {
+    fs.writeFileSync(path.join(stateDir, 'reminder'), `${reminder}\n`, 'utf8');
+  }
+}
+
 /** Per-run Claude settings with absolute Offcut hook commands. */
 export function buildHooksSettings() {
   const hooks = {};
