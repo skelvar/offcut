@@ -23,6 +23,12 @@ Mark deliberate shortcuts with an \`offcut:\` comment naming the ceiling and wha
 
 export const REMINDER = `OFFCUT ACTIVE — before you build: does it need to exist? does it already exist here? can the platform or stdlib do it? what is the cheapest thing that works? which boundary owns it?`;
 
+/** Justify-arm compact reminder — same length class as REMINDER; framing only differs. */
+export const JUSTIFY_REMINDER = `OFFCUT ACTIVE — before you build: is this change justified? does it already exist here? can the platform or stdlib do it? is there a better solution? which boundary owns it?`;
+
+/** Framing-neutral session footer so cheap vs justify differs only in the ruleset body. */
+export const SESSION_FOOTER = `Answer the challenge before you build. Prefer the platform and standard library. Leave an \`offcut:\` comment when a deliberate shortcut knowingly cuts a corner.`;
+
 /**
  * Strip YAML frontmatter from a markdown skill file.
  * @param {string} text
@@ -38,10 +44,21 @@ export function stripFrontmatter(text) {
 
 /**
  * Load the challenge body from SKILL.md, or the hardcoded fallback.
+ * Bench override: OFFCUT_RULESET_PATH points at a variant file (Phase 10 justify arm).
  * @param {string} [root]
- * @returns {{ text: string, source: 'file' | 'fallback' }}
+ * @returns {{ text: string, source: 'file' | 'fallback' | 'env' }}
  */
 export function loadRuleset(root = pluginRoot()) {
+  const override = process.env.OFFCUT_RULESET_PATH;
+  if (override) {
+    try {
+      const raw = fs.readFileSync(override, 'utf8');
+      const body = stripFrontmatter(raw);
+      if (body) return { text: body, source: 'env' };
+    } catch {
+      // fall through to shipped skill
+    }
+  }
   const skillPath = path.join(root, 'skills', 'offcut', 'SKILL.md');
   try {
     const raw = fs.readFileSync(skillPath, 'utf8');
@@ -54,17 +71,23 @@ export function loadRuleset(root = pluginRoot()) {
 }
 
 /**
+ * Compact per-turn reminder. Bench override: OFFCUT_REMINDER.
+ */
+export function reminderText() {
+  const override = process.env.OFFCUT_REMINDER;
+  if (override && String(override).trim()) return String(override).trim();
+  return REMINDER;
+}
+
+/**
  * Full context block emitted at session start / subagent start.
  * @param {string} mode
  * @param {string} [root]
  */
 export function sessionContext(mode, root = pluginRoot()) {
   const { text } = loadRuleset(root);
-  return [
-    `OFFCUT MODE: ${mode}`,
-    '',
-    text,
-    '',
-    'Answer the challenge before you build. Prefer the platform and standard library. Leave an `offcut:` comment when a cheap answer knowingly cuts a corner.',
-  ].join('\n');
+  const footer =
+    (process.env.OFFCUT_SESSION_FOOTER && String(process.env.OFFCUT_SESSION_FOOTER).trim()) ||
+    SESSION_FOOTER;
+  return [`OFFCUT MODE: ${mode}`, '', text, '', footer].join('\n');
 }

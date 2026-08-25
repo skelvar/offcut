@@ -14,7 +14,9 @@ import {
   confirmPendingSignals,
   clearPendingSignals,
 } from './state.js';
-import { REMINDER } from './rules.js';
+import { reminderText } from './rules.js';
+
+export { reminderText };
 
 /**
  * @param {string} prompt
@@ -75,10 +77,6 @@ export function shouldRemind(mode, command, sessionId = null, bump = bumpTurn) {
   }
   // full, strict
   return true;
-}
-
-export function reminderText() {
-  return REMINDER;
 }
 
 export async function handlePrompt(norm) {
