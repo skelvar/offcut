@@ -76,11 +76,12 @@ const PASCAL = {
   PostToolUse: [pascalGroup('PostToolUse', 'Write|Edit')],
 };
 
-const isOurs = (o) => {
+/** True when a hook group was written by this installer (tag or our script path). */
+export function isOurs(o, root = ROOT) {
   const s = JSON.stringify(o);
   if (s.includes(TAG)) return true;
-  return Object.values(SCRIPTS).some((rel) => s.includes(absScript(rel)));
-};
+  return Object.values(SCRIPTS).some((rel) => s.includes(absScript(rel, root)));
+}
 
 function readJson(p) {
   try {
@@ -97,10 +98,20 @@ function backup(p) {
   return 'backed up';
 }
 
-function mergeHooks(target, spec) {
+/**
+ * Merge Offcut groups into an existing hooks map without replacing foreign ones.
+ * Pure — uninstall is an argument so tests can exercise both directions.
+ * @param {Record<string, object[]>} target
+ * @param {Record<string, object[]>} spec
+ * @param {{ uninstall?: boolean, root?: string }} [opts]
+ */
+export function mergeHooks(target, spec, opts = {}) {
+  const remove = Boolean(opts.uninstall);
+  const root = opts.root || ROOT;
+  const ours = (o) => isOurs(o, root);
   for (const [event, groups] of Object.entries(spec)) {
-    const kept = (target[event] || []).filter((g) => !isOurs(g));
-    const merged = uninstall ? kept : [...kept, ...groups];
+    const kept = (target[event] || []).filter((g) => !ours(g));
+    const merged = remove ? kept : [...kept, ...groups];
     if (merged.length) target[event] = merged;
     else delete target[event];
   }
@@ -136,7 +147,7 @@ function main() {
     path.join(HOME, '.claude', 'settings.json'),
     (cur) => {
       const s = cur || {};
-      s.hooks = mergeHooks(s.hooks || {}, PASCAL);
+      s.hooks = mergeHooks(s.hooks || {}, PASCAL, { uninstall });
       if (!Object.keys(s.hooks).length) delete s.hooks;
       return s;
     },
@@ -148,7 +159,7 @@ function main() {
     path.join(HOME, '.codex', 'hooks.json'),
     (cur) => {
       const s = cur || {};
-      s.hooks = mergeHooks(s.hooks || {}, PASCAL);
+      s.hooks = mergeHooks(s.hooks || {}, PASCAL, { uninstall });
       return s;
     },
     path.join(HOME, '.codex'),
