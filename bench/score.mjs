@@ -39,7 +39,14 @@ export function extractFiredSignals(stateAfter) {
       const raw = String(val ?? '').replace(/^\uFEFF/, '').trim();
       if (!raw) continue;
       const parsed = JSON.parse(raw);
+      // Legacy: bare array. Phase 8+: { confirmed, pending }.
       if (Array.isArray(parsed)) list = parsed;
+      else if (parsed && typeof parsed === 'object') {
+        list = [
+          ...(Array.isArray(parsed.confirmed) ? parsed.confirmed : []),
+          ...(Array.isArray(parsed.pending) ? parsed.pending : []),
+        ];
+      }
     } catch {
       continue;
     }
