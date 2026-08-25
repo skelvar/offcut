@@ -314,3 +314,28 @@ test('change-signals do not run in repo audits', () => {
     'new-dependency stopped firing on a diff',
   );
 });
+
+test('new-dependency: an npm script is not a dependency', () => {
+  // Found auditing a real repo (sponsorsync f6a73e8): adding
+  // "check:taxonomy": "node scripts/check-taxonomy.mjs" was reported as a new
+  // dependency. A dependency value is a version spec; a script is a command.
+  const mk = (line) => ({
+    path: 'package.json', content: line, addedContent: line, shape: 'fragment',
+    pathExists: true, truncated: false, context: 'diff', corpus: line,
+  });
+  const fires = (line) =>
+    runSignals(ALL_SIGNALS, mk(line)).some((h) => h.id === 'new-dependency');
+
+  assert.equal(fires('    "check:taxonomy": "node scripts/check-taxonomy.mjs",\n'), false);
+  assert.equal(fires('    "build": "vite build",\n'), false);
+  assert.equal(fires('    "test": "node --test tests/*.test.js",\n'), false);
+
+  for (const real of [
+    '    "left-pad": "^1.0.0",\n',
+    '    "zod": "3.22.4",\n',
+    '    "pkg": "~2.1.0",\n',
+    '    "internal": "workspace:*",\n',
+  ]) {
+    assert.ok(fires(real), `stopped catching a real dependency: ${real.trim()}`);
+  }
+});

@@ -145,7 +145,11 @@ function looksLikeNewDependency(view) {
     // A dependencies/devDependencies block gaining a package line.
     if (!/"dependencies"|"devDependencies"|"peerDependencies"|"optionalDependencies"/.test(text)) {
       // Fragment may be just the new package line inside an existing block.
-      return /^\s*"[^"]+"\s*:\s*"[^"]+"\s*,?\s*$/m.test(text) && !/"name"|"version"|"scripts"/.test(text)
+      // The value must look like a version spec, not a shell command: a diff
+      // adding `"check:taxonomy": "node scripts/check-taxonomy.mjs"` is a new
+      // npm script, and was reported as a new dependency (sponsorsync, f6a73e8).
+      const VERSIONISH = /^\s*"[^"]+"\s*:\s*"(?:[\^~>=<]|\d|\*|latest|next|workspace:|npm:|file:|link:|git\+|https?:)[^"]*"\s*,?\s*$/m;
+      return VERSIONISH.test(text) && !/"name"|"version"|"scripts"/.test(text)
         ? true
         : /"(?:dependencies|devDependencies)"\s*:\s*\{[\s\S]*?"[^"]+"\s*:\s*"[^"]+"/.test(text);
     }
