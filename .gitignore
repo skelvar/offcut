@@ -18,3 +18,6 @@ bench/schedule-last.json
 bench/paid-schedule.log
 bench/paid-resume.log
 
+# scratch produced by host probes and worktrees — never part of the product
+.phase*-*
+.worktrees/
