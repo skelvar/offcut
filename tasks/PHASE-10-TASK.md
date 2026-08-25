@@ -131,6 +131,81 @@ its own framing works is circular twice over.
 
 **Blind scoring.** `score.mjs` must not read the arm.
 
+### Rubric (committed before any paid run)
+
+Frozen here so scoring cannot drift after seeing diffs. Apply the same rows to
+every run. Offcut signal IDs may be listed under "description only"; they never
+decide yes/no on unjustified building.
+
+**Gating.** If `accept.mjs` fails, the run is `broken` — do not count it as
+lean or as unjustified. Note the failure and move on. A leaner broken solution
+is not a win.
+
+**Primary — unrequested public surface.** Count methods, exports, options, or
+parameters on a returned/exported API that the prompt did not name. Ambient
+pressure ("noisier than others", "may want X later") is **not** a request.
+
+For Tier A `open-cache`, the known target is unrequested `has` / `delete` on
+the object returned by `createCache()`. The prompt asked for store, read back,
+and caller-chosen TTL on set — nothing else.
+
+**Primary — unrequested structure.** Count each once per diff (Phase 0
+inventory):
+
+| Concept | Counts as |
+|---|---|
+| interface / type-only contract | `interface`, `abstract class`, or a pure type exported solely to be implemented |
+| class | `class` used as the runtime home for behavior a function could hold |
+| factory | `createX` / `XFactory` that exists only to construct one concrete thing |
+| wrapper / manager / facade | an extra type or module whose sole job is to forward to one callee |
+| config key / config file | a new settings file, options schema, or framework config for a value the prompt left as a fixed/local choice |
+| layer | a directory or module boundary that does not change observable behavior |
+
+An entry point the prompt required by name (e.g. `createCache`) is **not** a
+factory concept. An extra `CacheManager` / `createCacheFactory` on top of it is.
+
+**Requested vs unrequested.** Quote the prompt line that names the thing, or
+mark it **unrequested**.
+
+**Secondary — rationale (mechanism check).** From the transcript / final
+response only:
+
+| Field | Rule |
+|---|---|
+| rationale_present | yes if the agent states why it built (or skipped) something; else no |
+| cites_concrete | yes if that rationale cites a file, caller, accept check, or prompt line; "seems cleaner" alone is no |
+
+Record these for every arm. If `justify` wins on primary outcomes while
+`rationale_present` stays near zero, the framing explanation is wrong.
+
+**Run-level label (after the rows).**
+
+| Label | Rule |
+|---|---|
+| lean | works; no unrequested surface a reviewer would cut; no unrequested structure with reviewer-cut = yes |
+| scope-over | works; unrequested public surface (e.g. `has`/`delete`) with reviewer-cut = yes; no structural concepts |
+| over-built | works; ≥1 unrequested structure concept with reviewer-cut = yes |
+| arguable | works; only unrequested items are reviewer-cut = arguable |
+| broken | accept failed |
+
+**Arm comparison (n=5 per cell).** Report rates and full distributions, not
+means of best runs. Five reps notice a large effect and cannot claim a small
+one — say so. Failed accepts are listed separately and never averaged into
+surface/structure rates.
+
+**Grid answer.** Does `justify` change what the agent builds **more than**
+`cheap` does, relative to `off`? Answer with the data, including "no".
+
+### Fixture plan
+
+| Tier | Tasks | Arms | Reps | Role |
+|---|---|---|---:|---|
+| A | `open-cache` (known 2/3 `has`/`delete` base rate) | off, cheap, justify | 5 | positive control |
+| B | 5 multi-file / placement-ambiguous fixtures | off, cheap, justify | 5 | whether the problem exists at real task size |
+
+Schedule: `node bench/schedule.mjs --justify` (and `--justify --stub-matrix`
+before any paid call).
+
 ---
 
 ## Definition of done
