@@ -308,7 +308,12 @@ export const POST_SIGNALS = [
     id: 'exported-unused',
     phase: 'post',
     // Write context has no corpus — not decidable at write time (was 20/20 FP).
-    contexts: ['diff', 'repo'],
+    // Not 'diff' either: a newly added export has no caller *inside the diff*,
+    // so this fired on 27.4% of accepted solutions in diff context (measured
+    // 2026-08-25) — every new public function. Same root cause, one context
+    // over. Only a repo audit has enough corpus for the question to be
+    // decidable at all.
+    contexts: ['repo'],
     shapes: 'both',
     extensions: JS_EXTENSIONS,
     needsContent: true,

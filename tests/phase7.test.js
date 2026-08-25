@@ -258,3 +258,25 @@ test('corpus: git internals are not treated as projects', () => {
   const bad = inputs.filter((i) => /(^|@)\.git$/.test(i.name) || i.name.endsWith('@.git'));
   assert.deepEqual(bad, [], 'a .git dir was scanned as a project');
 });
+
+test('exported-unused is repo-only: a new export in a diff is not dead code', () => {
+  // Measured 2026-08-25: in diff context this fired on 27.4% of ACCEPTED
+  // solutions — a newly added export has no caller inside the diff, which is
+  // true of every new public function. Same root cause as the write-time
+  // 20/20 bug, one context over.
+  const sig = ALL_SIGNALS.find((s) => s.id === 'exported-unused');
+  assert.deepEqual(sig.contexts, ['repo'], 'exported-unused must not run on write or diff');
+
+  const added = 'export function brandNew() { return 1 }\n';
+  const mk = (ctx) => ({
+    path: 'a.js', content: added, addedContent: added, shape: 'full',
+    pathExists: false, truncated: false, context: ctx, corpus: added,
+  });
+  for (const ctx of ['write', 'diff']) {
+    assert.equal(
+      runSignals(ALL_SIGNALS, mk(ctx)).some((h) => h.id === 'exported-unused'),
+      false,
+      `exported-unused fired in ${ctx} context`,
+    );
+  }
+});
