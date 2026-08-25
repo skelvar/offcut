@@ -333,28 +333,74 @@ SessionStarts — absence of the event had been read as "probably fine."
 
 ---
 
+## Phase 9 — end-to-end lifecycle (2026-08-25)
+
+Re-walked Claude (control), Codex, and Grok against the full lifecycle.
+Evidence under `bench/phase9-evidence/`. Coexistence details: [`COEXIST.md`](COEXIST.md).
+
+### Method notes discovered this phase
+
+1. **Codex write hooks need trust.** Without trusted hooks (or
+   `--dangerously-bypass-hook-trust`), `codex exec` SessionStart/UserPromptSubmit
+   may still complete while PreToolUse/PostToolUse stay silent — no `fired-*`,
+   model reports `NO_CHALLENGE`. With trust bypass: `PreToolUse Completed`,
+   model `CHALLENGE_SEEN`, `fired-*` written.
+2. **Matcher must include `apply_patch`.** Codex's write tool is `apply_patch`.
+   `Write|Edit` alone left PreToolUse uninvoked (probe after Phase 9 fix:
+   `TRUST-PRE tool=apply_patch`). Installer + `adapters/claude/hooks.json` now
+   use `Write|Edit|apply_patch`.
+3. **Claude `bypassPermissions` skipped write challenges** in one run; 
+   `--permission-mode acceptEdits` delivered `CHALLENGE_SEEN`. Prefer acceptEdits
+   (or default) when measuring PreToolUse.
+4. **SessionEnd was deleting `fired-*`**, so `codex exec resume` always
+   re-challenged. Fixed: SessionEnd now prunes `turn-*` only; `fired-*` ages out
+   via the 7-day orphan prune. After the fix: `fired` survived exec exit;
+   resume reported `SECOND_QUIET`.
+
+### End-to-end matrix (Phase 9)
+
+| Step | Claude 2.1.243 | Codex 0.149.1 | Grok 1.0.5 |
+|---|---|---|---|
+| install | **pass** — `install.mjs` from worktree | **pass** — beside impeccable | **pass** — `~/.grok/hooks/offcut-hooks.json` |
+| activation | **pass** — `active=full`; SessionStart | **pass** — `SessionStart Completed`; `active` rewritten | **pass** — state written |
+| per-turn reminder | **pass** — quoted `OFFCUT ACTIVE — before you build…` | **pass** — quoted on resume turn | **fail** — model `NO_REMINDER` (stdout discarded) |
+| write challenge | **pass** — `CHALLENGE_SEEN` + quote (`claude-challenge2.txt`) | **pass** — `CHALLENGE_SEEN` with hook trust (`codex-trust.txt`) | **fail** — not delivered |
+| suppression | **pass** — `SECOND_QUIET` same session (`claude-suppress.txt`) | **pass** after SessionEnd fix — resume `SECOND_QUIET` (`codex-resume2-*.txt`) | **pass** (state only) |
+| compact / clear | **pass** — Phase 8 probe `source=compact`, session id stable; activate resets suppression | **unverified live** — no headless compact trigger; same `activate.js` + unit tests for `source=compact` | **unverified live** — Tier 3 |
+| resume | prior Phase 8: SessionStart(resume) keeps suppression | **pass** — same session id; `fired-*` kept across exec SessionEnd; `SECOND_QUIET` | unverified (no delivery) |
+| dead turn | unit + Claude path (Phase 8) | **same code path** — `tests/phase8.test.js` re-issue; live interrupt not forced | state-only |
+| subagent | **pass** — `FOUND_OFFCUT` (`claude-subagent.txt`) | **pass** — `FOUND_OFFCUT` (`codex-suppress-subagent.txt`) | **unsupported** |
+| mode switch | phrase / plugin; `-p /offcut` still CLI-intercepted | **pass** — model set lite; `active=lite`; default strict | **pass** — `/offcut lite` → `active=lite` |
+| statusline | **pass** — `offcut:full` | — | — |
+| doctor | **pass** — reports all three hosts (`doctor.txt`) | same | same (tier 3 WARN) |
+| uninstall | **pass** | **pass** — impeccable kept (`codex-hooks-after-uninstall.json`) | **pass** |
+| `/offcut-audit` | n/a this pass | n/a | **pass** — `AUDIT_RAN` with scanner findings on `hooks/` (`grok-audit.txt`) |
+
+---
+
 ## Checklist
 
-| Check | Claude 2.1.240 | Codex 0.149.1 | Grok 1.0.5 |
+| Check | Claude 2.1.243 | Codex 0.149.1 | Grok 1.0.5 |
 |---|---|---|---|
 | Plugin/hooks install | **pass** (`install.mjs` + `plugin install offcut@offcut`) | **pass** | **pass** |
 | Path resolution | **pass** (absolute settings; **plugin `${CLAUDE_PLUGIN_ROOT}` measured**) | **pass** | **pass** |
 | Windows / command form | **pass** (`node "…"`) | **pass** | **pass** (args fail) |
 | Mode activates | **pass** (`active=full`) | **pass** | **pass** (state written; context not delivered) |
-| Reminder appears | **pass** (quoted verbatim) | not separately quoted | **fail** (stdout ignored) |
+| Reminder appears | **pass** (quoted verbatim) | **pass** (quoted on resume) | **fail** (stdout ignored) |
 | `/offcut` mode switch | **partial** (`stop offcut` works; `-p /offcut` CLI-intercepted) | **pass** | **pass** (`active=lite` via `grok -p`) |
 | `/offcut default` survives restart | **retired** (CLI intercept; state machine proven on Codex) | **pass** (default strict → activate) | **pass** (default persists; `-p` SessionStart re-seed unobserved) |
-| Over-engineered write → challenge | **pass** (transcript) | **pass** (transcript) | **fail** (fires silently; no model delivery) |
-| Once-per-session suppression | **pass** (`fired-*` state) | **pass** (`fired-*`) | **pass** (state only) |
-| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | **unverified** (banner not observed in headless spawn) | **unsupported** (hook stdout discarded) |
+| Over-engineered write → challenge | **pass** (transcript) | **pass** (with hook trust; matcher includes `apply_patch`) | **fail** (fires silently; no model delivery) |
+| Once-per-session suppression | **pass** (`SECOND_QUIET`) | **pass** (resume `SECOND_QUIET` after SessionEnd keeps `fired-*`) | **pass** (state only) |
+| Subagent inheritance | **pass** (`FOUND_OFFCUT`) | **pass** (`FOUND_OFFCUT`) | **unsupported** (hook stdout discarded) |
 | Statusline (Windows) | **pass** (`offcut:full`; absent→`offcut:-`; corrupt→`offcut:!`) | — | — |
 | `/clear` preserves mode | **pass** (activate source=`clear`) | same activate path | same activate path |
-| Compaction preserves mode | **pass** (activate source=`compact`; **session id stable** — Phase 8 probe) | same activate path | same activate path |
+| Compaction preserves mode | **pass** (activate source=`compact`; **session id stable** — Phase 8 probe) | **unverified live** (no headless compact); unit path shared | unverified live |
 | Session id across compact | **stable** (probe 2026-08-25) | unmeasured | unmeasured |
 | Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
 | `permissionDecision` settled | **ask** blocks in `-p`; escalate ignored | **ask/escalate non-blocking** in exec; context works | context-only |
 | Truncation threshold | — | — | **retired** (unforceable; synthetic only) |
-| Command skills discovered | plugin `skills/` | — | **pass** via `.grok/skills/` junctions (`grok inspect`); bare `skills/` miss |
+| Command skills discovered | plugin `skills/` | — | **pass** via `.grok/skills/` junctions; **`/offcut-audit` ran E2E** (`AUDIT_RAN`) |
+| Multi-`additionalContext` | **both survive** (Phase 9) | **both survive** (Phase 9) | N/A (none delivered) |
 
 ---
 

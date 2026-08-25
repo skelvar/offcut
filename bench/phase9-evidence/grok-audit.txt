@@ -1,0 +1,15 @@
+## Offcut audit ΓÇö `hooks`
+
+```
+hooks/signals.js (2)
+  [exported-unused] Offcut: exported symbol with no caller ΓÇö did anyone ask for it?
+  [new-config-surface] Offcut: new configuration surface ΓÇö was this requested?
+hooks/state.js (1)
+  [exported-unused] Offcut: exported symbol with no caller ΓÇö did anyone ask for it?
+```
+
+### Themes
+- **Unused exports** ΓÇö `hooks/signals.js` and `hooks/state.js` both expose symbols with no callers in the scan corpus
+- **Config surface** ΓÇö `hooks/signals.js` introduces a new configuration surface
+
+AUDIT_RAN

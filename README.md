@@ -229,10 +229,23 @@ Only `PreToolUse` reads stdout, and only a `deny` is reliably honored — which
 Offcut never issues by design. Use `AGENTS.md` and the command skills instead.
 
 **Subagent inheritance on Grok is unsupported** for the same reason — the
-`SubagentStart` banner cannot reach the child. On Codex, hook-banner inheritance
-is **unverified** (a headless spawn reached project docs but not the Offcut
-mode banner). Claude Code is the measured pass. `node hooks/doctor.js` reports
-each host's subagent line separately.
+`SubagentStart` banner cannot reach the child. Claude Code and Codex both
+report `FOUND_OFFCUT` from a spawned subagent (Phase 9). `node hooks/doctor.js`
+reports each host's subagent line separately.
+
+### Running beside other plugins
+
+**Safe on Claude Code and Codex.** Two hooks returning `additionalContext` on
+the same event both reach the model — Offcut is not silently suppressed by a
+neighbour. Offcut never emits `allow`/`deny` that could clear another plugin's
+deny. Uninstall removes only Offcut's entries.
+
+Full measurements: [`COEXIST.md`](COEXIST.md). Caveats: Codex headless exec
+needs trusted hooks (or `--dangerously-bypass-hook-trust`); a neighbour that
+denies *first* may short-circuit Offcut's write challenge while still blocking
+the write; say "Offcut" or `/offcut-review` when both Offcut and ponytail are
+installed (generic "review for over-engineering" routes to ponytail after
+Phase 9 description sharpening).
 
 ### Is it working right now?
 
@@ -257,11 +270,11 @@ be published here whichever way they fall.
 ```
 SessionStart   ─→  write mode file, emit the ruleset
                  (clear/compact/fork also reset challenge suppression)
-SessionEnd     ─→  prune this session's turn-*/fired-* state
+SessionEnd     ─→  prune this session's turn-* ; fired-* ages out (7d)
 UserPromptSubmit ─→  re-ask the question (~60 tokens)
 PreToolUse     ─→  run signals on the pending write, challenge via context
 PostToolUse    ─→  name what got added; confirm prior challenges delivered
-SubagentStart  ─→  subagents inherit the mode (Claude verified; see limits)
+SubagentStart  ─→  subagents inherit the mode (Claude + Codex verified)
 ```
 
 One config file installs on Claude Code, Codex, and Grok. Host differences —
@@ -275,7 +288,7 @@ closes. A hook that hangs freezes a session, so that case is tested explicitly.
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 152 tests
+node --test tests/*.test.js   # 161 tests
 node hooks/doctor.js          # is the install actually working?
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus

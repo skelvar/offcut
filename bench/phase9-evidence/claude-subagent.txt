@@ -1,0 +1,7 @@
+Subagent reply, verbatim:
+
+```
+FOUND_OFFCUT
+```
+
+Claude Code general-purpose subagents inherit the OFFCUT banner (0 tool uses ΓÇö it read it straight from context, not from disk).

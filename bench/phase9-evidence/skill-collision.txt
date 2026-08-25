@@ -1,0 +1,7 @@
+SKILL=both
+
+Both descriptions match "review this diff for over-engineering" nearly verbatim:
+- `offcut-review` ΓÇö "Use when the user asks to review a diff for over-engineering, bloat, speculative abstractions" (`skills/offcut-review/SKILL.md:5-6`)
+- `ponytail-review` ΓÇö "Use when the user says 'review for over-engineering', 'what can we delete', 'is this over-engineered'"
+
+The phrase is a collision point for the two installed twins; nothing in either description disambiguates on "diff" vs. repo-wide (that's what separates each from its `-audit` sibling, not from each other).

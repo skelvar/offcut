@@ -1,0 +1,9 @@
+SECOND_QUIET ΓÇö no hook context on the second write.
+
+Summary:
+1. Write #1 ΓåÆ challenged: `Offcut: one implementation ΓÇö is the indirection carrying its weight?`
+2. `CHALLENGE_SEEN`
+3. Write #2 (same file, `//2` added) ΓåÆ no hook output
+4. `SECOND_QUIET`
+
+Suppression held across the repeat write in the same turn.
