@@ -1,0 +1,21 @@
+{
+  "run_id": "33e653876f29e3ce",
+  "task_id": "open-report",
+  "arm": "off",
+  "rep": 2,
+  "stub": null,
+  "model_requested": "claude-sonnet-5",
+  "model_id": "claude-sonnet-5",
+  "host": "claude-code",
+  "host_version": "2.1.243 (Claude Code)",
+  "date": "2026-08-25",
+  "started_at": "2026-08-25T10:22:57.187Z",
+  "effort": "low",
+  "prompt_sha256": "f0844d34e9af75dbbffd15c613b0f4c7d5feabef7c76500f06561bf905764fcf",
+  "prompt_path": "tasks/open-report/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": false
+  }
+}

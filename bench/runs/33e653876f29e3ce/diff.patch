@@ -1,0 +1,13 @@
+diff --git a/report.js b/report.js
+index c7f7119..8282848 100644
+--- a/report.js
++++ b/report.js
+@@ -1,4 +1,5 @@
+-// TODO: implement report()
+-export function report(message) {
+-  throw new Error('not implemented');
++function report(message) {
++  return `[report] ${message}`;
+ }
++
++module.exports = { report };
