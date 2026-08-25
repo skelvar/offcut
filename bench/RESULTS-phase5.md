@@ -273,5 +273,5 @@ output smaller or simpler under these prompts on Claude Code + `claude-sonnet-5`
   pause to finish under the limit. Arms stayed interleaved, so the arm
   comparison remains paired; absolute style may differ across early vs late
   reps.
-- Host recorded as Claude Code **2.1.241** (HOSTS.md Phase 3 used 2.1.240).
+- Host recorded as Claude Code **2.1.241** (docs/development/HOSTS.md Phase 3 used 2.1.240).
 - Model ID recorded exactly: **`claude-sonnet-5`** (not a marketing alias).

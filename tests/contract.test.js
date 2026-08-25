@@ -207,7 +207,7 @@ test('contract: adapters/claude/hooks.json wires SessionStart matcher and script
   ]) {
     const hook = cfg.hooks[event][0].hooks[0];
     assert.equal(hook.type, 'command');
-    // Single-string command — Grok silently ignores an `args` array (HOSTS.md).
+    // Single-string command — Grok silently ignores an `args` array (docs/development/HOSTS.md).
     assert.equal(hook.args, undefined);
     assert.match(hook.command, /^node "/);
     const rel = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/)?.[1];

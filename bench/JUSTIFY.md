@@ -11,6 +11,19 @@ arms 5/5**. Do not ship the reframe as the default ruleset on this evidence.
 
 Offcut signals fired on **zero** runs (description only — never the verdict).
 
+
+> **Raw runs for this experiment were not committed.** The 90 run ids cited
+> below do not resolve to directories under `bench/runs/` — the results commit
+> contains zero run artifacts, and the worktree they lived in has been removed.
+> They are not recoverable.
+>
+> Every other experiment in this repository publishes its raw diffs and
+> transcripts; this one does not, so **the tables below are the only record**
+> and cannot be independently re-derived. That is a weaker evidentiary standard
+> than Phases 0, 5 and 7.5, and it is stated here rather than left for a reader
+> to discover. Future paid grids must commit `bench/runs/` before the results
+> document.
+
 ## Run metadata
 
 | | |

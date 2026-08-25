@@ -59,7 +59,7 @@ asking for a scan.
 
 ## Hosts (short)
 
-- Claude Code / Codex: hooks deliver the persistent mode (see `HOSTS.md`).
+- Claude Code / Codex: hooks deliver the persistent mode (see `docs/development/HOSTS.md`).
 - Grok Build: hooks run but discard the output Offcut needs — use `AGENTS.md`
   for the ruleset. Command skills may still work when discovered (see README /
-  `HOSTS.md`).
+  `docs/development/HOSTS.md`).

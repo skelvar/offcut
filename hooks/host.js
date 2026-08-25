@@ -144,7 +144,7 @@ export function pluginRoot() {
 
 /**
  * Measured host facts for doctor — delivery tier and subagent inheritance.
- * Update HOSTS.md when these change. Kept here so other hook scripts stay
+ * Update docs/development/HOSTS.md when these change. Kept here so other hook scripts stay
  * host-name-free (contract test).
  */
 export const HOST_FACTS = Object.freeze({
