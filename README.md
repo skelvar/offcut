@@ -248,4 +248,4 @@ findings are under [`docs/development/`](docs/development/).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 xyzbk.
