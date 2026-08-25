@@ -848,6 +848,18 @@ export function createCacheFactory(deps = {}) {
         }
         return e.value;
       },
+      has(key) {
+        const e = store.get(key);
+        if (!e) return false;
+        if (e.isExpired(clock.now())) {
+          store.delete(key);
+          return false;
+        }
+        return true;
+      },
+      delete(key) {
+        store.delete(key);
+      },
     };
   };
 }
@@ -926,6 +938,550 @@ export function buildReportFacade() {
   return { report, createReportManager };
 }
 `,
+      );
+    },
+  },
+
+  'spent-token': {
+    lean: () => {
+      write(
+        'claimed.js',
+        `export const claimed = new Set();
+`,
+      );
+      write(
+        'claim.js',
+        `import { claimed } from './claimed.js';
+
+export function claim(id) {
+  if (claimed.has(id)) throw new Error('already claimed');
+  claimed.add(id);
+  return { ok: true, id };
+}
+`,
+      );
+      write(
+        'lookup.js',
+        `import { claimed } from './claimed.js';
+
+export function isClaimed(id) {
+  return claimed.has(id);
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'store/ClaimStore.js',
+        `export class ClaimStore {
+  has(_id) { throw new Error('abstract'); }
+  add(_id) { throw new Error('abstract'); }
+}
+`,
+      );
+      write(
+        'store/MemoryClaimStore.js',
+        `import { ClaimStore } from './ClaimStore.js';
+
+export class MemoryClaimStore extends ClaimStore {
+  constructor() {
+    super();
+    this._ids = new Set();
+  }
+  has(id) { return this._ids.has(id); }
+  add(id) { this._ids.add(id); }
+}
+
+export function createMemoryClaimStore() {
+  return new MemoryClaimStore();
+}
+
+export function unusedRedisClaimStore() {
+  return {
+    has() { return false; },
+    add() {},
+  };
+}
+`,
+      );
+      write(
+        'store/ClaimStoreFactory.js',
+        `import { createMemoryClaimStore } from './MemoryClaimStore.js';
+
+const shared = createMemoryClaimStore();
+
+export function createClaimStoreFactory(deps = {}) {
+  return function createClaimStore() {
+    return deps.store || shared;
+  };
+}
+
+export const createClaimStore = createClaimStoreFactory();
+`,
+      );
+      write(
+        'claim.js',
+        `import { createClaimStore } from './store/ClaimStoreFactory.js';
+
+const store = createClaimStore();
+
+export function claim(id) {
+  if (store.has(id)) throw new Error('already claimed');
+  store.add(id);
+  return { ok: true, id };
+}
+
+export function getClaimStore() { return store; }
+`,
+      );
+      write(
+        'lookup.js',
+        `import { createClaimStore } from './store/ClaimStoreFactory.js';
+
+const store = createClaimStore();
+
+export function isClaimed(id) {
+  return store.has(id);
+}
+`,
+      );
+      write(
+        'claim.config.json',
+        JSON.stringify(
+          {
+            backend: 'memory',
+            redisUrl: null,
+            maxIds: 100000,
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  },
+
+  'dual-alert': {
+    lean: () => {
+      write(
+        'mail.js',
+        `export function sendMailAlert(message) {
+  return { ok: true, channel: 'mail', body: \`[ALERT] \${message}\` };
+}
+`,
+      );
+      write(
+        'webhook.js',
+        `export function sendWebhookAlert(message) {
+  return { ok: true, channel: 'webhook', body: \`[ALERT] \${message}\` };
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'alert/AlertChannel.js',
+        `export class AlertChannel {
+  send(_message) { throw new Error('abstract'); }
+}
+`,
+      );
+      write(
+        'alert/MailChannel.js',
+        `import { AlertChannel } from './AlertChannel.js';
+
+export class MailChannel extends AlertChannel {
+  send(message) {
+    return { ok: true, channel: 'mail', body: \`[ALERT] \${message}\` };
+  }
+}
+export function createMailChannel() { return new MailChannel(); }
+`,
+      );
+      write(
+        'alert/WebhookChannel.js',
+        `import { AlertChannel } from './AlertChannel.js';
+
+export class WebhookChannel extends AlertChannel {
+  send(message) {
+    return { ok: true, channel: 'webhook', body: \`[ALERT] \${message}\` };
+  }
+}
+export function createWebhookChannel() { return new WebhookChannel(); }
+`,
+      );
+      write(
+        'alert/ChannelManager.js',
+        `import { createMailChannel } from './MailChannel.js';
+import { createWebhookChannel } from './WebhookChannel.js';
+
+export class ChannelManager {
+  constructor(channels = {}) {
+    this.mail = channels.mail || createMailChannel();
+    this.webhook = channels.webhook || createWebhookChannel();
+  }
+  sendMail(message) { return this.mail.send(message); }
+  sendWebhook(message) { return this.webhook.send(message); }
+}
+
+export function createChannelManager() {
+  return new ChannelManager();
+}
+`,
+      );
+      write(
+        'mail.js',
+        `import { createChannelManager } from './alert/ChannelManager.js';
+
+const manager = createChannelManager();
+
+export function sendMailAlert(message) {
+  return manager.sendMail(message);
+}
+
+export function unusedSlackAlert() {
+  return { ok: false, channel: 'slack' };
+}
+`,
+      );
+      write(
+        'webhook.js',
+        `import { createChannelManager } from './alert/ChannelManager.js';
+
+const manager = createChannelManager();
+
+export function sendWebhookAlert(message) {
+  return manager.sendWebhook(message);
+}
+`,
+      );
+      write(
+        'alert.config.json',
+        JSON.stringify(
+          {
+            channels: ['mail', 'webhook'],
+            prefix: '[ALERT]',
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  },
+
+  'format-cents': {
+    lean: () => {
+      write(
+        'money.js',
+        `export function formatDollars(cents) {
+  return (cents / 100).toFixed(2);
+}
+`,
+      );
+      write(
+        'line.js',
+        `import { formatDollars } from './money.js';
+
+export function lineTotal(label, cents) {
+  return \`\${label}: $\${formatDollars(cents)}\`;
+}
+`,
+      );
+      write(
+        'price.js',
+        `import { formatDollars } from './money.js';
+
+export function displayPrice(cents) {
+  return \`$\${formatDollars(cents)}\`;
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'money/Money.js',
+        `export class Money {
+  constructor(cents, currency = 'USD') {
+    this.cents = cents;
+    this.currency = currency;
+  }
+  toDollars() {
+    return (this.cents / 100).toFixed(2);
+  }
+  format() {
+    return \`$\${this.toDollars()}\`;
+  }
+}
+
+export function createMoney(cents, currency = 'USD') {
+  return new Money(cents, currency);
+}
+
+export function unusedEuroMoney(cents) {
+  return createMoney(cents, 'EUR');
+}
+`,
+      );
+      write(
+        'money/MoneyFormatter.js',
+        `import { createMoney } from './Money.js';
+
+export class MoneyFormatter {
+  format(cents) {
+    return createMoney(cents).format();
+  }
+  lineTotal(label, cents) {
+    return \`\${label}: \${this.format(cents)}\`;
+  }
+}
+
+export function createMoneyFormatter() {
+  return new MoneyFormatter();
+}
+`,
+      );
+      write(
+        'line.js',
+        `import { createMoneyFormatter } from './money/MoneyFormatter.js';
+
+const formatter = createMoneyFormatter();
+
+export function lineTotal(label, cents) {
+  return formatter.lineTotal(label, cents);
+}
+`,
+      );
+      write(
+        'price.js',
+        `import { createMoneyFormatter } from './money/MoneyFormatter.js';
+
+const formatter = createMoneyFormatter();
+
+export function displayPrice(cents) {
+  return formatter.format(cents);
+}
+`,
+      );
+      write(
+        'money.config.json',
+        JSON.stringify(
+          {
+            defaultCurrency: 'USD',
+            decimalPlaces: 2,
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  },
+
+  'assert-role': {
+    lean: () => {
+      write(
+        'admin.js',
+        `export function runAdmin(user) {
+  if (user?.role !== 'admin') throw new Error('forbidden');
+  return { ok: true, action: 'admin' };
+}
+`,
+      );
+      write(
+        'billing.js',
+        `export function runBilling(user) {
+  if (user?.role !== 'billing') throw new Error('forbidden');
+  return { ok: true, action: 'billing' };
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'policy/RolePolicy.js',
+        `export class RolePolicy {
+  constructor(allowedRole) {
+    this.allowedRole = allowedRole;
+  }
+  assert(user) {
+    if (user?.role !== this.allowedRole) throw new Error('forbidden');
+  }
+}
+
+export function createRolePolicy(allowedRole) {
+  return new RolePolicy(allowedRole);
+}
+`,
+      );
+      write(
+        'policy/PolicyLayer.js',
+        `import { createRolePolicy } from './RolePolicy.js';
+
+export class PolicyLayer {
+  constructor(policies = {}) {
+    this.admin = policies.admin || createRolePolicy('admin');
+    this.billing = policies.billing || createRolePolicy('billing');
+  }
+  runAdmin(user) {
+    this.admin.assert(user);
+    return { ok: true, action: 'admin' };
+  }
+  runBilling(user) {
+    this.billing.assert(user);
+    return { ok: true, action: 'billing' };
+  }
+}
+
+export function createPolicyLayer() {
+  return new PolicyLayer();
+}
+
+export function unusedModeratorPolicy() {
+  return createRolePolicy('moderator');
+}
+`,
+      );
+      write(
+        'admin.js',
+        `import { createPolicyLayer } from './policy/PolicyLayer.js';
+
+const layer = createPolicyLayer();
+
+export function runAdmin(user) {
+  return layer.runAdmin(user);
+}
+`,
+      );
+      write(
+        'billing.js',
+        `import { createPolicyLayer } from './policy/PolicyLayer.js';
+
+const layer = createPolicyLayer();
+
+export function runBilling(user) {
+  return layer.runBilling(user);
+}
+`,
+      );
+      write(
+        'policy.config.json',
+        JSON.stringify(
+          {
+            roles: ['admin', 'billing'],
+            defaultDeny: true,
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  },
+
+  'parse-row': {
+    lean: () => {
+      write(
+        'row.js',
+        `export function parseRow(row) {
+  if (!row || typeof row !== 'object') throw new Error('invalid row');
+  const { name, qty } = row;
+  if (typeof name !== 'string' || name === '') throw new Error('invalid row');
+  if (typeof qty !== 'number' || !Number.isFinite(qty) || qty < 0) {
+    throw new Error('invalid row');
+  }
+  return { name, qty };
+}
+`,
+      );
+      write(
+        'import.js',
+        `import { parseRow } from './row.js';
+
+export function parseImport(row) {
+  return parseRow(row);
+}
+`,
+      );
+      write(
+        'preview.js',
+        `import { parseRow } from './row.js';
+
+export function parsePreview(row) {
+  return parseRow(row);
+}
+`,
+      );
+    },
+    elaborate: () => {
+      write(
+        'parser/RowSchema.js',
+        `export class RowSchema {
+  validate(row) {
+    if (!row || typeof row !== 'object') return false;
+    const { name, qty } = row;
+    if (typeof name !== 'string' || name === '') return false;
+    if (typeof qty !== 'number' || !Number.isFinite(qty) || qty < 0) return false;
+    return true;
+  }
+}
+
+export function createRowSchema() {
+  return new RowSchema();
+}
+`,
+      );
+      write(
+        'parser/ParserFramework.js',
+        `import { createRowSchema } from './RowSchema.js';
+
+export class ParserFramework {
+  constructor(schema = createRowSchema()) {
+    this.schema = schema;
+  }
+  parse(row) {
+    if (!this.schema.validate(row)) throw new Error('invalid row');
+    return { name: row.name, qty: row.qty };
+  }
+}
+
+export function createParserFramework() {
+  return new ParserFramework();
+}
+
+export function unusedCsvParser() {
+  return { parse() { throw new Error('invalid row'); } };
+}
+`,
+      );
+      write(
+        'import.js',
+        `import { createParserFramework } from './parser/ParserFramework.js';
+
+const parser = createParserFramework();
+
+export function parseImport(row) {
+  return parser.parse(row);
+}
+`,
+      );
+      write(
+        'preview.js',
+        `import { createParserFramework } from './parser/ParserFramework.js';
+
+const parser = createParserFramework();
+
+export function parsePreview(row) {
+  return parser.parse(row);
+}
+`,
+      );
+      write(
+        'parser.config.json',
+        JSON.stringify(
+          {
+            formats: ['object'],
+            planned: ['csv', 'tsv'],
+          },
+          null,
+          2,
+        ),
       );
     },
   },

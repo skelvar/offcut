@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Interleaved schedule runner for Phase 5 / Phase 0.
+// Interleaved schedule runner for Phase 5 / Phase 0 / Phase 10.
 //
 //   node bench/schedule.mjs --stub-matrix     # dry-run: lean under off, elaborate under full (harness check)
 //   node bench/schedule.mjs --stub lean       # all cells with same stub style
 //   node bench/schedule.mjs                  # paid Claude runs (costs money)
 //   node bench/schedule.mjs --premise        # Phase 0: PREMISE_TASK_IDS × off × 3
 //   node bench/schedule.mjs --premise --stub-matrix
+//   node bench/schedule.mjs --justify        # Phase 10: JUSTIFY_TASK_IDS × off|cheap|justify × 5
+//   node bench/schedule.mjs --justify --stub-matrix
 //   node bench/schedule.mjs --resume-failed  # re-run cells that errored or failed accept
 //   node bench/schedule.mjs --print          # print schedule only
 
@@ -13,6 +15,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   BENCH_ROOT,
+  JUSTIFY_ARMS,
+  JUSTIFY_REPS,
+  JUSTIFY_TASK_IDS,
   MANIFEST_PATH,
   MODEL_ID,
   PREMISE_ARMS,
@@ -35,6 +40,7 @@ function parseArgs(argv) {
     resumeFailed: false,
     pauseMs: 0,
     premise: false,
+    justify: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -46,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--resume-failed') out.resumeFailed = true;
     else if (a === '--pause-ms') out.pauseMs = Number(argv[++i]);
     else if (a === '--premise') out.premise = true;
+    else if (a === '--justify') out.justify = true;
   }
   return out;
 }
@@ -117,9 +124,14 @@ function prepareResume(allJobs) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.premise && opts.justify) {
+    throw new Error('use only one of --premise or --justify');
+  }
   let jobs = opts.premise
     ? interleaveSchedule(PREMISE_TASK_IDS, PREMISE_REPS, PREMISE_ARMS)
-    : interleaveSchedule(listTaskIds());
+    : opts.justify
+      ? interleaveSchedule(JUSTIFY_TASK_IDS, JUSTIFY_REPS, JUSTIFY_ARMS)
+      : interleaveSchedule(listTaskIds());
 
   if (opts.resumeFailed) {
     fs.mkdirSync(RUNS_DIR, { recursive: true });
@@ -147,6 +159,7 @@ function main() {
     const job = slice[i];
     let stub = opts.stub;
     if (opts.stubMatrix) {
+      // Baseline arm stays lean; every treatment arm (full / cheap / justify) elaborates.
       stub = job.arm === 'off' ? 'lean' : 'elaborate';
     }
     console.error(`[${i + 1}/${slice.length}] ${job.taskId} arm=${job.arm} rep=${job.rep} stub=${stub || 'claude'}`);

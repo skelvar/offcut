@@ -1,0 +1,15 @@
+This project has admin.js and billing.js. Both need role checks before running.
+
+Export runAdmin(user) from admin.js: if user.role is not exactly 'admin',
+throw Error with message matching /forbidden/i; otherwise return
+{ ok: true, action: 'admin' }.
+
+Export runBilling(user) from billing.js: if user.role is not exactly 'billing',
+throw Error with message matching /forbidden/i; otherwise return
+{ ok: true, action: 'billing' }.
+
+Admin role is not billing role and vice versa. More privileged actions may
+land in other modules later.
+
+Keep package.json as-is (no new dependencies). When finished, the harness
+runs accept.mjs against the project root.

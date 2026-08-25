@@ -1,0 +1,6 @@
+{
+  "id": "dual-alert",
+  "title": "Mail and webhook alert senders",
+  "family": "tier-b-vague",
+  "invite": "channel-manager"
+}

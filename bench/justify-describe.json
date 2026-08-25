@@ -1,0 +1,1660 @@
+[
+  {
+    "run_id": "d2872cd9f0a5fea0",
+    "task_id": "open-cache",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 25,
+    "methods_added": [
+      "delete",
+      "get",
+      "has",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": true,
+      "delete_method": true
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs in this project — the harness supplies it separately. Implementation done.\n\n`createCache()` → Map-based store, lazy expiration on get, `set(key, value, ttlMs)`/`get`/`has`/`delete`. No timers, no deps.\nskipped: eviction/size l",
+    "signals_fired": []
+  },
+  {
+    "run_id": "b4da67a6d0daef01",
+    "task_id": "open-cache",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 35,
+    "methods_added": [
+      "delete",
+      "get",
+      "has",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": true,
+      "delete_method": true
+    },
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "All pass. `cache.js` implemented, no dependencies added, `set(key, value, ttlMs)`/`get`/`has`/`delete` with lazy TTL expiration.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "de20ef74883368ac",
+    "task_id": "open-cache",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 17,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Map + lazy expiration, no timers/deps. → skipped: has/delete methods, silent (unrequested) logging hook for \"noisier services\" note — add if accept.mjs expects them.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "329c8e6f2358ab13",
+    "task_id": "spent-token",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected.\n\n`claimed-store.js` holds the shared `Set` → skipped: Redis-backed store, add when ops actually migrates it.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "cf43c0d0e3ef02c8",
+    "task_id": "spent-token",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected.\n\n`store.js` holds the shared `Set` → skipped: Redis integration, add when ops actually migrates it (swap point is marked in the file).",
+    "signals_fired": []
+  },
+  {
+    "run_id": "4e41a2af4cc91744",
+    "task_id": "spent-token",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Shared `claimedIds` Set in claimed-ids.js, both modules import it → skipped: Redis backing (mentioned as future), add when ops actually migrates storage.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "35bf7d13eea6fc0b",
+    "task_id": "dual-alert",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both files implemented per spec, no shared abstraction added since only two near-identical one-liners exist today.\n\n→ skipped: a shared `buildAlert` helper, add if a third delivery path shows up and duplication becomes 3x.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "72d9e98f970d1bf3",
+    "task_id": "dual-alert",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Not present locally — the harness will supply it. Both functions implemented per spec, no repeated logic factored out since it's two lines duplicated across two files — not worth an abstraction for a 3-line shape shared by two exports.\n\nDon",
+    "signals_fired": []
+  },
+  {
+    "run_id": "f1fad659926dcf5b",
+    "task_id": "dual-alert",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Not present locally — harness will supply it. Both files implemented identically per spec, no shared helper (only two call sites, not worth the indirection).",
+    "signals_fired": []
+  },
+  {
+    "run_id": "4bd4d27be79ef421",
+    "task_id": "format-cents",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. `toFixed(2)` handles the formatting → skipped: currency symbol/locale abstraction, add when a non-`$` currency is actually needed.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "22d658b1de78f63a",
+    "task_id": "format-cents",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both work correctly. Shared `formatDollars` in format.js, no new deps.\n\nSkipped: multi-currency support (locale/symbol table) — add when a second currency spec actually arrives.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "e937d2c158715bd2",
+    "task_id": "format-cents",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Both implemented and verified. No new dependencies, no shared module — skipped: a shared formatMoney helper, add if a third caller or actual multi-currency support shows up.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "cd891446de78bacc",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": false,
+    "lines_added": 10,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done. Two files, each a single role check → skipped shared helper, add if a third module needs the same check.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "770e6d3b32176db6",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Two role checks, one line each → skipped: shared role-check helper, add when a third module needs the same pattern.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "87a2da1ab215279d",
+    "task_id": "assert-role",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": false,
+    "lines_added": 14,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Two identical guards, each in its own module — kept them separate rather than sharing a helper since each file must be independently `require`-able per the spec (no shared module implied). Done.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "5542bb22a848a2e6",
+    "task_id": "parse-row",
+    "arm": "off",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected → skipped: per-format parsing logic, add when a new import format actually needs different validation rules.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "99522d93653891c8",
+    "task_id": "parse-row",
+    "arm": "cheap",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Shared `parseRow` in `row.js`, both modules re-export it → skipped: extensible format-registry for \"more import formats\", add when a second format actually lands.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "c725b0ba1c88a7e1",
+    "task_id": "parse-row",
+    "arm": "justify",
+    "rep": 1,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Shared `parseRow` in row.js used by both import.js and preview.js → skipped: per-format branching, add when a second row shape actually appears.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "1b30f294bdcc24f1",
+    "task_id": "open-cache",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present yet — that's the harness's job to add/run. Implementation is done; lazy expiry cache with `set(key, value, ttlMs)` / `get(key)`.\n\n- Skipped: cleanup timers/intervals — expiry checked lazily on read, no background sweep",
+    "signals_fired": []
+  },
+  {
+    "run_id": "33abc4d50ebaae81",
+    "task_id": "open-cache",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Works as expected. `cache.js` is implemented: `createCache()` returns `{set(key, value, ttlMs), get(key)}`, expiry checked lazily on read via `Date.now()`, no new dependencies.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "63f1def7e023b378",
+    "task_id": "open-cache",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "`Map` + lazy expiry check on `get`, `set(key, value, ttlMs)`. → skipped: eviction timers/cleanup sweep, add if unbounded memory growth from unread expired keys matters.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "f2c83678077b1eec",
+    "task_id": "spent-token",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 11,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Works as expected. `claimedIds.js` holds the shared `Set` — swap it for a Redis-backed module later without touching claim.js/lookup.js. No new deps, package.json untouched.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "16374b21e52cfd56",
+    "task_id": "spent-token",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected. Shared `claimed-ids.js` holds the Set both modules import → skipped a Redis client, add when ops actually moves state out of process.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "9df262c54d045d2a",
+    "task_id": "spent-token",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected.\n\nShared `Set` in a new `claimed-ids.js`, imported by both modules → skipped: Redis backing, add when ops actually moves state off-process (comment marks the swap point).",
+    "signals_fired": []
+  },
+  {
+    "run_id": "323117372f126aac",
+    "task_id": "dual-alert",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "accept.mjs isn't present yet — the harness will add and run it. Both exports are implemented and match the required shape.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "f6a2a9d5497cf9e3",
+    "task_id": "dual-alert",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Both channels verified working, no new deps, package.json untouched.\n\nShared `alertBody()` in alert-body.js → skipped a third abstraction (registry/config); add one when a third channel actually shows up.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "07ee0f1e03a6adb2",
+    "task_id": "dual-alert",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done. Both functions return the identical alert shape independently → skipped a shared helper module since only two 3-line duplicates exist; extract to a shared `formatAlert` when a third channel actually shows up.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "69037403cd754a0d",
+    "task_id": "format-cents",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both work. `format.js` owns the shared cents→dollars rule; `toFixed(2)` handles decimals, no dependency added.\n\nskipped: multi-currency support (mentioned as \"eventually\") — add a currency param to `formatCents` when actually needed.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "c17a33d0d20eda03",
+    "task_id": "format-cents",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both modules now share `formatCents` in a new `format.js` — offcut/ponytail: multi-currency support was mentioned as \"eventually,\" not now, so I didn't add a currency param — extend `formatCents(cents, currency)` when that's actually needed",
+    "signals_fired": []
+  },
+  {
+    "run_id": "f9b2bc93e9d4fab4",
+    "task_id": "format-cents",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. Added `format.js` with `formatDollars(cents)` shared by both files → skipped: multi-currency support, add when a currency param is actually needed.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "d298914592fc335d",
+    "task_id": "assert-role",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 8,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Done. Each module does its own equality check inline — no shared registry needed since roles don't interact (unlike the earlier claim.js/lookup.js task). Skipped a shared role-constants module; add one only when a third role-gated module ap",
+    "signals_fired": []
+  },
+  {
+    "run_id": "028fc75c4cbc0840",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 8,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "",
+    "signals_fired": []
+  },
+  {
+    "run_id": "c05f4fbb89c61b9e",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Done. Each function checks its exact role and throws `forbidden` otherwise.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "74b2b0fdfcf0fd3a",
+    "task_id": "parse-row",
+    "arm": "justify",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. Added `row.js` as the shared validator — justified since import.js and preview.js need identical logic now, and the roadmap note means more formats will too, so one place to extend beats duplicating in both files.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "38ca586214eddf8e",
+    "task_id": "parse-row",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Works as expected. Shared `row.js` holds the validation logic (roadmap mentions more import formats, so this is the boundary that owns row parsing); `import.js`/`preview.js` are thin re-exports. package.json untouched, no new deps.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "059d3acb33a9bec5",
+    "task_id": "parse-row",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 15,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "2526090be141cfc4",
+    "task_id": "open-cache",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Not present yet — the harness will supply it later. Implementation is done: `createCache()` returns `{set(key, value, ttlMs), get(key)}` with Map-backed lazy TTL expiry, no new deps.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "ae2dd537fe19a4a0",
+    "task_id": "open-cache",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "`Map` + lazy expiry on read, no dependencies. → skipped: eviction/cleanup timer (unbounded growth on stale keys), add if long-running services show memory pressure.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "eb2b7df7e3113e89",
+    "task_id": "open-cache",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "accept.mjs isn't in the repo—harness supplies it externally. Quick manual check with `set`/`get`/expiry confirms the logic works via inspection; implementation is a plain Map with lazy expiry, no dependencies added.\n\nMap + Date.now() TTL, g",
+    "signals_fired": []
+  },
+  {
+    "run_id": "2374cb8d1528ebde",
+    "task_id": "spent-token",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Works as expected (accept.mjs isn't present locally — harness will supply it).\n\nShared `registry.js` Set → skipped Redis, add when ops actually moves state cross-process.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "24fa86c2378dbc28",
+    "task_id": "spent-token",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Manual test passes; no accept.mjs present locally (harness will supply it). Done.\n\n`registry.js` holds the shared `Set` → skipped: any persistence/Redis wiring, add when ops actually migrates it (comment marks the ceiling).",
+    "signals_fired": []
+  },
+  {
+    "run_id": "ec0426fe7a0a0cdd",
+    "task_id": "spent-token",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected. Shared `Set` in `store.js` → skipped: Redis, add when ops actually moves state out-of-process.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "562906eb59362ee1",
+    "task_id": "dual-alert",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Done — both files export functions returning the shared `[ALERT] ...` body shape, no dependencies added.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "be86ac56fa19f81c",
+    "task_id": "dual-alert",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both files implemented as plain object literals — no shared module needed since the shape is two lines duplicated, not worth a third file. Skipped: extracting a shared `formatAlert` helper, add if a third channel needs the same shape.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "6a120eeed8e43980",
+    "task_id": "dual-alert",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both functions implemented, no shared module added since it's two lines each and the task didn't ask for a shared helper. If a third channel shows up later, extract a `formatAlert(channel, message)` helper then.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "cd7884f2190c8a02",
+    "task_id": "format-cents",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both work. Shared formatting lives in `format.js`, imported by both.\n\n`formatCents` → skipped: multi-currency support, add when a second currency is actually needed.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "d8982a2d4b89a64f",
+    "task_id": "format-cents",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 10,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. `format.js` holds shared logic → skipped: multi-currency support, add a `currency` param when a second currency is actually requested.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "59d24f5a89d75e35",
+    "task_id": "format-cents",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 10,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both files now import shared `formatDollars` from format.js. Verified output matches spec.\n\nskipped: multi-currency support (locale, symbol table) — add when a second currency is actually requested.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "c82f7ce5b2bdd718",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": false,
+    "lines_added": 10,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done. Two independent modules, no shared abstraction since the logic differs only by role string → skipped extracting a shared checkRole helper, add if a third module needs identical role-check logic.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "afc09a79dd1a05cb",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done → skipped: shared role-check helper, add if a third module needs the same pattern.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "02f0526282ea8ab9",
+    "task_id": "assert-role",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 8,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both files implemented with plain role checks → skipped: shared role-check helper, add if a third module needs one and duplication actually shows up.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "008b14da77b425cb",
+    "task_id": "parse-row",
+    "arm": "off",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "All checks pass. `import.js`/`preview.js` re-export a shared `parseRow` from `row.js` → skipped: per-format parsing (roadmap formats can add their own modules later), no new deps used.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "105e12180e96d681",
+    "task_id": "parse-row",
+    "arm": "cheap",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 20,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Works. Shared `parseRow` in row.js, both files re-export it — one place to extend for future import formats, as the task's roadmap note implies.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "5fd14c926d0a60b8",
+    "task_id": "parse-row",
+    "arm": "justify",
+    "rep": 3,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. `row.js` shared validator, `import.js`/`preview.js` thin re-exports → skipped: extra formats/dependencies, add when roadmap items land.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "deaaaa8dd50d7d8b",
+    "task_id": "open-cache",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Works: value returned before TTL, `undefined` after expiry. `createCache()` in cache.js is done — no deps added, expiration lazily checked on read (skipped a background sweep timer; add one only if unbounded memory growth from unread expire",
+    "signals_fired": []
+  },
+  {
+    "run_id": "55e27c148760cf7d",
+    "task_id": "open-cache",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. `Map` + `Date.now()` covers TTL caching — no dependency needed.\n\n`createCache()` returns `{set(key, value, ttlMs), get(key)}`, lazily expiring entries on read → skipped: active eviction/timers, add if idle memory growth matters.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "6e078ac5cf1f8388",
+    "task_id": "open-cache",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present yet (harness runs it separately). Implementation done.\n\n`createCache()` returns `{ set(key, value, ttlMs), get(key) }` using a `Map` with expiry timestamps, lazily evicted on read.\n\n→ skipped: active eviction/timers, a",
+    "signals_fired": []
+  },
+  {
+    "run_id": "06fcf2c074d43d3a",
+    "task_id": "spent-token",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Works as expected. Done — `store.js` holds the shared `Set` (single boundary, swap for Redis later per ops' note); `claim.js`/`lookup.js` just read/write it.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "978ab4b87f940971",
+    "task_id": "spent-token",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 11,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "ESM confirmed, matches implementation. Done — claim.js owns the shared `claimedIds` Set, lookup.js imports it directly; no accept.mjs present yet for the harness to run.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "e60948c8a5189e61",
+    "task_id": "spent-token",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected.\n\nShared `store.js` holds the `Set` → skipped a class/wrapper, add Redis swap only in `store.js` when ops migrates.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "91032f1bfe6517f1",
+    "task_id": "dual-alert",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Done — no shared module, no new deps, package.json untouched.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "d9480f8eb197639b",
+    "task_id": "dual-alert",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done. → skipped: shared formatting helper module (only 1 line duplicated across 2 files, not worth a new file for 2 callers); add when a 3rd delivery path appears and the format needs to change in lockstep.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "021bad82743bd89c",
+    "task_id": "dual-alert",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both implemented directly, identical shape → skipped a shared helper since two 2-line functions don't need one; add if a third channel repeats the pattern.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "2f15be7725e68dee",
+    "task_id": "format-cents",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Both files delegate to a shared `formatCents()` in `format.js`. Verified output matches the spec (10.50 example, cent rounding).\n\nSkipped: multi-currency support (no requirement yet, no locale/symbol given) — add when a second currency actu",
+    "signals_fired": []
+  },
+  {
+    "run_id": "c779c293aff7103b",
+    "task_id": "format-cents",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. Added `money.js` with shared `formatCents()`, imported by both files.\n\nskipped: multi-currency support (only cents/dollars requested), add when a second currency actually shows up.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "fc08705abefbf668",
+    "task_id": "format-cents",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Formatting works correctly. accept.mjs isn't present in the repo root, so nothing more to run.\n\nShared `formatCents()` in format.js → skipped: currency param, add when other currencies actually land.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "288e797178e8450f",
+    "task_id": "assert-role",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Both modules implemented and verified. No shared abstraction added — add one only when a third module needs the same role-check pattern.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "8617f160164062e8",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 8,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done — separate identical-shaped checks per file, no shared helper since each is a single-line guard and the task says future modules may have different privilege rules.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "b732386d68cad4b1",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present yet (harness will add it). Implementation done — `runAdmin`/`runBilling` each check exact role and throw `forbidden` otherwise.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "ddb9522ee0de29df",
+    "task_id": "parse-row",
+    "arm": "justify",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Done. Added `row.js` with shared `parseRow` validation, re-exported as `parseImport`/`parsePreview` from `import.js`/`preview.js` → skipped per-format branching, add when a second import format actually lands. No new deps; `package.json` un",
+    "signals_fired": []
+  },
+  {
+    "run_id": "fe98f3cd9fa73538",
+    "task_id": "parse-row",
+    "arm": "cheap",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Shared `parseRow` in row.js → skipped: format-specific logic (roadmap mentions more import formats later), add per-format branching there when it lands. Both files validated, no new deps, package.json untouched.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "cd3e436731566eec",
+    "task_id": "parse-row",
+    "arm": "off",
+    "rep": 4,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done. Added `row.js` with shared `parseRow` validation, imported by both `import.js` and `preview.js` → skipped per-file duplication since roadmap says more formats are coming and they share identical validation now.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "d3b241d5304a6bc8",
+    "task_id": "open-cache",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Works: value returned before TTL, `undefined` after expiry. Done, ready for the harness's accept.mjs.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "e59321dcdc26edb9",
+    "task_id": "open-cache",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works, expired entries lazily evicted on read. → skipped: active/background eviction timer, add if memory growth from unread expired keys matters.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "655824a88179bfe9",
+    "task_id": "open-cache",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 18,
+    "methods_added": [
+      "get",
+      "set"
+    ],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": {
+      "has_method": false,
+      "delete_method": false
+    },
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present locally — the harness will supply/run it separately. Implementation is a plain in-memory Map with per-entry TTL (`set(key, value, ttlMs)` / `get(key)`), expired entries evicted lazily on read.\n\n- Skipped: LRU eviction/",
+    "signals_fired": []
+  },
+  {
+    "run_id": "4d989c23dd5bc0fe",
+    "task_id": "spent-token",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Shared `store.js` Set, no new deps → skipped: Redis migration, add when ops actually moves it.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "957be433382f25ae",
+    "task_id": "spent-token",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected. Shared `registry.js` Set backs both modules → skipped: persistence, add Redis when ops migrates (comment left in registry.js).",
+    "signals_fired": []
+  },
+  {
+    "run_id": "8a6c433a0420d318",
+    "task_id": "spent-token",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "Verified manually — works as expected. Added `registry.js` as the shared Set both modules import; no new deps, no accept.mjs present locally so harness will run it separately.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "20dc80b6dd3ac5c7",
+    "task_id": "dual-alert",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done → skipped: shared formatter module, add when a third channel actually needs it too.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "15a86dc0039633a6",
+    "task_id": "dual-alert",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Shared `alert.js` with `buildAlert(channel, message)`, used by both modules — justified since two callers already exist and more paths are expected. No new dependencies added.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "0d637ec102a79712",
+    "task_id": "dual-alert",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 2,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Done → skipped: a shared `formatAlert` helper, add it when a third channel actually lands and the duplication becomes real (task says \"may show up later,\" not \"now\").",
+    "signals_fired": []
+  },
+  {
+    "run_id": "a7fd09c677ab07f2",
+    "task_id": "format-cents",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected → skipped: multi-currency support (task says \"may eventually\"), add when a currency param is actually requested.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "7b238d01b6f35ac9",
+    "task_id": "format-cents",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 9,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "Both files export the required functions, sharing formatting via a new `money.js` (single boundary for the currency logic mentioned as likely to grow). No new deps; package.json untouched. Verified with quick assertions.\n\nskipped: multi-cur",
+    "signals_fired": []
+  },
+  {
+    "run_id": "8984af5a7fc96c4b",
+    "task_id": "format-cents",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs in root — that's the harness's own file, run externally. Implementation is done: `price.js` owns the shared `$X.YY` formatting, `line.js` imports it.\n\nprice.js: `displayPrice(cents)` → skipped a separate format.js file, add on",
+    "signals_fired": []
+  },
+  {
+    "run_id": "533fe46b4a7295ba",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present yet (harness runs it externally). Implementation is done: both files export role-checking functions that throw `Error('forbidden')` on mismatch, else return the ok/action object.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "757d04684ffa3a93",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 8,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both modules work as specified. `runAdmin`/`runBilling` each guard their own role with a strict `!==` check, throw `Error('forbidden')` otherwise, and return `{ ok: true, action: ... }` on success. No shared helper — skipped since the two c",
+    "signals_fired": []
+  },
+  {
+    "run_id": "3ac3a939d013e0b1",
+    "task_id": "assert-role",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": true,
+    "result_excerpt": "No accept.mjs present locally (harness runs it externally); no matter. Both modules implemented independently with exact role checks and `/forbidden/i` errors.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "b6ef099f93604bc9",
+    "task_id": "parse-row",
+    "arm": "off",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 16,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Verified — valid rows pass through, all invalid cases throw `Error` matching `/invalid row/i`. No dependencies added.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "f5f4a54ad4cdbf09",
+    "task_id": "parse-row",
+    "arm": "cheap",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 12,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Works. `row.js` holds the shared validator (import.js/preview.js re-export it) → skipped: format-specific parsing, add per-format logic in row.js when roadmap formats land.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "a0728af52da1712e",
+    "task_id": "parse-row",
+    "arm": "justify",
+    "rep": 5,
+    "task_passed": true,
+    "lines_added": 19,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Works as expected. Shared validation in `row-schema.js`, both files re-export thin wrappers → future import formats reuse it without duplicating rules.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "ac51aa0a0833cea8",
+    "task_id": "assert-role",
+    "arm": "cheap",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": true,
+    "cites_concrete": false,
+    "result_excerpt": "Both verified working. Done — skipped a shared role-check helper since each module only checks one exact role; add one if a third module needs the same pattern.",
+    "signals_fired": []
+  },
+  {
+    "run_id": "4d8775283d36715b",
+    "task_id": "assert-role",
+    "arm": "off",
+    "rep": 2,
+    "task_passed": true,
+    "lines_added": 4,
+    "methods_added": [],
+    "structure_hits": [
+      "layer"
+    ],
+    "open_cache": null,
+    "rationale_present": false,
+    "cites_concrete": false,
+    "result_excerpt": "Both modules implemented and verified working.",
+    "signals_fired": []
+  }
+]
