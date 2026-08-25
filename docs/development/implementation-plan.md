@@ -133,6 +133,26 @@ all three, using events the platform already exposes.
 
 ---
 
+## 2.5 Originality verification (2026-08-25)
+
+The rule in §2 is checked, not assumed. Measured against the nearest comparable
+project's shipped ruleset and hook sources, normalised to lowercase
+alphanumerics:
+
+| Check | Result |
+|---|---|
+| Shared code lines over 40 characters | **0** |
+| Shared 8-word phrases across every skill file and `AGENTS.md` | **0** |
+| Shared hook filenames | 4 — `activate`, `subagent`, `statusline.sh/.ps1` |
+| Shared function names | 4 — `readMode`, `clearMode`, `normalizeMode`, `writeDefaultMode` |
+
+Filenames and function names describe the operation they perform and are what
+any independent implementation of a mode file would reach for. Everything
+carrying authorship — the ruleset prose, the signal definitions, the host
+adapter, the hook logic — is written from the requirements in this document.
+
+Re-run this measurement whenever the ruleset is edited.
+
 ## 3. The challenge
 
 Offcut's payload is not a persona. It is a fixed set of questions the agent
