@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SessionEnd — prune this session's turn-*/fired-* and stale orphans. No stdout.
+// SessionEnd — prune this session's turn-* and stale orphans. Keep fired-*.
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
