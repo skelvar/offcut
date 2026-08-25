@@ -116,23 +116,49 @@ files accumulating forever. Fix both, and remove the markers when you do — a
 marker left behind after its debt is paid is worse than no marker, because it
 trains readers to ignore them.
 
-### 6. The product question is still open — do not let Phase 8 imply otherwise
+### 6. Subagent coverage is unverified on two of three hosts
 
-Phase 7.5 attempted to answer "does a correct challenge change what the agent
-builds" and **could not**: 6 of 80 runs fired a signal, 5 of those from
-`single-call-wrapper` which the same PR deleted as a false positive. The one
-observation from a surviving signal *cleared* — the flagged pattern did not
-ship.
+`SubagentStart` inheritance was measured on Claude Code and **retired as
+unverified on Codex and Grok** — same code path, no cheap headless measure.
 
-So the answer is **not tested**, not "no". Phase 8 hardens a mechanism whose
-value remains unproven, which is a legitimate thing to do — the resilience bugs
-are real and user-visible regardless — but nothing in this phase should be
-written as if the product question were settled.
+That is a real user-facing gap, not a bookkeeping one. A user on Codex who
+spawns a subagent may get no coverage at all, and nothing tells them. Subagents
+are where a mode silently stops applying, because the parent session looks fine
+the whole time.
 
-The blocker for answering it is fixture design: invite tasks must make a
-*surviving* signal fire reliably (target >=80% of invite runs, measured 24%).
-That is a benchmark problem, not a resilience one, and it belongs in its own
-phase.
+Close it: measure inheritance on Codex and Grok with a session that actually
+spawns a subagent, and have `doctor` report subagent coverage as its own line
+rather than folding it into "hooks installed".
+
+If a host genuinely cannot deliver to subagents, that belongs in the README next
+to the Grok stdout limitation — an honest gap, stated, not discovered by a user
+whose subagent quietly ignored the mode.
+
+### 7. Nothing tells a user whether Offcut is actually working
+
+Every failure in this list is silent. Combined, they mean a user can have a
+statusline reading `offcut:full`, a mode that went quiet at the last compaction,
+a challenge that vanished with a dropped turn, and subagents with no coverage —
+and see no difference from a healthy install.
+
+The product's stated value is honesty about what it does and does not do. A
+tool that cannot answer "is this working right now?" does not have that.
+
+`doctor` is the answer, and it is the most user-valuable item in this phase.
+
+### 8. The product question is still open — do not let Phase 8 imply otherwise
+
+Phase 0 could not show the persistent mode changes what an agent builds, and the
+premise test found no structural over-building to prevent on that class of work.
+
+**That does not reduce this phase's scope.** "Does the mode change behavior" and
+"does the mode work as advertised when installed" are different questions. The
+failures above are correctness bugs in a shipped tool: a statusline that lies is
+wrong whether or not the mode is effective.
+
+What it does mean: nothing here should be written as if the product question
+were settled, and no fix should be justified by "it makes the mode more
+effective" — none of them do. They make it *honest*.
 
 ## Scope
 
@@ -152,36 +178,55 @@ not a resilience one, and it belongs in its own phase.
 
 ## `hooks/doctor.js`
 
-The missing piece behind failures 2 and 3: there is no way for a user to ask
-"is this actually working?"
+The most user-valuable thing in this phase. One command answering **"is Offcut
+actually working right now?"** from evidence, not assumption.
 
-It should report, from evidence rather than assumption: whether the state dir
-exists and is writable, whether `active` exists and parses, when activation last
-ran, which host was detected, whether the ruleset file is readable, and whether
-the hook scripts are where the installed config points.
+It must report, each as its own line with a clear verdict:
 
-Keep it read-only and dependency-free like everything else. It is a diagnostic,
-not a repair tool.
+| Check | Why it is separate |
+|---|---|
+| state dir exists and is writable | a read-only home breaks the mode silently |
+| `active` exists and parses | absence means activation never ran — not "default full" |
+| when activation last ran | a stale timestamp means hooks stopped firing |
+| detected host, and its tier | Grok discards output; the user should see that here |
+| ruleset file readable | otherwise the hardcoded fallback is in use |
+| hook scripts exist where the installed config points | a moved checkout breaks every hook |
+| **subagent coverage** | verified / unverified / unsupported on this host |
+| **language coverage** | the write-time challenge is JS/TS only |
 
----
+The last two exist because both are invisible cliffs a user would otherwise hit
+without explanation.
+
+**Read-only. It diagnoses; it does not repair.** When something is wrong it
+prints the command that fixes it — `node tools/install.mjs`, which already
+exists and already merges safely. Do not add repair machinery: a diagnostic that
+rewrites a user's agent config is a much more dangerous thing than one that
+tells them what to run, and the repair path is already built and tested.
+
+Zero dependencies, no network, consistent with every other script here.
 
 ## Definition of done
 
 - [ ] `compact`/`clear`/`fork` reset signal suppression; `resume` does not —
       with a test per source
 - [ ] Session-id behavior across compaction **measured** with the probe on at
-      least Claude Code, and recorded in `HOSTS.md`
+      least Claude Code, recorded in `HOSTS.md`
 - [ ] Statusline reports nothing (or an explicit inactive marker) when `active`
       is absent — never a mode name
 - [ ] Corrupt state is detectable by statusline and doctor; hooks still fail
       safe to the default mode
 - [ ] Suppression is not established by emit alone; a challenge lost to a dead
       turn can be re-issued, with a test simulating the death
-- [ ] `node hooks/doctor.js` reports honest status from evidence
-- [ ] All 101 existing tests still pass
+- [ ] `turn-*` and `fired-*` are pruned; both `offcut:` markers removed from
+      `hooks/state.js` once the debt is paid
+- [ ] Subagent inheritance measured on Codex and Grok, or stated unsupported in
+      `HOSTS.md` **and** the README
+- [ ] `node hooks/doctor.js` reports every line in the table above, read-only,
+      printing the repair command rather than repairing
+- [ ] Doctor exercised against a deliberately broken install (no state dir,
+      corrupt `active`, moved checkout) and gives an actionable answer for each
+- [ ] All 127 existing tests pass
 - [ ] Every fix has a regression test that fails against the unfixed code
-
----
 
 ## Working agreement
 
