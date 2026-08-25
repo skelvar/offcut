@@ -330,8 +330,20 @@ export function runOne(opts) {
 
     return { runId, runDir, record, metrics, accept };
   } finally {
-    fs.rmSync(stateDir, { recursive: true, force: true });
-    if (!keepWork) fs.rmSync(workParent, { recursive: true, force: true });
+    // Windows often locks files under %TEMP% briefly after node exits; never
+    // let cleanup turn a finished scored run into a schedule-level failure.
+    try {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+    if (!keepWork) {
+      try {
+        fs.rmSync(workParent, { recursive: true, force: true });
+      } catch {
+        // best-effort
+      }
+    }
   }
 }
 
