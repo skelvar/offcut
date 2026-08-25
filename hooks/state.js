@@ -428,11 +428,21 @@ export function pruneStaleFiles(opts = {}) {
 }
 
 /**
- * SessionEnd: drop this session's turn/fired files and prune stale orphans.
+ * SessionEnd: drop this session's turn-* (reminder cadence) and prune stale
+ * orphans. Keep fired-* — some hosts fire SessionEnd at process exit and then
+ * resume the same session id; deleting fired on end made suppression a no-op
+ * across resume (measured Phase 9).
  * @param {string | null | undefined} sessionId
  */
 export function pruneOnSessionEnd(sessionId) {
-  pruneSessionFiles(sessionId);
+  if (sessionId) {
+    try {
+      const turn = turnPath(sessionId);
+      if (fs.existsSync(turn)) fs.unlinkSync(turn);
+    } catch {
+      // best-effort
+    }
+  }
   pruneStaleFiles();
 }
 

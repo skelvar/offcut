@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse — challenge before the write lands. Matcher: Write|Edit
+// PreToolUse — challenge before the write lands. Matcher: Write|Edit|apply_patch
 // Default to context, never deny. Escalate only in strict, only for new-dependency.
 
 import fs from 'node:fs';

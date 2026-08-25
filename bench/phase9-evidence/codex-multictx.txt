@@ -1,0 +1,31 @@
+Reading additional input from stdin...
+2026-08-25T15:21:44.623378Z ERROR codex_core::session::session: failed to load skill C:\Users\bash\.codex\skills\awesome-design-md\SKILL.md: missing YAML frontmatter delimited by ---
+OpenAI Codex v0.149.1
+--------
+workdir: D:\rightseam\.worktrees\phase-9-coexistence\bench\phase9-evidence
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a03983-5904-72e0-910e-644f9f44e461
+--------
+user
+Reply BOTH_CTX if you see both CODEX_NBR_42 and OFFCUT ACTIVE (exact), ONLY_NBR, ONLY_OFFCUT, or NEITHER.
+warning: `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.
+warning: `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.
+warning: Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in C:\Users\bash\.codex\config.toml.
+warning: clamping SessionEnd hook timeout to 3s in C:\Users\bash\.codex\hooks.json
+warning: Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.
+hook: SessionStart
+hook: SessionStart Completed
+hook: UserPromptSubmit
+hook: UserPromptSubmit
+hook: UserPromptSubmit Completed
+hook: UserPromptSubmit Completed
+codex
+BOTH_CTX
+tokens used
+24,268
+BOTH_CTX

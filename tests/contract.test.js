@@ -214,8 +214,8 @@ test('contract: adapters/claude/hooks.json wires SessionStart matcher and script
     assert.ok(rel, `command should embed script path: ${hook.command}`);
     assert.ok(fs.existsSync(path.join(root, rel)));
   }
-  assert.match(cfg.hooks.PreToolUse[0].matcher, /Write\|Edit/);
-  assert.match(cfg.hooks.PostToolUse[0].matcher, /Write\|Edit/);
+  assert.match(cfg.hooks.PreToolUse[0].matcher, /Write\|Edit\|apply_patch/);
+  assert.match(cfg.hooks.PostToolUse[0].matcher, /Write\|Edit\|apply_patch/);
 });
 
 test('contract: versions match across manifests and skill metadata', () => {

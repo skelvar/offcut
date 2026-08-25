@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PostToolUse — name what got added that nobody asked for. Matcher: Write|Edit
+// PostToolUse — name what got added that nobody asked for. Matcher: Write|Edit|apply_patch
 // Cannot block; inject one line when a signal fires.
 
 import path from 'node:path';

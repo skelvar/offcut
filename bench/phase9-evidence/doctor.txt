@@ -1,0 +1,15 @@
+OK    state dir: exists and writable ΓÇö C:\Users\bash\.offcut
+OK    active: ok ΓÇö mode full
+OK    activation: last touched 19s ago
+OK    host:claude: Claude Code ΓÇö tier 1 (hooks deliver additionalContext to the model)
+OK    host:codex: Codex ΓÇö tier 1 (hooks deliver additionalContext to the model)
+WARN  host:grok: Grok Build ΓÇö tier 3 (hooks run but stdout/additionalContext is discarded for most events)
+OK    ruleset: readable ΓÇö D:\rightseam\.worktrees\phase-9-coexistence\skills\offcut\SKILL.md
+OK    hook scripts: all referenced scripts present (24 checked)
+OK    subagent:claude: verified ΓÇö OFFCUT MODE banner observed on SubagentStart (2026-08-24)
+OK    subagent:codex: verified ΓÇö Codex subagent reported FOUND_OFFCUT with hooks installed (2026-08-25). Delivery confirmed; SubagentStart-vs-inherited-parent-context not isolated
+WARN  subagent:grok: unsupported ΓÇö hook stdout discarded ΓÇö subagent inheritance cannot deliver via hooks
+WARN  language coverage: write-time challenge is JS/TS (+ dependency manifests) only; other languages get the reminder, not write signals
+
+Result: ok with 3 warn ΓÇö see lines above.
+If hooks are missing or paths are wrong: node "D:/rightseam/.worktrees/phase-9-coexistence/tools/install.mjs"

@@ -1,0 +1,5 @@
+CHALLENGE_SEEN
+
+> Offcut: one implementation ΓÇö is the indirection carrying its weight?
+
+Delivered via PreToolUse:Write hook context, not in the Write tool result.

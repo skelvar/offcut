@@ -291,7 +291,7 @@ test('statusline.ps1: healthy active still shows mode', async (t) => {
 
 // --- pruning ---
 
-test('SessionEnd prunes turn-* and fired-* for the session', async () => {
+test('SessionEnd prunes turn-* but keeps fired-* for resume', async () => {
   await withStateDir(async () => {
     markFiredSignal('gone', 'new-file');
     markPendingSignal('gone', 'post:x');
@@ -302,7 +302,8 @@ test('SessionEnd prunes turn-* and fired-* for the session', async () => {
     await handleSessionEnd(
       normalize({ hook_event_name: 'SessionEnd', session_id: 'gone' }),
     );
-    assert.equal(fs.existsSync(paths().firedFor('gone')), false);
+    // fired survives so SessionStart(resume) suppression still has something to read
+    assert.equal(fs.existsSync(paths().firedFor('gone')), true);
     assert.equal(fs.existsSync(paths().turnFor('gone')), false);
   });
 });
