@@ -1,0 +1,21 @@
+{
+  "run_id": "103f82e6fa66a25e",
+  "task_id": "open-store",
+  "arm": "off",
+  "rep": 2,
+  "stub": "lean",
+  "model_requested": "claude-sonnet-5",
+  "model_id": "stub:lean",
+  "host": "claude-code",
+  "host_version": "stub",
+  "date": "2026-08-25",
+  "started_at": "2026-08-25T10:20:34.710Z",
+  "effort": "low",
+  "prompt_sha256": "b33da638fc9dfacd95fd7da252a837402e66393ecf2549a944109b0a318038ec",
+  "prompt_path": "tasks/open-store/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

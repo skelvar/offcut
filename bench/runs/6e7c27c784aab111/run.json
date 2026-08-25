@@ -1,0 +1,21 @@
+{
+  "run_id": "6e7c27c784aab111",
+  "task_id": "open-cache",
+  "arm": "off",
+  "rep": 2,
+  "stub": "lean",
+  "model_requested": "claude-sonnet-5",
+  "model_id": "stub:lean",
+  "host": "claude-code",
+  "host_version": "stub",
+  "date": "2026-08-25",
+  "started_at": "2026-08-25T10:20:35.243Z",
+  "effort": "low",
+  "prompt_sha256": "10c1262ce99b37082e74a9d7aa1f4a917f8671bb9634fa8341ac8e72581c1689",
+  "prompt_path": "tasks/open-cache/prompt.txt",
+  "error": null,
+  "retried": false,
+  "metrics_summary": {
+    "task_passed": true
+  }
+}

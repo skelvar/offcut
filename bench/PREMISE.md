@@ -316,3 +316,77 @@ work. A two-arm treatment comparison is not justified until a positive base
 rate exists for the same task class (or a harder class is shown to produce
 one). Optional cross-model re-runs (Grok / Codex) remain open if the claim
 needs to widen beyond Claude.
+
+## Review findings (2026-08-25)
+
+The rubric was frozen before the runs and its verdict is correct **by the
+rubric**: no run introduced an interface, class, factory, wrapper, config
+surface, or layer. That is a real result and the pre-registration is what makes
+it trustworthy.
+
+Two qualifications belong next to it.
+
+### The three "broken" runs are evidence *for* leanness, not lost data
+
+All three `open-report` failures wrote the same four lines:
+
+```js
+function report(message) { return `[report] ${message}`; }
+module.exports = { report };
+```
+
+On a task written to invite a wrapper/manager/factory layer, the agent produced
+the minimum and failed only on CJS-vs-ESM — a fixture ambiguity in the task
+repo, not a modelling failure. Counting them as `broken` is correct per the
+rubric; reading them as missing data is not. They point the same way as the nine
+lean runs.
+
+### Over-building did appear — in a form the rubric did not enumerate
+
+Two of three paid `open-cache` runs went from 17 to **32 lines** by adding
+unrequested public methods:
+
+```
+rep1: 17 lines
+rep2: 32 lines  — added has(), delete()
+rep3: 32 lines  — added has(), delete()
+```
+
+The prompt asked for store, read back, and a caller-supplied TTL. It did not ask
+for `has` or `delete`. Nearly doubling the public surface of a module is
+building more than was requested.
+
+The frozen concept inventory covers **structural** over-engineering — interface,
+class, factory, wrapper, config key, layer. Extra methods on a returned object
+are none of those, so excluding them is faithful to the rubric. But it means the
+grid measured structural over-engineering and was blind to **scope**
+over-building, which is what actually occurred.
+
+### The consequence for Offcut
+
+Running the 32-line solution through the current signal set:
+
+```
+signals fired: NONE
+```
+
+**Offcut cannot detect the only over-building this experiment found.** `has` and
+`delete` are methods on a returned object literal, not exports, so
+`exported-unused` never sees them; no other signal models "more API than the
+request asked for".
+
+So the sharper statement is not "over-building does not appear". It is:
+
+> On this class of work, `claude-sonnet-5` does not produce the **structural**
+> over-engineering Offcut detects. It does produce mild **scope** over-building,
+> and Offcut is blind to it.
+
+The detector is aimed at a failure mode that did not occur, and misses the one
+that did. That is a finding about the signal set, not only about the premise.
+
+### What this does not establish
+
+n=12, one model, one host, four small tasks. It shows the structural behavior is
+**absent here**, not that it never occurs — issue #660's config-loader case
+remains a real documented instance on a larger, vaguer task. Scope over-building
+appeared at n=2/3 on one fixture, which is a hint, not a rate.
