@@ -72,8 +72,10 @@ const PASCAL = {
   SessionEnd: [pascalGroup('SessionEnd')],
   UserPromptSubmit: [pascalGroup('UserPromptSubmit')],
   SubagentStart: [pascalGroup('SubagentStart')],
-  PreToolUse: [pascalGroup('PreToolUse', 'Write|Edit')],
-  PostToolUse: [pascalGroup('PostToolUse', 'Write|Edit')],
+  // apply_patch is Codex's write tool — Write|Edit alone does not match it
+  // (measured Phase 9: PreToolUse silent, no fired-* for apply_patch session).
+  PreToolUse: [pascalGroup('PreToolUse', 'Write|Edit|apply_patch')],
+  PostToolUse: [pascalGroup('PostToolUse', 'Write|Edit|apply_patch')],
 };
 
 /** True when a hook group was written by this installer (tag or our script path). */

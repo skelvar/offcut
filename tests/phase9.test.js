@@ -27,9 +27,11 @@ function withStateDir(fn) {
     });
 }
 
+const WRITE_MATCHER = 'Write|Edit|apply_patch';
+
 function foreignGroup(label) {
   return {
-    matcher: 'Write|Edit',
+    matcher: WRITE_MATCHER,
     hooks: [
       {
         type: 'command',
@@ -150,8 +152,18 @@ test('simulated multi-handler: neighbour deny survives Offcut context', async ()
 // --- 2. Timing is independent of a slow neighbour ---
 
 test('Offcut install entries use a bounded 5s timeout', () => {
-  const group = offcutGroup('PreToolUse', 'Write|Edit');
+  const group = offcutGroup('PreToolUse', WRITE_MATCHER);
   assert.equal(group.hooks[0].timeout, 5);
+});
+
+test('write matchers include apply_patch for Codex', () => {
+  const group = offcutGroup('PreToolUse', WRITE_MATCHER);
+  assert.match(group.matcher, /apply_patch/);
+  const cfg = JSON.parse(
+    fs.readFileSync(path.join(root, 'adapters', 'claude', 'hooks.json'), 'utf8'),
+  );
+  assert.match(cfg.hooks.PreToolUse[0].matcher, /apply_patch/);
+  assert.match(cfg.hooks.PostToolUse[0].matcher, /apply_patch/);
 });
 
 test('pre-write hook process exits within its timeout even if the handler hangs', async () => {
@@ -200,20 +212,20 @@ test('pre-write hook process exits within its timeout even if the handler hangs'
   void hang;
   const neighbour = foreignGroup('slow-neighbour');
   assert.equal(neighbour.hooks[0].timeout, 5);
-  assert.notEqual(neighbour.hooks[0].command, offcutGroup('PreToolUse', 'Write|Edit').hooks[0].command);
+  assert.notEqual(neighbour.hooks[0].command, offcutGroup('PreToolUse', WRITE_MATCHER).hooks[0].command);
 });
 
 // --- 3. Uninstall under a populated config ---
 
 test('uninstall removes only Offcut groups and leaves two foreign hooks', () => {
   const spec = {
-    PreToolUse: [offcutGroup('PreToolUse', 'Write|Edit')],
-    PostToolUse: [offcutGroup('PostToolUse', 'Write|Edit')],
+    PreToolUse: [offcutGroup('PreToolUse', WRITE_MATCHER)],
+    PostToolUse: [offcutGroup('PostToolUse', WRITE_MATCHER)],
     UserPromptSubmit: [offcutGroup('UserPromptSubmit')],
   };
   const target = {
-    PreToolUse: [foreignGroup('security-guidance'), offcutGroup('PreToolUse', 'Write|Edit')],
-    PostToolUse: [foreignGroup('impeccable'), offcutGroup('PostToolUse', 'Write|Edit')],
+    PreToolUse: [foreignGroup('security-guidance'), offcutGroup('PreToolUse', WRITE_MATCHER)],
+    PostToolUse: [foreignGroup('impeccable'), offcutGroup('PostToolUse', WRITE_MATCHER)],
     UserPromptSubmit: [foreignGroup('ponytail'), offcutGroup('UserPromptSubmit')],
     SessionStart: [foreignGroup('remember')],
   };
@@ -239,10 +251,26 @@ test('uninstall removes only Offcut groups and leaves two foreign hooks', () => 
   }
 });
 
+test('SessionEnd keeps fired-* so resume suppression can persist', async () => {
+  const { handleSessionEnd } = await import('../hooks/session-end.js');
+  const { markFiredSignal, paths: statePaths } = await import('../hooks/state.js');
+  await withStateDir(async () => {
+    markFiredSignal('resume-me', 'speculative-abstraction');
+    fs.writeFileSync(statePaths().turnFor('resume-me'), '2\n');
+    await handleSessionEnd(
+      normalize({ hook_event_name: 'SessionEnd', session_id: 'resume-me' }),
+    );
+    assert.equal(fs.existsSync(statePaths().firedFor('resume-me')), true);
+    assert.equal(fs.existsSync(statePaths().turnFor('resume-me')), false);
+    const raw = fs.readFileSync(statePaths().firedFor('resume-me'), 'utf8');
+    assert.match(raw, /speculative-abstraction/);
+  });
+});
+
 test('install merges Offcut beside existing foreign hooks without dropping them', () => {
   const spec = {
-    PreToolUse: [offcutGroup('PreToolUse', 'Write|Edit')],
-    PostToolUse: [offcutGroup('PostToolUse', 'Write|Edit')],
+    PreToolUse: [offcutGroup('PreToolUse', WRITE_MATCHER)],
+    PostToolUse: [offcutGroup('PostToolUse', WRITE_MATCHER)],
   };
   const target = {
     PreToolUse: [foreignGroup('security-guidance')],
