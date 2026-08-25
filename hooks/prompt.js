@@ -11,6 +11,8 @@ import {
   writeDefaultMode,
   bumpTurn,
   normalizeMode,
+  confirmPendingSignals,
+  clearPendingSignals,
 } from './state.js';
 import { REMINDER } from './rules.js';
 
@@ -83,6 +85,12 @@ export async function handlePrompt(norm) {
   if (!norm) return null;
   const prompt = norm.prompt ?? '';
   const command = parseModeCommand(prompt);
+
+  // Next turn started: post challenges from the prior turn were delivered enough
+  // for the user to continue. Unconfirmed pre challenges mean the turn died
+  // before PostToolUse — drop them so the signal can re-fire.
+  confirmPendingSignals(norm.sessionId, (id) => String(id).startsWith('post:'));
+  clearPendingSignals(norm.sessionId, (id) => !String(id).startsWith('post:'));
 
   if (command?.type === 'set' && command.mode) {
     writeMode(command.mode);

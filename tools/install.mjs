@@ -28,6 +28,7 @@ const uninstall = process.argv.includes('--uninstall');
 
 const SCRIPTS = {
   SessionStart: 'hooks/activate.js',
+  SessionEnd: 'hooks/session-end.js',
   UserPromptSubmit: 'hooks/prompt.js',
   SubagentStart: 'hooks/subagent.js',
   PreToolUse: 'hooks/pre-write.js',
@@ -68,6 +69,7 @@ function pascalGroup(event, matcher) {
 
 const PASCAL = {
   SessionStart: [pascalGroup('SessionStart', 'startup|resume|clear|compact|fork')],
+  SessionEnd: [pascalGroup('SessionEnd')],
   UserPromptSubmit: [pascalGroup('UserPromptSubmit')],
   SubagentStart: [pascalGroup('SubagentStart')],
   PreToolUse: [pascalGroup('PreToolUse', 'Write|Edit')],

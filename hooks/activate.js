@@ -4,7 +4,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runHook, emit } from './host.js';
-import { activateSession, resetTurn } from './state.js';
+import {
+  activateSession,
+  resetTurn,
+  resetSuppression,
+  CONTEXT_WIPING_SOURCES,
+} from './state.js';
 import { sessionContext } from './rules.js';
 
 export async function handleActivate(norm) {
@@ -12,6 +17,12 @@ export async function handleActivate(norm) {
 
   const mode = activateSession();
   resetTurn(norm.sessionId);
+
+  // clear/compact/fork wipe model context — re-allow challenges. resume keeps transcript.
+  const source = String(norm.source || '').toLowerCase();
+  if (CONTEXT_WIPING_SOURCES.includes(source)) {
+    resetSuppression(norm.sessionId);
+  }
 
   if (mode === 'off') return null;
 

@@ -228,6 +228,23 @@ Grok's own documentation:
 Only `PreToolUse` reads stdout, and only a `deny` is reliably honored — which
 Offcut never issues by design. Use `AGENTS.md` and the command skills instead.
 
+**Subagent inheritance on Grok is unsupported** for the same reason — the
+`SubagentStart` banner cannot reach the child. On Codex, hook-banner inheritance
+is **unverified** (a headless spawn reached project docs but not the Offcut
+mode banner). Claude Code is the measured pass. `node hooks/doctor.js` reports
+each host's subagent line separately.
+
+### Is it working right now?
+
+```bash
+node hooks/doctor.js
+```
+
+Read-only. Checks the state dir, whether `active` exists and parses, when
+activation last ran, host tier, ruleset, hook script paths, subagent coverage,
+and language coverage. When something is wrong it prints
+`node tools/install.mjs` — it does not rewrite your agent config.
+
 ### No comparison to other tools
 
 Offcut has not been benchmarked against ponytail or any similar tool. The
@@ -239,10 +256,12 @@ be published here whichever way they fall.
 
 ```
 SessionStart   ─→  write mode file, emit the ruleset
+                 (clear/compact/fork also reset challenge suppression)
+SessionEnd     ─→  prune this session's turn-*/fired-* state
 UserPromptSubmit ─→  re-ask the question (~60 tokens)
 PreToolUse     ─→  run signals on the pending write, challenge via context
-PostToolUse    ─→  name what got added
-SubagentStart  ─→  subagents inherit the mode
+PostToolUse    ─→  name what got added; confirm prior challenges delivered
+SubagentStart  ─→  subagents inherit the mode (Claude verified; see limits)
 ```
 
 One config file installs on Claude Code, Codex, and Grok. Host differences —
@@ -256,7 +275,8 @@ closes. A hook that hangs freezes a session, so that case is tested explicitly.
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 127 tests
+node --test tests/*.test.js   # 152 tests
+node hooks/doctor.js          # is the install actually working?
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus
 node scripts/scan.mjs hooks   # dogfood

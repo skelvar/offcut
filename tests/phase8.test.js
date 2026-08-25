@@ -1,0 +1,460 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { normalize } from '../hooks/host.js';
+import {
+  writeMode,
+  clearMode,
+  writeDefaultMode,
+  readMode,
+  inspectActive,
+  hasFiredSignal,
+  markFiredSignal,
+  markPendingSignal,
+  confirmPendingSignals,
+  clearPendingSignals,
+  resetSuppression,
+  pruneOnSessionEnd,
+  pruneStaleFiles,
+  paths,
+  CONTEXT_WIPING_SOURCES,
+} from '../hooks/state.js';
+import { handleActivate } from '../hooks/activate.js';
+import { handlePrompt } from '../hooks/prompt.js';
+import { handlePreWrite } from '../hooks/pre-write.js';
+import { handlePostWrite } from '../hooks/post-write.js';
+import { handleSessionEnd } from '../hooks/session-end.js';
+import { runDoctor } from '../hooks/doctor.js';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function withStateDir(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p8-'));
+  const prev = process.env.OFFCUT_STATE_DIR;
+  process.env.OFFCUT_STATE_DIR = dir;
+  return Promise.resolve()
+    .then(() => fn(dir))
+    .finally(() => {
+      if (prev === undefined) delete process.env.OFFCUT_STATE_DIR;
+      else process.env.OFFCUT_STATE_DIR = prev;
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+}
+
+function runStatuslinePs1(dir) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        path.join(root, 'hooks', 'statusline.ps1'),
+      ],
+      {
+        env: { ...process.env, OFFCUT_STATE_DIR: dir },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    let stdout = '';
+    child.stdout.on('data', (d) => {
+      stdout += d;
+    });
+    child.on('close', (code) => resolve({ code, stdout: stdout.trim() }));
+    child.on('error', reject);
+  });
+}
+
+function abstractionWrite(dir, sessionId = 's') {
+  return normalize({
+    hook_event_name: 'PreToolUse',
+    session_id: sessionId,
+    cwd: dir,
+    tool_name: 'Write',
+    tool_input: {
+      file_path: path.join(dir, 'store.ts'),
+      content:
+        'interface Store { get(k: string): string }\n' +
+        'class MemoryStore implements Store { get(k: string) { return k } }\n',
+    },
+  });
+}
+
+function abstractionPost(dir, sessionId = 's') {
+  return normalize({
+    hook_event_name: 'PostToolUse',
+    session_id: sessionId,
+    cwd: dir,
+    tool_name: 'Write',
+    tool_input: {
+      file_path: path.join(dir, 'store.ts'),
+      content:
+        'interface Store { get(k: string): string }\n' +
+        'class MemoryStore implements Store { get(k: string) { return k } }\n',
+    },
+    tool_response: { ok: true },
+  });
+}
+
+// --- suppression reset by SessionStart source ---
+
+test('CONTEXT_WIPING_SOURCES are clear/compact/fork only', () => {
+  assert.deepEqual([...CONTEXT_WIPING_SOURCES].sort(), ['clear', 'compact', 'fork']);
+});
+
+for (const source of ['clear', 'compact', 'fork']) {
+  test(`SessionStart(${source}) resets signal suppression`, async () => {
+    await withStateDir(async () => {
+      writeMode('full');
+      markFiredSignal('sid', 'new-file');
+      assert.equal(hasFiredSignal('sid', 'new-file'), true);
+
+      await handleActivate(
+        normalize({
+          hook_event_name: 'SessionStart',
+          source,
+          session_id: 'sid',
+        }),
+      );
+      assert.equal(
+        hasFiredSignal('sid', 'new-file'),
+        false,
+        `${source} must clear suppression`,
+      );
+    });
+  });
+}
+
+test('SessionStart(resume) does NOT reset signal suppression', async () => {
+  await withStateDir(async () => {
+    writeMode('full');
+    markFiredSignal('sid', 'new-file');
+    await handleActivate(
+      normalize({
+        hook_event_name: 'SessionStart',
+        source: 'resume',
+        session_id: 'sid',
+      }),
+    );
+    assert.equal(hasFiredSignal('sid', 'new-file'), true);
+  });
+});
+
+test('SessionStart(startup) does NOT reset signal suppression', async () => {
+  await withStateDir(async () => {
+    writeMode('full');
+    markFiredSignal('sid', 'new-file');
+    await handleActivate(
+      normalize({
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+        session_id: 'sid',
+      }),
+    );
+    assert.equal(hasFiredSignal('sid', 'new-file'), true);
+  });
+});
+
+// --- delivery-aware fired tracking ---
+
+test('challenge lost to a dead turn can be re-issued', async () => {
+  await withStateDir(async (dir) => {
+    writeMode('full');
+    const pre = abstractionWrite(dir, 'dead');
+    const first = await handlePreWrite(pre);
+    assert.ok(
+      first?.hookSpecificOutput?.additionalContext?.includes('one implementation'),
+    );
+    assert.equal(hasFiredSignal('dead', 'speculative-abstraction'), true);
+
+    // Simulate death: next UserPromptSubmit without PostToolUse — pending cleared.
+    await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'dead',
+        prompt: 'retry the write',
+      }),
+    );
+    assert.equal(
+      hasFiredSignal('dead', 'speculative-abstraction'),
+      false,
+      'unconfirmed pre pending must drop on next prompt',
+    );
+
+    const again = await handlePreWrite(pre);
+    assert.ok(
+      again?.hookSpecificOutput?.additionalContext?.includes('one implementation'),
+      'same signal must re-fire after dead turn',
+    );
+  });
+});
+
+test('successful PostToolUse confirms pre pending — no re-fire', async () => {
+  await withStateDir(async (dir) => {
+    writeMode('full');
+    const pre = abstractionWrite(dir, 'live');
+    const first = await handlePreWrite(pre);
+    assert.ok(first?.hookSpecificOutput?.additionalContext);
+
+    await handlePostWrite(abstractionPost(dir, 'live'));
+    assert.equal(hasFiredSignal('live', 'speculative-abstraction'), true);
+
+    const second = await handlePreWrite(pre);
+    assert.equal(second, null, 'confirmed signal must stay suppressed');
+  });
+});
+
+test('emit alone leaves pending, not confirmed', () => {
+  return withStateDir(() => {
+    markPendingSignal('p', 'new-file');
+    assert.equal(hasFiredSignal('p', 'new-file'), true);
+    // clearPending without confirm → re-issuable
+    clearPendingSignals('p');
+    assert.equal(hasFiredSignal('p', 'new-file'), false);
+  });
+});
+
+test('legacy fired array format still suppresses', () => {
+  return withStateDir(() => {
+    const p = paths();
+    fs.writeFileSync(p.firedFor('leg'), JSON.stringify(['new-file']) + '\n');
+    assert.equal(hasFiredSignal('leg', 'new-file'), true);
+  });
+});
+
+// --- inspectActive / statusline honesty ---
+
+test('inspectActive: missing vs ok vs corrupt', () => {
+  return withStateDir(() => {
+    clearMode();
+    assert.equal(inspectActive().state, 'missing');
+
+    writeMode('strict');
+    const ok = inspectActive();
+    assert.equal(ok.state, 'ok');
+    assert.equal(ok.mode, 'strict');
+    assert.ok(ok.mtime instanceof Date);
+
+    fs.writeFileSync(paths().active, Buffer.from([0x00, 0xff, 0xfe, 0x01]));
+    const bad = inspectActive();
+    assert.equal(bad.state, 'corrupt');
+    // Hooks still fail safe
+    assert.equal(readMode(), 'full');
+  });
+});
+
+test('statusline.ps1: absent active → inactive marker, not a mode', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('statusline.ps1 on Windows');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    writeDefaultMode('strict');
+    clearMode();
+    const r = await runStatuslinePs1(dir);
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout, 'offcut:-');
+    assert.doesNotMatch(r.stdout, /:(full|strict|lite|off)$/);
+  });
+});
+
+test('statusline.ps1: corrupt active → distinct marker', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('statusline.ps1 on Windows');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    fs.writeFileSync(path.join(dir, 'active'), 'not-a-mode\n');
+    const r = await runStatuslinePs1(dir);
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout, 'offcut:!');
+  });
+});
+
+test('statusline.ps1: healthy active still shows mode', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('statusline.ps1 on Windows');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    writeMode('lite');
+    const r = await runStatuslinePs1(dir);
+    assert.equal(r.stdout, 'offcut:lite');
+  });
+});
+
+// --- pruning ---
+
+test('SessionEnd prunes turn-* and fired-* for the session', async () => {
+  await withStateDir(async () => {
+    markFiredSignal('gone', 'new-file');
+    markPendingSignal('gone', 'post:x');
+    fs.writeFileSync(paths().turnFor('gone'), '3\n');
+    assert.ok(fs.existsSync(paths().firedFor('gone')));
+    assert.ok(fs.existsSync(paths().turnFor('gone')));
+
+    await handleSessionEnd(
+      normalize({ hook_event_name: 'SessionEnd', session_id: 'gone' }),
+    );
+    assert.equal(fs.existsSync(paths().firedFor('gone')), false);
+    assert.equal(fs.existsSync(paths().turnFor('gone')), false);
+  });
+});
+
+test('pruneStaleFiles removes old turn/fired orphans', () => {
+  return withStateDir(() => {
+    const fired = paths().firedFor('old');
+    const turn = paths().turnFor('old');
+    fs.writeFileSync(fired, '{"confirmed":[],"pending":[]}\n');
+    fs.writeFileSync(turn, '1\n');
+    const old = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    fs.utimesSync(fired, new Date(old), new Date(old));
+    fs.utimesSync(turn, new Date(old), new Date(old));
+
+    const n = pruneStaleFiles({ maxAgeMs: 7 * 24 * 60 * 60 * 1000, now: Date.now() });
+    assert.ok(n >= 2);
+    assert.equal(fs.existsSync(fired), false);
+    assert.equal(fs.existsSync(turn), false);
+  });
+});
+
+test('state.js has no unpaid offcut: prune markers', () => {
+  const src = fs.readFileSync(path.join(root, 'hooks', 'state.js'), 'utf8');
+  assert.equal(
+    /offcut:\s*turn files are never pruned/i.test(src),
+    false,
+  );
+  assert.equal(
+    /offcut:\s*fired files are never pruned/i.test(src),
+    false,
+  );
+});
+
+// --- doctor ---
+
+test('doctor reports every required check line', () => {
+  return withStateDir(() => {
+    writeMode('full');
+    const result = runDoctor({ silent: true, root });
+    const checks = result.lines.map((l) => l.check);
+    for (const need of [
+      'state dir',
+      'active',
+      'activation',
+      'ruleset',
+      'hook scripts',
+      'language coverage',
+    ]) {
+      assert.ok(
+        checks.some((c) => c === need || c.startsWith(need) || c.startsWith('host:') || c.startsWith('subagent:')),
+        `missing check category near ${need}; got ${checks.join(', ')}`,
+      );
+    }
+    assert.ok(checks.includes('state dir'));
+    assert.ok(checks.includes('active'));
+    assert.ok(checks.includes('activation'));
+    assert.ok(checks.includes('ruleset'));
+    assert.ok(checks.includes('hook scripts'));
+    assert.ok(checks.includes('language coverage'));
+    assert.ok(
+      checks.some((c) => c.startsWith('subagent:')) || checks.includes('subagent coverage'),
+      'subagent coverage line required',
+    );
+    assert.ok(result.repairCommand.includes('install.mjs'));
+  });
+});
+
+test('doctor: no state dir → fail active/state, prints repair command', () => {
+  const dir = path.join(os.tmpdir(), `offcut-doctor-missing-${process.pid}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const prev = process.env.OFFCUT_STATE_DIR;
+  process.env.OFFCUT_STATE_DIR = dir;
+  try {
+    const result = runDoctor({ silent: true, root });
+    const byCheck = Object.fromEntries(result.lines.map((l) => [l.check, l]));
+    assert.equal(byCheck['state dir'].verdict, 'fail');
+    assert.equal(byCheck.active.verdict, 'fail');
+    assert.match(byCheck.active.detail, /missing|never/i);
+    assert.ok(result.failed >= 1);
+    assert.match(result.repairCommand, /install\.mjs/);
+  } finally {
+    if (prev === undefined) delete process.env.OFFCUT_STATE_DIR;
+    else process.env.OFFCUT_STATE_DIR = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: corrupt active → fail with corrupt, hooks still full', () => {
+  return withStateDir(() => {
+    fs.writeFileSync(paths().active, Buffer.from([0xff, 0x00, 0x01]));
+    assert.equal(readMode(), 'full');
+    const result = runDoctor({ silent: true, root });
+    const active = result.lines.find((l) => l.check === 'active');
+    assert.equal(active.verdict, 'fail');
+    assert.match(active.detail, /corrupt/i);
+  });
+});
+
+test('doctor: moved checkout → hook scripts fail', () => {
+  return withStateDir(() => {
+    writeMode('full');
+    const fakeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-moved-'));
+    try {
+      // No hook scripts under fakeRoot
+      const result = runDoctor({ silent: true, root: fakeRoot });
+      const hooks = result.lines.find((l) => l.check === 'hook scripts');
+      assert.ok(hooks);
+      assert.equal(hooks.verdict, 'fail');
+      assert.match(hooks.detail, /missing|moved/i);
+    } finally {
+      fs.rmSync(fakeRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor is read-only — does not create active or repair configs', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-doctor-ro-'));
+  const prev = process.env.OFFCUT_STATE_DIR;
+  process.env.OFFCUT_STATE_DIR = dir;
+  try {
+    // Empty dir: doctor may mkdir for writability probe but must not write active
+    runDoctor({ silent: true, root });
+    assert.equal(fs.existsSync(path.join(dir, 'active')), false);
+  } finally {
+    if (prev === undefined) delete process.env.OFFCUT_STATE_DIR;
+    else process.env.OFFCUT_STATE_DIR = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resetSuppression helper clears fired file', () => {
+  return withStateDir(() => {
+    markFiredSignal('x', 'a');
+    resetSuppression('x');
+    assert.equal(hasFiredSignal('x', 'a'), false);
+  });
+});
+
+test('confirmPendingSignals moves pending to confirmed', () => {
+  return withStateDir(() => {
+    markPendingSignal('c', 'post:exported-unused');
+    markPendingSignal('c', 'new-file');
+    confirmPendingSignals('c', (id) => id.startsWith('post:'));
+    assert.equal(hasFiredSignal('c', 'post:exported-unused'), true);
+    clearPendingSignals('c');
+    assert.equal(hasFiredSignal('c', 'post:exported-unused'), true, 'confirmed survives clearPending');
+    assert.equal(hasFiredSignal('c', 'new-file'), false, 'unconfirmed pre dropped');
+  });
+});
+
+test('pruneOnSessionEnd is exported and safe on empty dir', () => {
+  return withStateDir(() => {
+    pruneOnSessionEnd('nope');
+  });
+});

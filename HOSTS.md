@@ -289,22 +289,47 @@ prompt (Phase 3). Phrase deactivation and Codex default→activate already prove
 the state machine. Re-open only for an interactive Claude TUI session that can
 type `/offcut default` without CLI intercept — not worth blocking Phase 7.5.
 
-### Subagent inheritance (Codex + Grok) — retired with reason
+### Subagent inheritance (Codex + Grok) — stated honestly
 
 Claude already **pass** (`OFFCUT MODE: full` on subagent first line).
 
 Codex `exec` (2026-08-25): parent spawned a collab subagent; the quoted reply
 was the generated `AGENTS.md` offcut header line, **not** the
 `OFFCUT MODE: full` SubagentStart banner. So project skills/docs reached the
-child; hook-banner inheritance was not observed in that run. Grok not
-re-measured (Tier 3 for hook stdout). Inheritance shares `hooks/subagent.js`
-when the host fires `SubagentStart`. Re-open if product claims depend on
-Codex/Grok hook-banner delivery specifically.
+child; hook-banner inheritance was **not observed**. Status: **unverified**.
 
-### State-pruning debt
+Grok: Tier 3 discards hook stdout for `SubagentStart`. Status: **unsupported**
+for hook-banner delivery — same class of gap as the Grok reminder/challenge
+limitation. Documented in the README; `node hooks/doctor.js` reports it as its
+own line.
 
-Both `offcut:` markers in `hooks/state.js` (`turn-*`, `fired-*`) are named in
-`tasks/PHASE-8-TASK.md` §5. Not fixed here.
+### State-pruning debt — paid in Phase 8
+
+`SessionEnd` → `hooks/session-end.js` deletes this session's `turn-*` /
+`fired-*` and prunes orphans older than 7 days. Both `offcut:` markers removed
+from `hooks/state.js`.
+
+---
+
+## Phase 8 — resilience measures (2026-08-25)
+
+### Session id across compaction (Claude Code) — measured
+
+Probe log (`~/.offcut-probe.jsonl`) after installing `tools/install-probe.mjs`
+and triggering compact on an existing session:
+
+| at (UTC) | source | session_id |
+|---|---|---|
+| 2026-08-25T14:13:41.867Z | `resume` | `14af169b-1e61-40c5-8a4a-0e963c912fcd` |
+| 2026-08-25T14:15:45.332Z | `compact` | `14af169b-1e61-40c5-8a4a-0e963c912fcd` |
+
+**Same session id across `resume` → `compact`.** Suppression surviving
+compaction was therefore a real silent failure on Claude Code, not only a
+`resume` concern. Fix: `clear` / `compact` / `fork` call `resetSuppression`;
+`resume` / `startup` do not.
+
+Prior probe history had **zero** `source=compact` events among 245+
+SessionStarts — absence of the event had been read as "probably fine."
 
 ---
 
@@ -321,10 +346,11 @@ Both `offcut:` markers in `hooks/state.js` (`turn-*`, `fired-*`) are named in
 | `/offcut default` survives restart | **retired** (CLI intercept; state machine proven on Codex) | **pass** (default strict → activate) | **pass** (default persists; `-p` SessionStart re-seed unobserved) |
 | Over-engineered write → challenge | **pass** (transcript) | **pass** (transcript) | **fail** (fires silently; no model delivery) |
 | Once-per-session suppression | **pass** (`fired-*` state) | **pass** (`fired-*`) | **pass** (state only) |
-| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | **retired** (same code path; no cheap headless measure) | **retired** (same) |
-| Statusline (Windows) | **pass** (`offcut:full` via `statusline.ps1`) | — | — |
+| Subagent inheritance | **pass** (`OFFCUT MODE: full`) | **unverified** (banner not observed in headless spawn) | **unsupported** (hook stdout discarded) |
+| Statusline (Windows) | **pass** (`offcut:full`; absent→`offcut:-`; corrupt→`offcut:!`) | — | — |
 | `/clear` preserves mode | **pass** (activate source=`clear`) | same activate path | same activate path |
-| Compaction preserves mode | **pass** (activate source=`compact`) | same activate path | same activate path |
+| Compaction preserves mode | **pass** (activate source=`compact`; **session id stable** — Phase 8 probe) | same activate path | same activate path |
+| Session id across compact | **stable** (probe 2026-08-25) | unmeasured | unmeasured |
 | Uninstall clean | **pass** | **pass** (impeccable kept) | **pass** |
 | `permissionDecision` settled | **ask** blocks in `-p`; escalate ignored | **ask/escalate non-blocking** in exec; context works | context-only |
 | Truncation threshold | — | — | **retired** (unforceable; synthetic only) |

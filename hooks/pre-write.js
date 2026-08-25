@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runHook, gate } from './host.js';
-import { readMode, hasFiredSignal, markFiredSignal } from './state.js';
+import { readMode, hasFiredSignal, markPendingSignal } from './state.js';
 import { PRE_SIGNALS, extractWriteFields, runSignals } from './signals.js';
 
 /**
@@ -75,7 +75,8 @@ export function decidePreWrite(norm, mode) {
   const hits = runSignals(PRE_SIGNALS, view);
   for (const signal of hits) {
     if (hasFiredSignal(norm.sessionId, signal.id)) continue;
-    markFiredSignal(norm.sessionId, signal.id);
+    // Pending until PostToolUse (or cleared on next prompt if the turn died).
+    markPendingSignal(norm.sessionId, signal.id);
 
     const escalate =
       mode === 'strict' && signal.id === 'new-dependency';

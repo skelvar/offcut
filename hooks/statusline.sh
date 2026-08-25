@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Offcut statusline — prints the current mode. Validates OFFCUT_STATE_DIR before use.
+# Offcut statusline — prints the current mode only when activation actually ran.
+# Absent/corrupt active never looks like a healthy mode name.
 set -euo pipefail
 
 dir="${OFFCUT_STATE_DIR:-$HOME/.offcut}"
@@ -13,16 +14,17 @@ case "$dir" in
 esac
 
 active="$dir/active"
-default="$dir/default"
-mode="full"
 
-if [[ -f "$active" ]]; then
-  mode=$(tr -d '\r\n' < "$active" | tr '[:upper:]' '[:lower:]')
-elif [[ -f "$default" ]]; then
-  mode=$(tr -d '\r\n' < "$default" | tr '[:upper:]' '[:lower:]')
+# No active file → activation never ran. Do not fall back to default.
+if [[ ! -f "$active" ]]; then
+  printf 'offcut:-\n'
+  exit 0
 fi
+
+mode=$(tr -d '\r\n' < "$active" | tr '[:upper:]' '[:lower:]')
 
 case "$mode" in
   off|lite|full|strict) printf 'offcut:%s\n' "$mode" ;;
-  *) printf 'offcut:full\n' ;;
+  # Corrupt/unparseable — detectable, not silently "full".
+  *) printf 'offcut:!\n' ;;
 esac

@@ -2,6 +2,7 @@
 // Adapter seam — owns ALL host divergence. No other hook script may name a host.
 
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10,11 +11,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EVENT_CANONICAL = {
   SessionStart: 'session_start',
+  SessionEnd: 'session_end',
   UserPromptSubmit: 'user_prompt_submit',
   SubagentStart: 'subagent_start',
   PreToolUse: 'pre_tool_use',
   PostToolUse: 'post_tool_use',
   session_start: 'session_start',
+  session_end: 'session_end',
   user_prompt_submit: 'user_prompt_submit',
   subagent_start: 'subagent_start',
   pre_tool_use: 'pre_tool_use',
@@ -24,6 +27,7 @@ const EVENT_CANONICAL = {
 // Output hookEventName is PascalCase on every measured host (Grok docs match Claude).
 const EVENT_OUTPUT = {
   session_start: 'SessionStart',
+  session_end: 'SessionEnd',
   user_prompt_submit: 'UserPromptSubmit',
   subagent_start: 'SubagentStart',
   pre_tool_use: 'PreToolUse',
@@ -136,6 +140,62 @@ export function pluginRoot() {
     process.env.PLUGIN_ROOT ||
     path.resolve(__dirname, '..')
   );
+}
+
+/**
+ * Measured host facts for doctor — delivery tier and subagent inheritance.
+ * Update HOSTS.md when these change. Kept here so other hook scripts stay
+ * host-name-free (contract test).
+ */
+export const HOST_FACTS = Object.freeze({
+  claude: Object.freeze({
+    label: 'Claude Code',
+    tier: 1,
+    tierNote: 'hooks deliver additionalContext to the model',
+    subagent: 'verified',
+    subagentNote:
+      'OFFCUT MODE banner observed on SubagentStart (2026-08-24)',
+  }),
+  codex: Object.freeze({
+    label: 'Codex',
+    tier: 1,
+    tierNote: 'hooks deliver additionalContext to the model',
+    subagent: 'unverified',
+    subagentNote:
+      'SubagentStart hook path shared; headless measure did not observe the mode banner (2026-08-25)',
+  }),
+  grok: Object.freeze({
+    label: 'Grok Build',
+    tier: 3,
+    tierNote: 'hooks run but stdout/additionalContext is discarded for most events',
+    subagent: 'unsupported',
+    subagentNote:
+      'hook stdout discarded — subagent inheritance cannot deliver via hooks',
+  }),
+});
+
+/**
+ * Where install.mjs writes Offcut hooks, for doctor to inspect.
+ * @param {string} [home]
+ */
+export function installTargets(home = os.homedir()) {
+  return [
+    {
+      host: 'claude',
+      file: path.join(home, '.claude', 'settings.json'),
+      requiredDir: path.join(home, '.claude'),
+    },
+    {
+      host: 'codex',
+      file: path.join(home, '.codex', 'hooks.json'),
+      requiredDir: path.join(home, '.codex'),
+    },
+    {
+      host: 'grok',
+      file: path.join(home, '.grok', 'hooks', 'offcut-hooks.json'),
+      requiredDir: path.join(home, '.grok'),
+    },
+  ];
 }
 
 /**

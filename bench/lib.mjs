@@ -55,6 +55,7 @@ export const MODEL_ID = 'claude-sonnet-5';
 
 const HOOK_EVENTS = {
   SessionStart: { script: 'hooks/activate.js', matcher: 'startup|resume|clear|compact|fork' },
+  SessionEnd: { script: 'hooks/session-end.js' },
   UserPromptSubmit: { script: 'hooks/prompt.js' },
   SubagentStart: { script: 'hooks/subagent.js' },
   PreToolUse: { script: 'hooks/pre-write.js', matcher: 'Write|Edit' },

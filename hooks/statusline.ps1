@@ -1,4 +1,5 @@
-# Offcut statusline — prints the current mode. Validates OFFCUT_STATE_DIR before use.
+# Offcut statusline — prints the current mode only when activation actually ran.
+# Absent/corrupt active never looks like a healthy mode name.
 $ErrorActionPreference = 'Stop'
 
 $dir = if ($env:OFFCUT_STATE_DIR) { $env:OFFCUT_STATE_DIR } else { Join-Path $HOME '.offcut' }
@@ -10,17 +11,18 @@ if ($dir -match '[`$!&|;<>(){}\[\]''"*]') {
 }
 
 $active = Join-Path $dir 'active'
-$default = Join-Path $dir 'default'
-$mode = 'full'
 
-if (Test-Path -LiteralPath $active) {
-  $mode = (Get-Content -LiteralPath $active -Raw).Trim().ToLowerInvariant()
-} elseif (Test-Path -LiteralPath $default) {
-  $mode = (Get-Content -LiteralPath $default -Raw).Trim().ToLowerInvariant()
+# No active file → activation never ran. Do not fall back to default.
+if (-not (Test-Path -LiteralPath $active)) {
+  Write-Output 'offcut:-'
+  exit 0
 }
 
-if ($mode -notin @('off', 'lite', 'full', 'strict')) {
-  $mode = 'full'
-}
+$mode = (Get-Content -LiteralPath $active -Raw).Trim().ToLowerInvariant()
 
-Write-Output "offcut:$mode"
+if ($mode -in @('off', 'lite', 'full', 'strict')) {
+  Write-Output "offcut:$mode"
+} else {
+  # Corrupt/unparseable — detectable, not silently "full".
+  Write-Output 'offcut:!'
+}
