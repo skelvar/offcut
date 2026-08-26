@@ -1,14 +1,14 @@
 ---
 name: offcut-audit
 description: >
-  One-shot Offcut audit of a repository or file set: run the same write-time
-  signals across existing files and report ranked findings. Use when the user
-  asks for an Offcut audit, invokes /offcut-audit, or asks to run Offcut
-  signals across a repo (bloat, unused exports, speculative abstractions).
-  Do not use for ponytail-audit / "what can we delete from this repo" (those
-  are ponytail), mode switches (/offcut full|lite|strict|off), single-diff
-  review (use offcut-review), explaining code, rename-only edits, formatting,
-  or "what does this function do?".
+  One-shot Offcut audit of a repository or file set: run the deterministic
+  signals through scripts/scan.mjs across existing files and report ranked
+  findings. Use when the user asks to audit a repo or codebase for
+  over-engineering, bloat, unused exports, speculative abstractions or stray
+  config surface, asks what Offcut flags across the tree, or invokes
+  /offcut-audit. Do not use for mode switches (/offcut full|lite|strict|off),
+  reviewing a single diff (use offcut-review), applying the fixes, explaining
+  code, rename-only edits, formatting, or "what does this function do?".
 license: MIT
 compatibility: Requires Node.js on PATH to run scripts/scan.mjs. Touches no mode state.
 metadata:

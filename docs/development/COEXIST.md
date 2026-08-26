@@ -74,16 +74,42 @@ Offcut's own process bound is 5s (`runHook` + install `timeout: 5`). Neighbours 
 
 ## 5. Do the skills collide?
 
-**Initially yes; sharpened.**
+**Initially yes. Sharpened — then the sharpen was reverted, because it bought
+single-firing by making Offcut unreachable.**
 
 Prompt: `review this diff for over-engineering`.
 
 | When | Model report |
 |---|---|
-| Before | `SKILL=both` — `offcut-review` and `ponytail-review` both matched |
-| After description sharpen | `SKILL=ponytail-review` only — Offcut now requires naming Offcut / `/offcut-review` / "Offcut signals", and explicitly cedes ponytail phrases |
+| Before (2026-08-25) | `SKILL=both` — `offcut-review` and `ponytail-review` both matched |
+| After description sharpen (2026-08-25) | `SKILL=ponytail-review` only — Offcut required naming Offcut / `/offcut-review` / "Offcut signals", and explicitly ceded the generic phrases |
+| Shipped now (2026-08-27) | **Unmeasured — deliberately.** See below. |
 
-Same treatment applied to `offcut-audit` vs `ponytail-audit`. No hook-side intent detection added.
+The sharpen worked, and that was the problem. It named ponytail in Offcut's own
+shipped metadata and told the agent not to use `offcut-review` for "is this
+over-engineered" or "what can we delete". Two consequences, neither measured at
+the time:
+
+- **Most machines do not have ponytail.** The description deferred to a plugin
+  that may not be installed, so the phrasing a user reaches for first routed to
+  nothing at all. A collision between two installed plugins was traded for
+  unreachability everywhere else.
+- **It hardcoded a third party's naming.** Offcut cannot control ponytail's skill
+  names or trigger phrases, and this repo already forbids hardcoded host names
+  outside adapter logic for the same reason.
+
+The descriptions now state positively what Offcut is — a deterministic scanner
+run over a diff or a tree, reporting exactly which named signals fired — and
+their negative triggers only separate Offcut's own skills from each other
+(`review` vs `audit` vs mode switches). No third-party plugin is named.
+
+Routing under the new descriptions is **not** claimed here. Measuring it needs
+both plugins installed at their shipped versions, and "which skill does a generic
+over-engineering request activate" is an Offcut-versus-ponytail comparison — it
+belongs to the benchmark, not to a coexistence note. If both match, that is an
+accurate outcome rather than a bug: one scans, one advises.
+
+No hook-side intent detection was added, then or now.
 
 ---
 
@@ -115,5 +141,5 @@ Caveats to remember:
 
 - **Codex hook trust** — headless `codex exec` needs trusted hooks (or `--dangerously-bypass-hook-trust`) or write hooks stay silent.
 - **Deny short-circuit** — if another PreToolUse denies first and the host stops the chain, Offcut's write challenge may not appear; the write stays blocked.
-- **Skill descriptions** — generic "review for over-engineering" now routes to ponytail; say "Offcut" or `/offcut-review` for Offcut.
+- **Skill descriptions** — with both plugins installed, a generic "review for over-engineering" may match Offcut's review skill and ponytail's. Naming Offcut or invoking `/offcut-review` is unambiguous; which one a host picks otherwise is unmeasured (§5).
 - **Grok** — coexistence of *config* is fine; delivery remains Tier 3.

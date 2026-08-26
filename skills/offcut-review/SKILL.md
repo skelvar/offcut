@@ -1,14 +1,14 @@
 ---
 name: offcut-review
 description: >
-  One-shot Offcut review of a diff: run the same write-time signals against
-  changed lines and report findings. Use when the user asks for an Offcut
-  review, invokes /offcut-review, or asks to run Offcut signals on a diff
-  (bloat, speculative abstractions, unused exports). Do not use for
-  ponytail-review / "what can we delete" / "is this over-engineered" (those
-  are ponytail), mode switches (/offcut full|lite|strict|off), repository-wide
-  audits (use offcut-audit), explaining code, rename-only edits, formatting,
-  or answering "what does this function do?".
+  One-shot Offcut review of a diff: run the deterministic signals through
+  scripts/scan.mjs over the changed lines and report exactly what fired. Use
+  when the user asks to review or check a diff for over-engineering, bloat,
+  speculative abstractions, unused exports, a new dependency or new config
+  surface, asks what Offcut flags in a change, or invokes /offcut-review. Do
+  not use for mode switches (/offcut full|lite|strict|off), repository-wide
+  scans (use offcut-audit), applying the fixes, explaining code, rename-only
+  edits, formatting, or answering "what does this function do?".
 license: MIT
 compatibility: Requires Node.js on PATH to run scripts/scan.mjs. Touches no mode state.
 metadata:

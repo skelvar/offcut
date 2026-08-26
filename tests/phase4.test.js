@@ -326,7 +326,11 @@ test('command skills: name matches directory, description bounds, body bounds', 
     assert.match(fm, new RegExp(`^name:\\s*${name}\\s*$`, 'm'));
     const desc = fm.match(/description:\s*>\n([\s\S]*?)(?=\n[a-z]+:|\n---)/);
     assert.ok(desc, `${name} description`);
-    const descText = desc[1].replace(/^\s+/gm, '').trim();
+    // A `>` scalar folds its newlines into spaces, so assert on the folded
+    // value the host actually reads. Matching the pre-fold text makes the
+    // assertion depend on where a line happened to wrap: reflowing a
+    // description without changing a word could fail it.
+    const descText = desc[1].replace(/\s+/g, ' ').trim();
     assert.ok(descText.length > 0 && descText.length <= 1024, `${name} desc length ${descText.length}`);
     assert.ok(body.trim().split(/\n/).length < 500, `${name} body too long`);
     // Negative triggers present.
