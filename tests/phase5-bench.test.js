@@ -156,7 +156,10 @@ test('OFFCUT_RULESET_PATH loads justify variant; reminder override works', async
   const path = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const justifySkill = path.join(root, 'skills', 'offcut-justify', 'SKILL.md');
+  // Ask the bench for the variant's location instead of rebuilding the path, so
+  // moving it cannot leave this test asserting against a stale copy.
+  const { justifyArmConfig } = await import('../bench/lib.mjs');
+  const justifySkill = justifyArmConfig('justify').rulesetPath;
   const prevPath = process.env.OFFCUT_RULESET_PATH;
   const prevRem = process.env.OFFCUT_REMINDER;
   try {

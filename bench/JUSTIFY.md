@@ -237,7 +237,10 @@ All lean (shared row parser module).
    effort stayed structurally lean. The recurring miss is **scope** (extra
    export), which neither framing prevented on `spent-token`.
 4. **Ship decision:** keep `skills/offcut/SKILL.md` as the shipped ruleset.
-   Keep `skills/offcut-justify/` as an experiment artifact, not a default.
+   Keep the variant as an experiment artifact, not a default. It lives at
+   `bench/offcut-justify/` rather than under `skills/`, because hosts
+   auto-discover every immediate child of `skills/` and would install it
+   alongside the shipped ruleset.
 
 Five reps per cell are enough to notice a large effect and not enough to claim
 a small one. This writeup does not claim a rate beyond the raw counts above.

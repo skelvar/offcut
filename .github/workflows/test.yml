@@ -29,15 +29,21 @@ jobs:
         run: |
           node -e '
             const fs = require("fs");
-            const plugin = JSON.parse(fs.readFileSync("plugin.json","utf8"));
+            const ver = JSON.parse(fs.readFileSync("plugin.json","utf8")).version;
             const cp = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8"));
             const m = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8"));
-            const skill = fs.readFileSync("skills/offcut/SKILL.md","utf8");
-            const ver = skill.match(/version:\s*"([^"]+)"/)[1];
-            if (plugin.version !== ver) throw new Error("plugin.json mismatch");
             if (cp.version !== ver) throw new Error(".claude-plugin/plugin.json mismatch");
             if (m.plugins[0].version !== ver) throw new Error("marketplace mismatch");
-            console.log("version", ver);
+            // Every directory under skills/ is auto-discovered and installed, so
+            // checking only skills/offcut let the command skills drift to 0.3.0.
+            const skills = fs.readdirSync("skills", { withFileTypes: true }).filter((e) => e.isDirectory());
+            if (!skills.length) throw new Error("no skills found");
+            for (const s of skills) {
+              const src = fs.readFileSync("skills/" + s.name + "/SKILL.md", "utf8");
+              const got = (src.match(/version:\s*"([^"]+)"/) || [])[1];
+              if (got !== ver) throw new Error(s.name + " is " + got + ", expected " + ver);
+            }
+            console.log("version", ver, "across", skills.length, "skills");
           '
 
       - name: No host identifiers outside host.js and adapters/

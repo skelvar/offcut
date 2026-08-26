@@ -80,7 +80,10 @@ export function justifyArmConfig(arm) {
   if (arm === 'justify') {
     return {
       mode: 'full',
-      rulesetPath: path.join(REPO_ROOT, 'skills', 'offcut-justify', 'SKILL.md'),
+      // Lives under bench/, not skills/ — hosts auto-discover every immediate
+      // child of skills/, and this variant must never install beside the
+      // shipped ruleset.
+      rulesetPath: path.join(BENCH_ROOT, 'offcut-justify', 'SKILL.md'),
       reminder:
         'OFFCUT ACTIVE — before you build: is this change justified? does it already exist here? can the platform or stdlib do it? is there a better solution? which boundary owns it?',
     };

@@ -8,7 +8,7 @@ description: >
 license: MIT
 compatibility: Text only. No Node.js required. Touches no mode state.
 metadata:
-  version: "0.3.0"
+  version: "0.1.0"
   author: xyzbk
 ---
 
