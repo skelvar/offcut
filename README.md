@@ -27,8 +27,10 @@ src/config/loader.ts (1)
   [speculative-abstraction] one implementation — is the indirection carrying its weight?
 ```
 
-Six deterministic checks. No model call, no network, no dependencies, under
-0.02 ms per file.
+Six deterministic checks. No model call, no network, no dependencies — about
+0.3 ms per file, so a 3,000-file tree scans in under a second. Every scan prints
+its own file count and timing, so that figure is checkable on your code rather
+than only on ours.
 
 ## Install
 
@@ -93,26 +95,40 @@ Reads only. No network, no writes, no subprocesses.
 
 ## Accuracy
 
-Every number is reproducible from this repository.
+The labeled corpora ship in this repository and reproduce exactly. The real-code
+corpus does not — `realcode.mjs` scans whichever Claude Code plugins are
+installed on the machine running it, so your totals will differ from these.
 
 ```bash
-node bench/fp.mjs        # labeled negatives
-node bench/realcode.mjs  # real third-party code
+node bench/fp.mjs        # labeled negatives + positive corpus
+node bench/realcode.mjs  # whatever is installed locally
 ```
 
 | Corpus | What it is | Result |
 |---|---|---|
 | **Labeled negatives** | 95 accepted benchmark solutions — any fire is definitively wrong | **0/95**, every check, both contexts |
-| **Real code** | 6,876 files across 19 published projects | **1.1%** of files produce a finding |
 | **Positive corpus** | hand-written true positives, one per check | every shipping check fires |
+| **Real code** | 918 JavaScript/TypeScript files across 19 installed plugins | **8.5%** produce a finding |
 
-Both matter together: a detector scores zero on negatives by never firing, so
-the positive corpus is what stops a silent tool from looking perfect.
+The two labeled corpora matter together: a detector scores zero on negatives by
+never firing, so the positive corpus is what stops a silent tool from looking
+perfect.
+
+**Read the real-code row carefully** (measured 2026-08-26). That run walked
+6,878 files, but 5,960 of them were JSON, Markdown, shell or Python — file types
+the checks are gated off entirely ([Limits](#limits)) and which therefore cannot
+fire. Reporting "1.1% of all files" would be arithmetically true and misleading,
+so the row quotes the rate over the 918 files a check actually examines. The
+corpus is also dominated by Offcut's own source, 5,603 of those 6,878 files,
+because Offcut is installed on the machine that measured it. `realcode.mjs`
+prints the per-project breakdown and both rates, so neither fact has to be taken
+on trust.
 
 **On a codebase it had never seen** — a private 259-file project — Offcut
 produced 2 findings and both were real dead exports. Getting there required
 fixing two bugs the corpora above had missed, which is why unseen code is worth
-more than more test fixtures.
+more than more test fixtures. That project is private, so this is the one
+number here you cannot re-run.
 
 ### The checks
 
@@ -165,10 +181,10 @@ Not disproven — unproven, on tasks up to multi-file scale, for one model. Use
 it if you like the reminder. The review and audit commands stand on the
 accuracy numbers above and do not depend on it.
 
-### The write-time challenge is JavaScript/TypeScript only
+### The checks are JavaScript/TypeScript only
 
-The checks are syntax-level. Ungated they produced 65% false positives on
-Python and 100% on JSON, so they are gated by extension.
+They are syntax-level. Ungated they produced 65% false positives on Python and
+100% on JSON, so they are gated by extension.
 
 | | |
 |---|---|
@@ -176,7 +192,9 @@ Python and 100% on JSON, so they are gated by extension.
 | Reminder only | everything else |
 
 On a Python project Offcut activates, switches modes and re-asks the question,
-but will not challenge an individual write.
+but will not challenge an individual write, and an audit of it reports nothing.
+This gating is also why the real-code denominator above is quoted over eligible
+files rather than every file walked.
 
 ### Host support
 

@@ -326,9 +326,12 @@ export function formatFindings(findings) {
 }
 
 /**
+ * `filesScanned` is 0 for the diff and help paths — only a tree scan has a file
+ * count to divide wall time by.
+ *
  * @param {string[]} argv
  * @param {{ stdin?: string, cwd?: string }} [io]
- * @returns {{ code: number, stdout: string, stderr: string, findings: Finding[] }}
+ * @returns {{ code: number, stdout: string, stderr: string, findings: Finding[], filesScanned: number }}
  */
 export function runScanCli(argv, io = {}) {
   const args = argv.slice();
@@ -341,7 +344,7 @@ export function runScanCli(argv, io = {}) {
     const target = args[diffIdx + 1];
     if (!target) {
       stderr = 'usage: node scripts/scan.mjs --diff <file|->\n';
-      return { code: 2, stdout, stderr, findings: [] };
+      return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
     }
     let text = '';
     if (target === '-') {
@@ -351,12 +354,12 @@ export function runScanCli(argv, io = {}) {
         text = fs.readFileSync(path.resolve(cwd, target), 'utf8');
       } catch (err) {
         stderr = `scan: cannot read diff: ${err instanceof Error ? err.message : String(err)}\n`;
-        return { code: 2, stdout, stderr, findings: [] };
+        return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
       }
     }
     const findings = scanDiff(text);
     stdout = formatFindings(findings);
-    return { code: 0, stdout, stderr, findings };
+    return { code: 0, stdout, stderr, findings, filesScanned: 0 };
   }
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -370,7 +373,7 @@ export function runScanCli(argv, io = {}) {
       '\n' +
       'Reads only. No network, no file writes, no subprocesses, no Offcut state.\n' +
       'Exit 0 = scanned successfully, 2 = bad arguments or unreadable input.\n';
-    return { code: 0, stdout, stderr, findings: [] };
+    return { code: 0, stdout, stderr, findings: [], filesScanned: 0 };
   }
 
   const paths = args.filter((a) => a !== '--');
@@ -378,18 +381,18 @@ export function runScanCli(argv, io = {}) {
     stderr =
       'usage: node scripts/scan.mjs --diff [file|-]\n' +
       '       node scripts/scan.mjs <file-or-dir>...\n';
-    return { code: 2, stdout, stderr, findings: [] };
+    return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
   }
 
   const missing = [];
   const files = collectFiles(paths.map((p) => path.resolve(cwd, p)), missing);
   if (missing.length) {
     stderr = missing.map((m) => `scan: no such file or directory: ${m}\n`).join('');
-    return { code: 2, stdout, stderr, findings: [] };
+    return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
   }
   const findings = scanFiles(files, { cwd });
   stdout = formatFindings(findings);
-  return { code: 0, stdout, stderr, findings };
+  return { code: 0, stdout, stderr, findings, filesScanned: files.length };
 }
 
 const isMain =
@@ -397,8 +400,19 @@ const isMain =
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
 if (isMain) {
+  const startedAt = performance.now();
   const result = runScanCli(process.argv.slice(2));
+  const elapsedMs = performance.now() - startedAt;
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
+  // The measurement behind the per-file cost quoted in the README. On stdout,
+  // not stderr: PowerShell surfaces a native command's stderr as an error
+  // record, which would make every clean scan look like a failure on Windows.
+  if (result.code === 0 && result.filesScanned > 0) {
+    const perFile = elapsedMs / result.filesScanned;
+    process.stdout.write(
+      `scanned ${result.filesScanned} files in ${elapsedMs.toFixed(0)} ms (${perFile.toFixed(3)} ms/file)\n`,
+    );
+  }
   process.exit(result.code);
 }

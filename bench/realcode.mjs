@@ -23,8 +23,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
+import { ALL_SIGNALS, runSignals, extensionApplies } from '../hooks/signals.js';
 import { collectFiles, readTextFile } from '../scripts/scan.mjs';
+
+/**
+ * Signals that can fire in a repo audit at all. The corpus is mostly JSON,
+ * Markdown and shell, which no repo-context signal declares, so a rate over
+ * every file understates the rate on the files actually examined.
+ */
+const REPO_SIGNALS = ALL_SIGNALS.filter((s) => s.contexts.includes('repo'));
+
+/**
+ * Could any repo-context signal fire on this path, ignoring content?
+ * @param {string} filePath
+ */
+function isEligible(filePath) {
+  return REPO_SIGNALS.some((s) => extensionApplies(s, filePath));
+}
 
 /**
  * @typedef {{ name: string, dirs?: string[], files?: string[] }} ProjectInput
@@ -37,6 +52,9 @@ import { collectFiles, readTextFile } from '../scripts/scan.mjs';
  *   exportedUnusedExercised: boolean,
  *   exportedUnusedRate: number,
  *   projects: number,
+ *   eligible: number,
+ *   eligibleWithFindings: number,
+ *   perProject: Array<{ name: string, files: number }>,
  * }} RealCodeReport
  */
 
@@ -118,7 +136,10 @@ export function scanRealCode(projects) {
   const byExt = new Map();
   const bySignal = new Map();
   const filesWithFindings = new Set();
+  const perProject = [];
   let total = 0;
+  let eligible = 0;
+  let eligibleWithFindings = 0;
   let exportedUnusedExercised = false;
 
   for (const project of projects) {
@@ -131,9 +152,12 @@ export function scanRealCode(projects) {
     }
     const corpus = loaded.map((f) => f.content).join('\n');
     if (loaded.length) exportedUnusedExercised = true;
+    perProject.push({ name: project.name, files: loaded.length });
 
     for (const file of loaded) {
       total += 1;
+      const isElig = isEligible(file.path);
+      if (isElig) eligible += 1;
       const ext = path.extname(file.path).toLowerCase() || '(none)';
       const view = {
         path: file.path,
@@ -150,6 +174,7 @@ export function scanRealCode(projects) {
       byExt.get(ext).files += 1;
       if (hits.length) {
         filesWithFindings.add(file.path);
+        if (isElig) eligibleWithFindings += 1;
         byExt.get(ext).fires += 1;
         for (const h of hits) bySignal.set(h.id, (bySignal.get(h.id) || 0) + 1);
       }
@@ -165,6 +190,9 @@ export function scanRealCode(projects) {
     exportedUnusedExercised,
     exportedUnusedRate: total ? exportedUnusedCount / total : 0,
     projects: projects.length,
+    eligible,
+    eligibleWithFindings,
+    perProject,
   };
 }
 
@@ -185,18 +213,34 @@ export function projectsFromCliDirs(dirs) {
  * @param {string[]} rootLabels
  */
 export function formatRealCodeReport(report, rootLabels = []) {
-  const { total, filesWithFindings, bySignal, byExt } = report;
+  const { total, filesWithFindings, bySignal, byExt, eligible, eligibleWithFindings } = report;
   const pct = (n) => (total ? ((n / total) * 100).toFixed(1) : '0.0');
   const lines = [];
   lines.push('# Real-code corpus\n');
   if (rootLabels.length) {
     lines.push(`roots:\n${rootLabels.map((t) => '  ' + t).join('\n')}\n`);
   }
+  if (report.perProject.length) {
+    lines.push('## Corpus composition\n');
+    lines.push('| project | files |');
+    lines.push('|---|---:|');
+    for (const p of [...report.perProject].sort((a, b) => b.files - a.files)) {
+      lines.push(`| ${p.name} | ${p.files} |`);
+    }
+    lines.push('');
+  }
   lines.push(`projects: ${report.projects}`);
   lines.push(`files scanned: ${total}`);
   lines.push(
     `files with >=1 finding: ${filesWithFindings} (${pct(filesWithFindings)}%)\n`,
   );
+  // The all-files rate is the number that flatters: most of the corpus is a
+  // file type no repo-context signal declares, so it cannot fire by design.
+  const eligRate = eligible ? ((eligibleWithFindings / eligible) * 100).toFixed(1) : '0.0';
+  lines.push(
+    `eligible files (a repo signal declares the extension): ${eligible} of ${total}`,
+  );
+  lines.push(`eligible files with >=1 finding: ${eligibleWithFindings} (${eligRate}%)\n`);
   lines.push('## Fire rate per signal\n');
   lines.push('| signal | files fired | rate |');
   lines.push('|---|---:|---:|');
