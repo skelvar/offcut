@@ -207,35 +207,31 @@ export function runDoctor(opts = {}) {
     );
   }
 
-  // 6. hook scripts exist where installed config points
-  if (!installed.length) {
-    record('fail', 'hook scripts', 'no installed config to check');
-  } else {
-    let missing = [];
-    let checked = 0;
-    for (const inst of installed) {
-      const refs = scriptPathsFromConfig(inst.config);
-      for (const abs of refs) {
-        if (abs.includes('${')) continue;
-        checked += 1;
-        if (!fs.existsSync(abs)) missing.push(abs);
-      }
-    }
-    for (const rel of HOOK_SCRIPTS) {
-      const abs = path.join(root, rel);
+  // 6. hook scripts exist in this checkout, and where any installed config points
+  let missing = [];
+  let checked = 0;
+  for (const inst of installed) {
+    const refs = scriptPathsFromConfig(inst.config);
+    for (const abs of refs) {
+      if (abs.includes('${')) continue;
       checked += 1;
       if (!fs.existsSync(abs)) missing.push(abs);
     }
-    missing = [...new Set(missing)];
-    if (missing.length) {
-      record(
-        'fail',
-        'hook scripts',
-        `missing ${missing.length}/${checked} — moved checkout? e.g. ${missing[0]}`,
-      );
-    } else {
-      record('ok', 'hook scripts', `all referenced scripts present (${checked} checked)`);
-    }
+  }
+  for (const rel of HOOK_SCRIPTS) {
+    const abs = path.join(root, rel);
+    checked += 1;
+    if (!fs.existsSync(abs)) missing.push(abs);
+  }
+  missing = [...new Set(missing)];
+  if (missing.length) {
+    record(
+      'fail',
+      'hook scripts',
+      `missing ${missing.length}/${checked} — moved checkout? e.g. ${missing[0]}`,
+    );
+  } else {
+    record('ok', 'hook scripts', `all referenced scripts present (${checked} checked)`);
   }
 
   // 7. subagent coverage (own line)
