@@ -108,21 +108,37 @@ node bench/realcode.mjs  # whatever is installed locally
 |---|---|---|
 | **Labeled negatives** | 95 accepted benchmark solutions — any fire is definitively wrong | **0/95**, every check, both contexts |
 | **Positive corpus** | hand-written true positives, one per check | every shipping check fires |
-| **Real code** | 918 JavaScript/TypeScript files across 19 installed plugins | **8.5%** produce a finding |
+| **Real code** | 65 eligible JS/TS files across 15 *independent* plugins | **2 of 65** — too small a sample to call a rate |
 
 The two labeled corpora matter together: a detector scores zero on negatives by
 never firing, so the positive corpus is what stops a silent tool from looking
 perfect.
 
-**Read the real-code row carefully** (measured 2026-08-26). That run walked
+**Read the real-code row carefully** (measured 2026-08-27). That run walked
 6,878 files, but 5,960 of them were JSON, Markdown, shell or Python — file types
 the checks are gated off entirely ([Limits](#limits)) and which therefore cannot
 fire. Reporting "1.1% of all files" would be arithmetically true and misleading,
-so the row quotes the rate over the 918 files a check actually examines. The
-corpus is also dominated by Offcut's own source, 5,603 of those 6,878 files,
-because Offcut is installed on the machine that measured it. `realcode.mjs`
-prints the per-project breakdown and both rates, so neither fact has to be taken
-on trust.
+so only the 918 files a check actually examines are counted.
+
+Of those 918, most are not an independent sample. The corpus is whatever plugins
+happen to be installed on the measuring machine, and on this machine that is
+mostly Offcut itself: 810 eligible files (88%) are Offcut's own source, counted
+twice because the working tree and the installed plugin copy are both present. A
+further 43 belong to ponytail, the tool Offcut is to be benchmarked against —
+scoring our own checks over the comparison subject is not independent of either.
+That leaves **65 genuinely independent files, with 2 findings.**
+
+| Group | Eligible files | Fired |
+|---|---:|---:|
+| Independent third-party | 65 | 2 |
+| Offcut's own source | 810 | 76 |
+| Benchmark subject | 43 | 0 |
+
+Earlier versions of this table blended all three into a single "8.5% of eligible
+files". That figure was mostly Offcut measuring itself. `realcode.mjs` now
+classifies every project, prints each group with its denominator, and names the
+independent row as the only publishable one — so the composition cannot be
+mistaken again.
 
 **On a codebase it had never seen** — a private 259-file project — Offcut
 produced 2 findings and both were real dead exports. Getting there required
@@ -214,6 +230,14 @@ install.
 Offcut has not been benchmarked against ponytail or anything similar. If that
 happens, the numbers go here whichever way they fall.
 
+Two confounds are known already and have to be controlled before any such number
+means anything. Ponytail's source sits in the plugin cache that feeds the
+real-code corpus above, so it is classified as the comparison subject and kept
+out of the publishable rate. And Offcut's skill descriptions were briefly written
+to cede the generic "review for over-engineering" phrasing to ponytail by name,
+which would have decided an activation comparison before it ran; that deference
+is gone, and [`COEXIST.md`](docs/development/COEXIST.md) §5 records why.
+
 ## How it works
 
 ```
@@ -253,7 +277,7 @@ when unhealthy so it works in CI.
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 166 tests
+node --test tests/*.test.js   # 167 tests
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus
 node scripts/scan.mjs hooks   # dogfood

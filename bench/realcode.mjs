@@ -4,8 +4,8 @@
 //   node bench/realcode.mjs                 # scan the default corpus
 //   node bench/realcode.mjs <dir> [dir...]  # scan specific trees
 //
-// Why this exists: the 40-run bench corpus (bench/fp.mjs) scores every signal
-// at 0/40, but those solutions are 10-30 lines, single-module, comment-free.
+// Why this exists: the labeled bench corpus (bench/fp.mjs) scores every signal
+// at 0/95, but those solutions are 10-30 lines, single-module, comment-free.
 // Measured 2026-08-25, the same signals fired on 51.1% of files in ordinary
 // third-party code — almost all from one broken signal.
 //
@@ -13,9 +13,15 @@
 // merely published and reviewed, not certified free of over-engineering — so
 // the number to watch is the RATE and its trend, not any single finding.
 //
-// Per-project corpora: exported-unused needs cross-file text, but joining all
-// 1655 files is meaningless (cross-project references). Each project gets its
-// own concatenated corpus.
+// The corpus is whatever happens to be installed on the measuring machine, so
+// most of it is Offcut's own source and one project is the tool Offcut is to
+// be benchmarked against. Neither is an independent sample of third-party
+// code, so every project is classified and only the independent group's rate
+// is publishable. See `independence()`.
+//
+// Per-project corpora: exported-unused needs cross-file text, but joining
+// every project's files together is meaningless (cross-project references).
+// Each project gets its own concatenated corpus.
 //
 // Zero deps. Read-only. No network.
 
@@ -42,8 +48,43 @@ function isEligible(filePath) {
 }
 
 /**
+ * Offcut's own source, in any copy: the working tree, the installed plugin, and
+ * any probe marketplace left in the cache by an earlier phase. Code written to
+ * satisfy these signals cannot measure how they behave on code that was not.
+ */
+const SELF_RE = /^offcut([-@]|$)/;
+
+/**
+ * The tool Offcut is to be benchmarked against. Our own false-positive rate,
+ * measured partly over the comparison subject, is not an independent sample of
+ * either — so it is scored as its own group and kept out of the headline.
+ */
+const SUBJECT_RE = /^ponytail([-@]|$)/;
+
+/**
+ * @param {string} projectName
+ * @returns {'self' | 'subject' | 'independent'}
+ */
+export function independence(projectName) {
+  if (SELF_RE.test(projectName)) return 'self';
+  if (SUBJECT_RE.test(projectName)) return 'subject';
+  return 'independent';
+}
+
+/** Group order for reporting: the headline first. */
+const GROUPS = /** @type {const} */ (['independent', 'self', 'subject']);
+
+const GROUP_LABELS = {
+  independent: 'independent (third-party)',
+  self: "self (Offcut's own source)",
+  subject: 'subject (benchmark comparison)',
+};
+
+/**
+ * @typedef {'self' | 'subject' | 'independent'} Independence
  * @typedef {{ name: string, dirs?: string[], files?: string[] }} ProjectInput
  * @typedef {{ name: string, files: string[] }} Project
+ * @typedef {{ projects: number, files: number, eligible: number, fired: number }} GroupTally
  * @typedef {{
  *   total: number,
  *   filesWithFindings: number,
@@ -54,13 +95,15 @@ function isEligible(filePath) {
  *   projects: number,
  *   eligible: number,
  *   eligibleWithFindings: number,
- *   perProject: Array<{ name: string, files: number }>,
+ *   perProject: Array<{ name: string, files: number, group: Independence }>,
+ *   byGroup: Record<Independence, GroupTally>,
  * }} RealCodeReport
  */
 
 /**
- * Default corpus roots. Offcut's own source is one project; each installed
- * plugin version under ~/.claude/plugins/cache is its own project.
+ * Default corpus roots. Offcut's own source is one project; each
+ * marketplace/plugin pair under ~/.claude/plugins/cache is another, with all
+ * of that plugin's cached versions scanned together.
  * @returns {ProjectInput[]}
  */
 export function defaultProjectInputs() {
@@ -137,12 +180,19 @@ export function scanRealCode(projects) {
   const bySignal = new Map();
   const filesWithFindings = new Set();
   const perProject = [];
+  /** @type {Record<Independence, GroupTally>} */
+  const byGroup = Object.fromEntries(
+    GROUPS.map((g) => [g, { projects: 0, files: 0, eligible: 0, fired: 0 }]),
+  );
   let total = 0;
   let eligible = 0;
   let eligibleWithFindings = 0;
   let exportedUnusedExercised = false;
 
   for (const project of projects) {
+    const group = independence(project.name);
+    const tally = byGroup[group];
+    tally.projects += 1;
     /** @type {Array<{ path: string, content: string }>} */
     const loaded = [];
     for (const file of project.files) {
@@ -152,12 +202,16 @@ export function scanRealCode(projects) {
     }
     const corpus = loaded.map((f) => f.content).join('\n');
     if (loaded.length) exportedUnusedExercised = true;
-    perProject.push({ name: project.name, files: loaded.length });
+    perProject.push({ name: project.name, files: loaded.length, group });
 
     for (const file of loaded) {
       total += 1;
+      tally.files += 1;
       const isElig = isEligible(file.path);
-      if (isElig) eligible += 1;
+      if (isElig) {
+        eligible += 1;
+        tally.eligible += 1;
+      }
       const ext = path.extname(file.path).toLowerCase() || '(none)';
       const view = {
         path: file.path,
@@ -174,7 +228,10 @@ export function scanRealCode(projects) {
       byExt.get(ext).files += 1;
       if (hits.length) {
         filesWithFindings.add(file.path);
-        if (isElig) eligibleWithFindings += 1;
+        if (isElig) {
+          eligibleWithFindings += 1;
+          tally.fired += 1;
+        }
         byExt.get(ext).fires += 1;
         for (const h of hits) bySignal.set(h.id, (bySignal.get(h.id) || 0) + 1);
       }
@@ -193,6 +250,7 @@ export function scanRealCode(projects) {
     eligible,
     eligibleWithFindings,
     perProject,
+    byGroup,
   };
 }
 
@@ -222,10 +280,10 @@ export function formatRealCodeReport(report, rootLabels = []) {
   }
   if (report.perProject.length) {
     lines.push('## Corpus composition\n');
-    lines.push('| project | files |');
-    lines.push('|---|---:|');
+    lines.push('| project | files | independence |');
+    lines.push('|---|---:|---|');
     for (const p of [...report.perProject].sort((a, b) => b.files - a.files)) {
-      lines.push(`| ${p.name} | ${p.files} |`);
+      lines.push(`| ${p.name} | ${p.files} | ${p.group} |`);
     }
     lines.push('');
   }
@@ -241,6 +299,31 @@ export function formatRealCodeReport(report, rootLabels = []) {
     `eligible files (a repo signal declares the extension): ${eligible} of ${total}`,
   );
   lines.push(`eligible files with >=1 finding: ${eligibleWithFindings} (${eligRate}%)\n`);
+
+  // Rates are always printed as "n of m", never a bare percentage: the whole
+  // reason this section exists is that a percentage got quoted without its
+  // denominator, and 88% of the eligible denominator is Offcut's own code.
+  lines.push('## Independence\n');
+  lines.push('| group | projects | eligible files | fired | rate |');
+  lines.push('|---|---:|---:|---:|---:|');
+  for (const g of GROUPS) {
+    const t = report.byGroup[g];
+    const r = t.eligible ? ((t.fired / t.eligible) * 100).toFixed(1) + '%' : 'n/a';
+    lines.push(
+      `| ${GROUP_LABELS[g]} | ${t.projects} | ${t.eligible} | ${t.fired} | ${r} |`,
+    );
+  }
+  const ind = report.byGroup.independent;
+  const indRate = ind.eligible ? ((ind.fired / ind.eligible) * 100).toFixed(1) : '0.0';
+  lines.push('');
+  lines.push(
+    `**The only publishable rate** is over independent eligible files: ` +
+      `${ind.fired} of ${ind.eligible} (${indRate}%), across ${ind.projects} projects.`,
+  );
+  lines.push(
+    'The self and subject groups are reported for transparency and must not be ' +
+      'blended into a published figure.\n',
+  );
   lines.push('## Fire rate per signal\n');
   lines.push('| signal | files fired | rate |');
   lines.push('|---|---:|---:|');

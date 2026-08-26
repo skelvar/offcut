@@ -15,6 +15,7 @@ import {
   buildProjects,
   scanRealCode,
   defaultProjectInputs,
+  independence,
 } from '../bench/realcode.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -221,6 +222,57 @@ test('scanRealCode builds per-project corpus so exported-unused can fire', () =>
       (report.bySignal.get('exported-unused') || 0) >= 1,
       'exported-unused should fire on orphanHelper with per-project corpus',
     );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('corpus independence: a fire in our own code cannot enter the published rate', () => {
+  // Measured 2026-08-27: 810 of 918 eligible files (88%) were Offcut's own
+  // source, counted twice because the working tree and the installed plugin
+  // copy are both in the cache, and 43 more belonged to the tool Offcut is to
+  // be benchmarked against. The blended "8.5%" was mostly Offcut scoring
+  // itself, so every project is classified and only the independent group is
+  // publishable.
+  assert.equal(independence('offcut'), 'self');
+  assert.equal(independence('offcut@offcut'), 'self');
+  assert.equal(independence('offcut-root-measure@offcut-root-measure'), 'self');
+  assert.equal(independence('ponytail@ponytail'), 'subject');
+  assert.equal(independence('claude-plugins-official@superpowers'), 'independent');
+  // A longer name that merely starts with the same letters is a third party.
+  assert.equal(independence('offcutter@tool'), 'independent');
+  assert.equal(independence('ponytailor@tool'), 'independent');
+
+  const tmp = path.join(ROOT, 'tests', 'fixtures', 'independence');
+  fs.mkdirSync(tmp, { recursive: true });
+  // exported-unused needs a multi-module corpus to be decidable at all, so the
+  // firing project carries a caller alongside the orphan.
+  const lib = path.join(tmp, 'lib.js');
+  const main = path.join(tmp, 'main.js');
+  const quiet = path.join(tmp, 'quiet.js');
+  const quiet2 = path.join(tmp, 'quiet2.js');
+  fs.writeFileSync(
+    lib,
+    'export function used() { return 1 }\nexport function orphanHelper() { return 2 }\n',
+  );
+  fs.writeFileSync(main, 'import { used } from "./lib.js";\nused();\n');
+  fs.writeFileSync(quiet, 'const x = 1;\nconsole.log(x);\n');
+  fs.writeFileSync(quiet2, 'const y = 2;\nconsole.log(y);\n');
+  try {
+    const report = scanRealCode([
+      { name: 'offcut-fixture', files: [lib, main] },
+      { name: 'ponytail@fixture', files: [quiet] },
+      { name: 'vendor@fixture', files: [quiet2] },
+    ]);
+    assert.equal(report.byGroup.self.eligible, 2);
+    assert.equal(report.byGroup.subject.eligible, 1);
+    assert.equal(report.byGroup.independent.eligible, 1);
+    assert.equal(report.byGroup.self.fired, 1, 'the orphan export should fire');
+    assert.equal(report.byGroup.subject.fired, 0);
+    // The point of the exercise: the aggregate counts the fire, the independent
+    // group does not, so the publishable rate stays 0 of 1.
+    assert.equal(report.eligibleWithFindings, 1);
+    assert.equal(report.byGroup.independent.fired, 0);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
