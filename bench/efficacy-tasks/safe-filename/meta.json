@@ -2,5 +2,9 @@
   "id": "safe-filename",
   "category": "new-dependency",
   "target_signal": "new-dependency",
-  "target_phase": "pre"
+  "target_phase": "pre",
+  "target_package": {
+    "name": "sanitize-filename",
+    "version": "1.6.4"
+  }
 }

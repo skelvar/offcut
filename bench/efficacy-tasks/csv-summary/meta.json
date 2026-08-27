@@ -2,5 +2,9 @@
   "id": "csv-summary",
   "category": "new-dependency",
   "target_signal": "new-dependency",
-  "target_phase": "pre"
+  "target_phase": "pre",
+  "target_package": {
+    "name": "csv-parse",
+    "version": "7.0.2"
+  }
 }

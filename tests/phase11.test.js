@@ -33,6 +33,13 @@ const EFFICACY_FILES = [
   path.join('stubs', 'target.mjs'),
 ];
 
+const DEPENDENCY_TARGETS = Object.freeze({
+  'csv-summary': { name: 'csv-parse', version: '7.0.2' },
+  'duration-label': { name: 'pretty-ms', version: '9.3.0' },
+  'query-string': { name: 'qs', version: '6.15.3' },
+  'safe-filename': { name: 'sanitize-filename', version: '1.6.4' },
+});
+
 const FORBIDDEN_PROMPT_WORDS =
   /\b(?:offcut|simple|simplicity|brief|brevity|loc|dependenc(?:y|ies)|architect(?:ure|ural)|abstract(?:ion|ions)?|implementation|approach)\b/i;
 
@@ -876,20 +883,20 @@ export default function pretty(ms) {
   if (seconds || !parts.length) parts.push(seconds + 's');
   return parts.join(' ');
 }`,
-    qs: `import fs from 'node:fs';
-export function stringify(params) {
+    qs: `const fs = require('node:fs');
+exports.stringify = function stringify(params) {
   fs.writeFileSync('package-used', 'qs');
   const pairs = [];
   for (const [key, raw] of Object.entries(params)) for (const value of Array.isArray(raw) ? raw : [raw]) {
     if (value != null) pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
   }
   return pairs.join('&');
-}`,
-    'sanitize-filename': `import fs from 'node:fs';
-export default function sanitize(value) {
+};`,
+    'sanitize-filename': `const fs = require('node:fs');
+module.exports = function sanitize(value) {
   fs.writeFileSync('package-used', 'sanitize-filename');
   return value;
-}`,
+};`,
   };
   for (const task of loadEfficacyTasks().filter((candidate) => candidate.category === 'new-dependency')) {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-dependency-'));
@@ -906,6 +913,10 @@ export default function sanitize(value) {
       const manifestEdit = operations.find((operation) => operation.tool_input.file_path === 'package.json');
       const packageName = JSON.parse(manifestEdit.tool_input.new_string.match(/"dependencies"\s*:\s*(\{[^}]+\})/s)[1]);
       const [specifier] = Object.keys(packageName);
+      assert.deepEqual(task.target_package, DEPENDENCY_TARGETS[task.id]);
+      assert.equal(specifier, DEPENDENCY_TARGETS[task.id].name);
+      assert.equal(packageName[specifier], DEPENDENCY_TARGETS[task.id].version);
+      assert.doesNotMatch(packageName[specifier], /^[~^]/);
       const source = operations.find((operation) => operation.tool_name === 'Write').tool_input.content;
       assert.match(source, new RegExp(`import\\(['"]${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/[^'"]*)?['"]\\)`));
       assert.match(source, /\bcatch\b/);
@@ -913,7 +924,9 @@ export default function sanitize(value) {
       fs.mkdirSync(packageDir, { recursive: true });
       const packageMeta = specifier === 'csv-parse'
         ? { type: 'module', exports: { './sync': './sync.js' } }
-        : { type: 'module', main: './index.js' };
+        : specifier === 'pretty-ms'
+          ? { type: 'module', main: './index.js' }
+          : { type: 'commonjs', main: './index.js' };
       fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify(packageMeta));
       fs.writeFileSync(
         path.join(packageDir, specifier === 'csv-parse' ? 'sync.js' : 'index.js'),
