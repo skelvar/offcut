@@ -247,8 +247,12 @@ export function buildCodexEnvelope(ticket) {
 
 function codexConfigText() {
   return [
+    'default_permissions = ":workspace"',
     `model = ${tomlString(CODEX_MODEL_ID)}`,
     'model_reasoning_effort = "low"',
+    '',
+    '[skills]',
+    'include_instructions = false',
     '',
     '[features]',
     'multi_agent = true',
@@ -264,7 +268,6 @@ function codexRoleText() {
     `developer_instructions = ${tomlString(CODEX_ROLE_INSTRUCTIONS)}`,
     `model = ${tomlString(CODEX_MODEL_ID)}`,
     'model_reasoning_effort = "low"',
-    'sandbox_mode = "workspace-write"',
     '',
   ].join('\n');
 }
@@ -436,6 +439,28 @@ function canonicalCodexOrchestrationTool(toolName) {
 const CODEX_HOOK_TRUST_WARNING =
   '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
 
+export function codexUserAssetsIsolated(text, isolatedHomeDir = null) {
+  const normalize = (value) =>
+    String(value || '')
+      .replace(/\\+/g, '/')
+      .replace(/\/+/g, '/')
+      .toLowerCase();
+  const normalized = normalize(text);
+  const isolatedRoot = normalize(isolatedHomeDir).replace(/\/$/, '');
+  // offcut: scan path markers in text; use structured provenance if Codex emits it.
+  for (const match of normalized.matchAll(/\.(?:agents|codex)\/skills/g)) {
+    const rootIndex = isolatedRoot
+      ? normalized.lastIndexOf(isolatedRoot, match.index)
+      : -1;
+    const between =
+      rootIndex >= 0
+        ? normalized.slice(rootIndex + isolatedRoot.length, match.index)
+        : '';
+    if (rootIndex < 0 || !/^\/[^"'`\r\n<>|:=,;]*$/.test(between)) return false;
+  }
+  return true;
+}
+
 export function verifyCodexAgentAudit(entries) {
   const starts = entries.filter(
     (entry) => entry?.hook_event_name === 'SubagentStart',
@@ -554,6 +579,7 @@ export function parseCodexJsonl(
     authKind = null,
     auditEntries = [],
     stderr = '',
+    isolatedHomeDir = null,
   } = {},
 ) {
   const events = [];
@@ -632,9 +658,11 @@ export function parseCodexJsonl(
   const usage = aggregateCodexUsage(events);
   const modelId = observedCodexModel(events);
   const subscriptionVerified = authKind === 'chatgpt';
+  const userAssetsIsolated = codexUserAssetsIsolated(text, isolatedHomeDir);
   const ok =
     status === 0 &&
     !eventError &&
+    userAssetsIsolated &&
     customAgentVerified &&
     parentTurnVerified &&
     usage !== null &&
@@ -654,6 +682,7 @@ export function parseCodexJsonl(
     processStarted: callStarted,
     inferenceStarted,
     warningCount,
+    userAssetsIsolated,
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
     customAgentVerified,
     genericSpawnVerified,
@@ -694,11 +723,13 @@ export function parseCodexJsonl(
           ? 'Codex ChatGPT authentication was not verified'
           : usage === null && callStarted
             ? 'Codex turn usage missing or malformed'
-        : !customAgentVerified
-          ? `Codex did not prove completed ${CODEX_CUSTOM_ROLE} ownership`
-          : eventError || status !== 0
-            ? diagnostic || `codex exit ${status}`
-            : null,
+            : !userAssetsIsolated
+              ? 'Codex referenced external user agent or skill assets'
+              : !customAgentVerified
+                ? `Codex did not prove completed ${CODEX_CUSTOM_ROLE} ownership`
+                : eventError || status !== 0
+                  ? diagnostic || `codex exit ${status}`
+                  : null,
   };
 }
 
@@ -816,6 +847,7 @@ export function runCodex({
         timedOut: false,
         customAgentVerified: false,
         genericSpawnVerified: false,
+        userAssetsIsolated: true,
         workerAgentId: null,
         failureKind: login.spawnError ? 'host' : 'api',
         telemetry: {
@@ -844,6 +876,7 @@ export function runCodex({
       authKind: 'chatgpt',
       auditEntries: readCodexAudit(resolvedAuditPath),
       stderr: result.stderr || '',
+      isolatedHomeDir: isolated.homeDir,
     });
     return attachHashes(parsed);
   } finally {
@@ -1041,6 +1074,7 @@ export function runOne(opts) {
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;
       record.warning_count = agent.warningCount;
+      record.user_assets_isolated = agent.userAssetsIsolated;
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();

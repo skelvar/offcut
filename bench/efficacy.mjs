@@ -665,9 +665,16 @@ function validatePreparedCodexHome(homeDir, arm) {
     'utf8',
   );
   const hooks = JSON.parse(fs.readFileSync(path.join(homeDir, 'hooks.json'), 'utf8'));
+  const defaultPermissions =
+    config.match(/^default_permissions\s*=.*$/gm) || [];
   if (
     !config.includes(`model = "${CODEX_MODEL_ID}"`) ||
     !config.includes('model_reasoning_effort = "low"') ||
+    defaultPermissions.length !== 1 ||
+    defaultPermissions[0] !== 'default_permissions = ":workspace"' ||
+    config.indexOf(defaultPermissions[0]) > config.indexOf('[') ||
+    (config.match(/^include_instructions = false$/gm) || []).length !== 1 ||
+    !/\[skills\]\r?\ninclude_instructions = false/.test(config) ||
     !config.includes('multi_agent = true') ||
     !config.includes('hooks = true')
   ) {
@@ -677,7 +684,7 @@ function validatePreparedCodexHome(homeDir, arm) {
     !role.includes(`name = "${CODEX_CUSTOM_ROLE}"`) ||
     !role.includes(`model = "${CODEX_MODEL_ID}"`) ||
     !role.includes('model_reasoning_effort = "low"') ||
-    !role.includes('sandbox_mode = "workspace-write"') ||
+    role.includes('sandbox_mode') ||
     !role.includes(CODEX_ROLE_INSTRUCTIONS)
   ) {
     throw new Error('isolated Codex custom role does not match the frozen contract');
@@ -877,6 +884,7 @@ export function codexLivePreflight({
       process_started: agent.processStarted,
       inference_started: agent.inferenceStarted,
       warning_count: agent.warningCount,
+      user_assets_isolated: agent.userAssetsIsolated,
       exit_code: agent.exitCode,
       error:
         agent.error ||
@@ -974,6 +982,8 @@ function appendAttemptLedger(
             runResult?.record?.custom_agent_role ?? CODEX_CUSTOM_ROLE,
           custom_agent_verified:
             runResult?.record?.custom_agent_verified === true,
+          user_assets_isolated:
+            runResult?.record?.user_assets_isolated === true,
           verified:
             runResult?.record?.verified === true ||
             runResult?.record?.custom_agent_verified === true,

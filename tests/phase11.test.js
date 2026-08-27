@@ -1376,6 +1376,11 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
     assert.match(config, /multi_agent\s*=\s*true/);
     assert.match(config, /hooks\s*=\s*true/);
     assert.match(config, new RegExp(`model\\s*=\\s*"${CODEX_MODEL_ID.replaceAll('.', '\\.')}"`));
+    const defaultPermissions =
+      config.match(/^default_permissions\s*=.*$/gm) || [];
+    assert.deepEqual(defaultPermissions, ['default_permissions = ":workspace"']);
+    assert.ok(config.indexOf(defaultPermissions[0]) < config.indexOf('['));
+    assert.match(config, /\[skills\]\r?\ninclude_instructions = false/);
     const role = fs.readFileSync(
       path.join(off.homeDir, 'agents', `${CODEX_CUSTOM_ROLE}.toml`),
       'utf8',
@@ -1387,7 +1392,7 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
     );
     assert.match(role, new RegExp(`name\\s*=\\s*"${CODEX_CUSTOM_ROLE}"`));
     assert.match(role, /model_reasoning_effort\s*=\s*"low"/);
-    assert.match(role, /sandbox_mode\s*=\s*"workspace-write"/);
+    assert.doesNotMatch(role, /sandbox_mode/);
     assert.match(role, new RegExp(CODEX_ROLE_INSTRUCTIONS.split(' ')[0]));
     assert.match(role, /description = "Executes one delegated maintenance ticket"/);
     assert.doesNotMatch(
@@ -1674,6 +1679,59 @@ test('Codex measured lifecycle audit is authoritative when collaboration JSONL o
     ).ok,
     false,
   );
+});
+
+test('Codex rejects external user skill paths but permits isolated role paths', async () => {
+  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const isolatedHomeDir = 'C:\\Temp\\offcut codex-home-clean';
+  const stdout = [
+    { type: 'thread.started', thread_id: 'parent-thread-1' },
+    { type: 'turn.started' },
+    CODEX_USAGE_EVENT,
+  ].map(JSON.stringify).join('\n');
+  const parse = (stderr, transcript = stdout) =>
+    parseCodexJsonl(transcript, 0, null, {
+      durationMs: 10,
+      authKind: 'chatgpt',
+      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+      stderr,
+      isolatedHomeDir,
+    });
+
+  const contaminated = parse(
+    "Get-Content -Raw 'C:\\Users\\bash\\.agents\\skills\\using-superpowers\\SKILL.md'",
+  );
+  assert.equal(contaminated.ok, false);
+  assert.equal(contaminated.userAssetsIsolated, false);
+  assert.equal(contaminated.failureKind, 'model');
+  assert.match(contaminated.error, /external user agent or skill assets/i);
+
+  const transcriptContaminated = parse(
+    '',
+    [
+      { type: 'thread.started', thread_id: 'parent-thread-1' },
+      { type: 'turn.started' },
+      {
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'Loaded /Users/example/.codex/skills/global/SKILL.md',
+        },
+      },
+      CODEX_USAGE_EVENT,
+    ].map(JSON.stringify).join('\n'),
+  );
+  assert.equal(transcriptContaminated.ok, false);
+  assert.equal(transcriptContaminated.userAssetsIsolated, false);
+
+  const clean = parse(
+    [
+      `${isolatedHomeDir}\\agents\\ticket-worker.toml`,
+      `${isolatedHomeDir}\\.agents\\skills\\local\\SKILL.md`,
+    ].join('\n'),
+  );
+  assert.equal(clean.ok, true);
+  assert.equal(clean.userAssetsIsolated, true);
 });
 
 test('Codex audit enforces lifecycle and parent ownership independently of collab details', async () => {
@@ -2090,11 +2148,13 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(result.record.model_id, null);
     assert.equal(result.record.model_observation, 'requested_not_reported');
     assert.equal(result.record.auth_kind, 'chatgpt');
+    assert.equal(result.record.user_assets_isolated, true);
     assert.equal(result.record.cache_creation_input_tokens, 2);
     assert.equal(result.record.reasoning_output_tokens, 1);
     const sealed = fs.readFileSync(manifestPath, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
     assert.equal(sealed[0].model_id, null);
     assert.equal(sealed[0].model_observation, 'requested_not_reported');
+    assert.equal(sealed[0].user_assets_isolated, true);
 
     preCall = runOne({
       task: 'config-fallback',
@@ -2511,6 +2571,7 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     assert.equal(first.proof_sha256, sha256('ticket-worker-write-ok\n'));
     assert.match(first.diff_sha256, /^[a-f0-9]{64}$/);
     assert.equal(first.warning_count, 0);
+    assert.equal(first.user_assets_isolated, true);
     assert.equal(first.cache_creation_input_tokens, 0);
     assert.equal(first.reasoning_output_tokens, 0);
     assert.equal(calls, 1);
@@ -2579,7 +2640,10 @@ test('Codex live preflight requires the exact worker proof file and diff', async
             JSON.stringify({ type: 'turn.started' }),
             JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n'),
-          stderr: '',
+          stderr:
+            mode === 'contaminated'
+              ? "Get-Content -Raw 'C:\\Users\\bash\\.agents\\skills\\using-superpowers\\SKILL.md'"
+              : '',
           error: null,
         };
       },
@@ -2593,6 +2657,12 @@ test('Codex live preflight requires the exact worker proof file and diff', async
       assert.equal(failed.failure_kind, 'model', mode);
       assert.match(failed.error, /write proof/i, mode);
     }
+    const contaminated = run('contaminated');
+    assert.equal(contaminated.ok, false);
+    assert.equal(contaminated.write_proof_verified, true);
+    assert.equal(contaminated.user_assets_isolated, false);
+    assert.equal(contaminated.failure_kind, 'model');
+    assert.match(contaminated.error, /external user agent or skill assets/i);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

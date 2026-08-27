@@ -34,11 +34,23 @@ the authenticated user's `auth.json`, minimal config, the named role,
 arm-specific `hooks.json`, and an otherwise empty user-home directory. `HOME`
 and `USERPROFILE` point to that empty directory; agent/skill home overrides are
 cleared, while `PATH` and system directories are unchanged. This prevents
-global `~/.agents/skills` and user instructions from entering measured input.
+ordinary home resolution from reaching global user assets.
 Before exec, `codex login status` runs inside that home with API-key and
 provider/base-URL overrides removed and must report the exact ChatGPT
 authentication status. A copied `auth.json` is not proof by itself. Artifacts
 record only `auth_kind: "chatgpt"`.
+
+Codex 0.149.1's modern permission precedence is pinned explicitly with
+top-level `default_permissions = ":workspace"`, while the CLI remains
+`--sandbox workspace-write --ask-for-approval never`. The custom-role file
+omits `sandbox_mode` because the bounded role override did not convey the
+parent-owned workspace permission. The isolated config also sets
+`[skills] include_instructions = false`; custom roles remain discoverable
+separately. The fifth live preflight showed that HOME isolation alone still
+allowed an attempted read of a global `.agents/skills` path, so every run now
+fails closed if transcript or stderr mentions external `.agents/skills` or
+user `.codex/skills`. Paths under the temporary isolated home are permitted,
+and records expose `user_assets_isolated`.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
