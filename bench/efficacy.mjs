@@ -19,6 +19,7 @@ import {
   writeMode,
 } from './lib.mjs';
 import {
+  CODEX_APPROVAL_MODE,
   CODEX_BACKEND_ID,
   CODEX_CUSTOM_AGENT_KIND,
   CODEX_CUSTOM_AGENT_NAME,
@@ -49,6 +50,7 @@ const CODEX_PREFLIGHT_PROOF_CONTENT = 'ticket-worker-write-ok\n';
 export const CLAUDE_CODE_VERSION = '2.1.243';
 
 export {
+  CODEX_APPROVAL_MODE,
   CODEX_BACKEND_ID,
   CODEX_CUSTOM_AGENT_KIND,
   CODEX_CUSTOM_AGENT_NAME,
@@ -772,8 +774,7 @@ export function codexPreflight({
     const expectedPrefix = [
       '--sandbox',
       'workspace-write',
-      '--ask-for-approval',
-      'never',
+      '--approve-for-me',
       '--dangerously-bypass-hook-trust',
       '--profile',
       CODEX_CUSTOM_AGENT_NAME,
@@ -786,6 +787,7 @@ export function codexPreflight({
     if (
       JSON.stringify(args.slice(0, expectedPrefix.length)) !==
       JSON.stringify(expectedPrefix) ||
+      args.includes('--ask-for-approval') ||
       args.includes('--dangerously-bypass-approvals-and-sandbox') ||
       args.includes('--max-budget-usd')
     ) {
@@ -799,6 +801,7 @@ export function codexPreflight({
       model_requested: CODEX_MODEL_ID,
       custom_agent_kind: CODEX_CUSTOM_AGENT_KIND,
       custom_agent_name: CODEX_CUSTOM_AGENT_NAME,
+      approval_mode: CODEX_APPROVAL_MODE,
       profile_config_sha256: profileConfigSha256,
       auth_kind: 'chatgpt',
     };
@@ -890,6 +893,7 @@ export function codexLivePreflight({
       auth_kind: agent.authKind,
       custom_agent_kind: CODEX_CUSTOM_AGENT_KIND,
       custom_agent_name: CODEX_CUSTOM_AGENT_NAME,
+      approval_mode: CODEX_APPROVAL_MODE,
       custom_agent_verified: agent.customAgentVerified,
       verified: preflightSuccess,
       preflight_success: preflightSuccess,
@@ -997,6 +1001,8 @@ function appendAttemptLedger(
             runResult?.record?.custom_agent_kind ?? CODEX_CUSTOM_AGENT_KIND,
           custom_agent_name:
             runResult?.record?.custom_agent_name ?? CODEX_CUSTOM_AGENT_NAME,
+          approval_mode:
+            runResult?.record?.approval_mode ?? CODEX_APPROVAL_MODE,
           custom_agent_verified:
             runResult?.record?.custom_agent_verified === true,
           user_assets_isolated:

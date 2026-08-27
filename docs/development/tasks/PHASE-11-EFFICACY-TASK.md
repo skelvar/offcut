@@ -54,7 +54,7 @@ record only `auth_kind: "chatgpt"`.
 
 Codex 0.149.1's modern permission precedence is pinned explicitly with
 base and profile `default_permissions = ":workspace"`, while the CLI remains
-`--profile ticket-worker --sandbox workspace-write --ask-for-approval never`.
+`--profile ticket-worker --sandbox workspace-write --approve-for-me`.
 The named profile contains the neutral `developer_instructions`, requested
 model, and effort. Base config contains `[skills] include_instructions = false`,
 `hooks = true`, and `multi_agent = false`. The fifth live preflight showed that
@@ -64,6 +64,15 @@ references the absolute
 `<original-user-home>/.agents/skills` or `.codex/skills` trees. Relative prose
 and paths under the work directory or temporary isolated home are permitted,
 and records expose `user_assets_isolated` without persisting path values.
+
+The seventh live preflight, `dfe6220d68379d20`, proved the named profile loaded
+but Windows Codex 0.149.1 still converted `--ask-for-approval never` into a
+read-only write boundary. The active contract therefore uses the supported
+`--approve-for-me` boundary, which routes write approval through Codex automatic
+review while retaining workspace-write sandboxing. Records store
+`approval_mode: "automatic_review"`. This arm-identical guardian/review path is
+platform safety infrastructure, not a custom subagent or treatment component;
+the root-only audit and no-collaboration requirements remain unchanged.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
