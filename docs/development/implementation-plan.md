@@ -916,7 +916,8 @@ bounded by what was measured.
 | `gain` command (impact scoreboard) | A benchmark shows a real effect. Phase 5 measured no detectable effect, and its signals were later found to be 30/30 false positives, so there is still nothing to show |
 | Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
 | Repository-wide scanning *by the persistent mode* | Never — it is a different product. Shipped as the user-invoked `/offcut-audit` command in Phase 4; the distinction is who initiates it |
-| Cross-host verification beyond Claude Code | A second host has users asking |
+| Cross-host verification beyond the v0.1 set | Discharged, not pending — Codex is probed and verified tier 1 with subagent delivery confirmed (2026-08-25) and Grok Build is measured tier 3, both dated in [`HOSTS.md`](HOSTS.md). Any host beyond those is demand-driven per §5.4 |
+| Cursor support | Someone asks for it and a maintainer can test it (§5.4). Not architectural: Grok's payload dialect already gives `host.js` two real branches, so Cursor adds a third config schema and no new seam. Its hook-less `AGENTS.md` route is verified (2026-08-27, [`HOSTS.md`](HOSTS.md)); the mode, the per-turn cadence and the write-time challenge are what need the adapter |
 | Benchmark against other tools, ponytail included | Offcut has an independent real-code result worth comparing. It does not yet: the corpus yields 65 independent files, so the honest figure is 2 of 65 rather than a rate. Two confounds are already removed (ponytail is scored as the comparison subject, and Offcut's skill descriptions no longer cede the generic phrasing to it), so what remains is sample size. Measuring skill activation between the two is part of this and defers with it — see [`COEXIST.md`](COEXIST.md) §5 |
 | Signed releases, marketplace listing | There are users to protect |
 
