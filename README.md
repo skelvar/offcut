@@ -61,9 +61,10 @@ That is Cursor's [documented local-plugin path](https://cursor.com/docs/plugins)
 and loads the hooks and all four skills from `.cursor-plugin/plugin.json`. Open
 a new chat after installing.
 Alternatively, `node tools/install.mjs` merges only the native hooks into
-`~/.cursor/hooks.json`; existing handlers are preserved. Verified end to end on
-Cursor 3.17.19 (Windows, 2026-08-27), including a delivered write challenge,
-mode switches, subagent inheritance, and uninstall/reinstall.
+`~/.cursor/hooks.json`; existing handlers and version-only files are preserved,
+while malformed configs are left untouched with a non-zero exit. Verified end
+to end on Cursor 3.17.19 (Windows, 2026-08-27), including a delivered write
+challenge, mode switches, subagent inheritance, and uninstall/reinstall.
 
 ### Grok Build
 
@@ -85,12 +86,24 @@ but modes and write-time challenges still need native hooks.
 
 ### Uninstall
 
+Claude Code marketplace install:
+
+```bash
+claude plugin uninstall offcut@offcut
+claude plugin marketplace remove offcut
+```
+
+Hooks installed by `tools/install.mjs`:
+
 ```bash
 node ~/.offcut-src/tools/install.mjs --uninstall
 ```
 
 Removes only Offcut's entries. Other plugins' hooks are preserved, verified
-against a config holding foreign handlers.
+against configs holding foreign handlers. Delete
+`~/.cursor/plugins/local/offcut` to remove the Cursor local-plugin install.
+The optional state directory `~/.offcut/` is deliberately retained; delete it
+only if you also want to discard the persisted mode and diagnostics.
 
 ## Commands
 

@@ -20,6 +20,7 @@ import {
   inspectServed,
   writeServedRoot,
 } from '../hooks/state.js';
+import { isOurs } from '../tools/install.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -395,6 +396,181 @@ test('cursor install: CLI merges native hooks and uninstall leaves foreign hooks
         beforeSubmitPrompt: [{ command: 'node "foreign.js"', timeout: 2 }],
       },
     });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('cursor install: malformed existing config is left byte-for-byte unchanged', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-cursor-invalid-install-'));
+  const cursorDir = path.join(home, '.cursor');
+  const configPath = path.join(cursorDir, 'hooks.json');
+  const backupPath = `${configPath}.offcut-backup`;
+  const malformed = '{ "version": 1, "hooks": [\n';
+  fs.mkdirSync(cursorDir, { recursive: true });
+  fs.writeFileSync(configPath, malformed);
+  fs.writeFileSync(backupPath, 'older backup\n');
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const result = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /cursor\s+failed — invalid JSON/i);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), malformed);
+    assert.equal(fs.readFileSync(backupPath, 'utf8'), 'older backup\n');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('cursor install: structurally invalid existing config is not rewritten', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-cursor-shape-install-'));
+  const cursorDir = path.join(home, '.cursor');
+  const configPath = path.join(cursorDir, 'hooks.json');
+  const invalid = '{\n  "version": 1,\n  "hooks": []\n}\n';
+  fs.mkdirSync(cursorDir, { recursive: true });
+  fs.writeFileSync(configPath, invalid);
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const result = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /cursor\s+failed — invalid JSON or hooks config/i);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), invalid);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('cursor install: unsupported versions and null hook entries are rejected', () => {
+  const cases = [
+    { version: 2, hooks: {} },
+    { version: 1, hooks: { preToolUse: [null] } },
+    { version: 1, hooks: { preToolUse: [{ matcher: 'Write', hooks: [null] }] } },
+  ];
+
+  for (const [index, config] of cases.entries()) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), `offcut-cursor-invalid-${index}-`));
+    const cursorDir = path.join(home, '.cursor');
+    const configPath = path.join(cursorDir, 'hooks.json');
+    const original = `${JSON.stringify(config, null, 2)}\n`;
+    fs.mkdirSync(cursorDir, { recursive: true });
+    fs.writeFileSync(configPath, original);
+
+    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    try {
+      const result = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+        cwd: root,
+        env,
+        encoding: 'utf8',
+      });
+      assert.notEqual(result.status, 0, `case ${index}\n${result.stdout}${result.stderr}`);
+      assert.equal(fs.readFileSync(configPath, 'utf8'), original, `case ${index}`);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
+
+test('cursor uninstall: preserves a pre-existing version-only config', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-cursor-version-install-'));
+  const cursorDir = path.join(home, '.cursor');
+  const configPath = path.join(cursorDir, 'hooks.json');
+  fs.mkdirSync(cursorDir, { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify({ version: 1 }, null, 2));
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const installed = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+
+    const removed = spawnSync(
+      process.execPath,
+      [path.join(root, 'tools', 'install.mjs'), '--uninstall'],
+      { cwd: root, env, encoding: 'utf8' },
+    );
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    assert.equal(fs.existsSync(configPath), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), { version: 1 });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('grok install and uninstall preserve foreign content in the dedicated file', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-grok-foreign-install-'));
+  const grokDir = path.join(home, '.grok');
+  const configPath = path.join(grokDir, 'hooks', 'offcut-hooks.json');
+  const foreign = {
+    matcher: 'Write',
+    hooks: [{ type: 'command', command: 'node "foreign.js"', timeout: 3 }],
+  };
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({ metadata: { owner: 'user' }, hooks: { PreToolUse: [foreign] } }, null, 2),
+  );
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const installed = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+    const merged = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.deepEqual(merged.metadata, { owner: 'user' });
+    assert.equal(merged.hooks.PreToolUse[0].hooks[0].command, 'node "foreign.js"');
+    assert.ok(merged.hooks.PreToolUse.some((entry) => isOurs(entry, root)));
+
+    const removed = spawnSync(
+      process.execPath,
+      [path.join(root, 'tools', 'install.mjs'), '--uninstall'],
+      { cwd: root, env, encoding: 'utf8' },
+    );
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), {
+      metadata: { owner: 'user' },
+      hooks: { PreToolUse: [foreign] },
+    });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('installer reports one filesystem failure and continues with later hosts', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-install-continue-'));
+  const claudePath = path.join(home, '.claude');
+  const codexDir = path.join(home, '.codex');
+  const codexConfig = path.join(codexDir, 'hooks.json');
+  fs.writeFileSync(claudePath, 'not a directory\n');
+  fs.mkdirSync(codexDir, { recursive: true });
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const result = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /claude\s+failed — filesystem error/i);
+    assert.match(result.stdout, /codex\s+installed/i);
+    const config = JSON.parse(fs.readFileSync(codexConfig, 'utf8'));
+    assert.ok(config.hooks.SessionStart.some((entry) => isOurs(entry, root)));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

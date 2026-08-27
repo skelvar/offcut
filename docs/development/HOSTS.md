@@ -552,7 +552,7 @@ Sanitized copies of every event shape are fixtures in `tests/cursor.test.js`.
 | Subagent inheritance | **pass** — see the isolated finding below |
 | Duplicate sources | **pass** — native and Claude-compatible copies emitted one reminder and advanced lite cadence once |
 | Upgrade | **pass** — reinstall removes the obsolete Offcut `subagentStart` entry before adding the verified replacement |
-| Uninstall/reinstall | **pass** — `~/.cursor/hooks.json` was removed when it held only Offcut, then recreated; sandbox tests preserve foreign groups and handlers sharing a group |
+| Uninstall/reinstall | **pass** — Offcut handlers are removed and re-added; version-only files, foreign groups and foreign handlers sharing a group are preserved |
 | Doctor | **pass** — reports Cursor tier 1, validates flat absolute handlers and detects current local-plugin manifests without trusting stale session state |
 
 ### `subagentStart` was a false positive

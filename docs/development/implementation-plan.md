@@ -976,8 +976,9 @@ reference file.
 ### v0.2 Cursor closure
 
 - Native manifest and flat camelCase adapter ship.
-- Installer upgrade and uninstall preserve foreign hooks and remove obsolete
-  Offcut lifecycle entries.
+- Installer upgrade and uninstall preserve foreign hooks and version-only
+  configs, remove obsolete Offcut lifecycle entries, and refuse malformed
+  existing configs without rewriting them.
 - Real Cursor 3.17.19 payloads, flat `additional_context`, write challenges,
   mode changes and duplicate config sources are covered.
 - Subagent inheritance uses the only live-proven seam: `preToolUse` input

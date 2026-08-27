@@ -5,8 +5,9 @@
 //   node tools/install.mjs --uninstall
 //
 // Safety contract (same as install-probe.mjs):
-//   - every file it touches is backed up first, next to the original
+//   - every pre-existing file gets one original snapshot next to it
 //   - existing hooks are MERGED, never replaced
+//   - malformed existing configs are reported and left byte-for-byte intact
 //   - every entry it adds is tagged, so --uninstall removes only ours
 //   - a harness that is not installed is skipped, not created
 //
@@ -116,6 +117,25 @@ function readJson(p) {
   }
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isValidHookEntry(entry) {
+  if (!isRecord(entry)) return false;
+  if (entry.hooks === undefined) return true;
+  return Array.isArray(entry.hooks) && entry.hooks.every(isRecord);
+}
+
+function isValidHookConfig(config) {
+  if (!isRecord(config)) return false;
+  if (config.hooks === undefined) return true;
+  if (!isRecord(config.hooks)) return false;
+  return Object.values(config.hooks).every(
+    (entries) => Array.isArray(entries) && entries.every(isValidHookEntry),
+  );
+}
+
 function backup(p) {
   if (!fs.existsSync(p)) return 'new';
   const b = `${p}.offcut-backup`;
@@ -158,8 +178,9 @@ export function mergeHooks(target, spec, opts = {}) {
 }
 
 const results = [];
+let failed = false;
 
-function apply(name, file, mutate, requiredDir) {
+function apply(name, file, mutate, requiredDir, validate = () => true) {
   if (requiredDir && !fs.existsSync(requiredDir)) {
     results.push([name, 'skipped — harness not installed', file]);
     return;
@@ -168,16 +189,29 @@ function apply(name, file, mutate, requiredDir) {
     results.push([name, 'skipped — nothing to remove', file]);
     return;
   }
-  const state = backup(file);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const out = mutate(readJson(file));
-  if (out === null) {
-    if (fs.existsSync(file)) fs.rmSync(file);
-    results.push([name, 'removed', file]);
+  const exists = fs.existsSync(file);
+  const current = exists ? readJson(file) : null;
+  if (exists && (!isValidHookConfig(current) || !validate(current))) {
+    failed = true;
+    results.push([name, 'failed — invalid JSON or hooks config', file]);
     return;
   }
-  fs.writeFileSync(file, JSON.stringify(out, null, 2));
-  results.push([name, uninstall ? `cleaned (${state})` : `installed (${state})`, file]);
+  try {
+    const state = backup(file);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const out = mutate(current);
+    if (out === null) {
+      if (fs.existsSync(file)) fs.rmSync(file);
+      results.push([name, 'removed', file]);
+      return;
+    }
+    fs.writeFileSync(file, JSON.stringify(out, null, 2));
+    results.push([name, uninstall ? `cleaned (${state})` : `installed (${state})`, file]);
+  } catch (error) {
+    failed = true;
+    const kind = error?.code ? `filesystem error (${error.code})` : 'install error';
+    results.push([name, `failed — ${kind}`, file]);
+  }
 }
 
 function main() {
@@ -213,16 +247,22 @@ function main() {
       const hooks = mergeHooks(s.hooks || {}, CURSOR, { uninstall });
       if (Object.keys(hooks).length) s.hooks = hooks;
       else delete s.hooks;
-      if (uninstall && Object.keys(s).every((key) => key === 'version')) return null;
       return s;
     },
     path.join(HOME, '.cursor'),
+    (cur) => cur.version === undefined || cur.version === 1,
   );
 
   apply(
     'grok',
     path.join(HOME, '.grok', 'hooks', `${TAG}.json`),
-    () => (uninstall ? null : { hooks: PASCAL }),
+    (cur) => {
+      const s = cur || {};
+      s.hooks = mergeHooks(s.hooks || {}, PASCAL, { uninstall });
+      if (!Object.keys(s.hooks).length) delete s.hooks;
+      if (uninstall && !Object.keys(s).length) return null;
+      return s;
+    },
     path.join(HOME, '.grok'),
   );
 
@@ -235,6 +275,7 @@ function main() {
       ? '\nRemoved. Backups kept as *.offcut-backup — delete them when satisfied.\nState dir ~/.offcut/ is left in place; delete it manually if desired.'
       : `\nInstalled from ${ROOT}\nOpen a NEW session on each host (hooks load at session start).\nUninstall: node tools/install.mjs --uninstall`,
   );
+  if (failed) process.exitCode = 1;
 }
 
 const isMain =
