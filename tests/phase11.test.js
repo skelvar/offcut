@@ -688,11 +688,41 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
     assert.equal(first.aggregate.tokens.reasoning.total, 7254);
     assert.equal(first.aggregate.tokens.reasoning.median, 264);
     assert.equal(first.aggregate.incremental_cost_usd, 0);
-    assert.equal(first.no_opportunity_confirm, null);
     assert.equal(first.positive_claim, false);
     assert.equal(first.efficacy_estimate, null);
-    assert.equal(first.confirmatory_ran, false);
-    assert.match(first.stop_reason, /no baseline target-positive runs/i);
+    assert.equal(first.confirmatory_ran, true);
+    assert.deepEqual(first.no_opportunity_confirm, {
+      label: 'no_opportunity_confirm',
+      task_ids: [
+        'event-normalizer',
+        'query-string',
+        'inventory-reservation',
+        'order-label',
+        'asset-base-url',
+        'csv-summary',
+      ],
+      planned_cells: 96,
+      completed_cells: 96,
+      off: {
+        cells: 48,
+        accepted: 41,
+        target_present: 3,
+        primary_success: 38,
+        frozen_primary_success: 38,
+        lines_added: 1513,
+        lines_removed: 80,
+      },
+      full: {
+        cells: 48,
+        accepted: 43,
+        target_present: 0,
+        primary_success: 43,
+        frozen_primary_success: 27,
+        lines_added: 976,
+        lines_removed: 80,
+      },
+    });
+    assert.match(first.stop_reason, /user-directed no-opportunity confirmatory grid/i);
     assert.equal(first.tasks.length, 24);
     assert.deepEqual(first.categories['new-dependency'], {
       total: 8,

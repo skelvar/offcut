@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "raw_commit_sha": "4eeea606451623b3a0c18109f33b019413db81cb",
+  "raw_commit_sha": "9263a1f1e30102c3824497ceb083a4d95c6cddcc",
   "backend": "codex-profile-v1",
   "environment": {
     "host": "codex-cli",
@@ -635,7 +635,38 @@
   },
   "positive_claim": false,
   "efficacy_estimate": null,
-  "confirmatory_ran": false,
-  "stop_reason": "Preregistered stop: no baseline target-positive runs, so no tasks qualified.",
+  "confirmatory_ran": true,
+  "no_opportunity_confirm": {
+    "label": "no_opportunity_confirm",
+    "task_ids": [
+      "event-normalizer",
+      "query-string",
+      "inventory-reservation",
+      "order-label",
+      "asset-base-url",
+      "csv-summary"
+    ],
+    "planned_cells": 96,
+    "completed_cells": 96,
+    "off": {
+      "cells": 48,
+      "accepted": 41,
+      "target_present": 3,
+      "primary_success": 38,
+      "frozen_primary_success": 38,
+      "lines_added": 1513,
+      "lines_removed": 80
+    },
+    "full": {
+      "cells": 48,
+      "accepted": 43,
+      "target_present": 0,
+      "primary_success": 43,
+      "frozen_primary_success": 27,
+      "lines_added": 976,
+      "lines_removed": 80
+    }
+  },
+  "stop_reason": "Discovery stop unchanged: no baseline target-positive runs. A user-directed no-opportunity confirmatory grid ran separately.",
   "conclusion": "No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported."
 }

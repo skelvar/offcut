@@ -1,14 +1,23 @@
 # Phase 11 efficacy result
 
-Raw evidence commit: `4eeea606451623b3a0c18109f33b019413db81cb`
+Raw evidence commit: `9263a1f1e30102c3824497ceb083a4d95c6cddcc`
 
 ## Result
 
 All 24/24 initial Codex discovery cells completed. Target prevalence was 0/24, acceptance was 22/24, and the preregistered frozen primary outcome was 17/24.
 
-Preregistered stop: no baseline target-positive runs, so no tasks qualified.
+Discovery stop unchanged: no baseline target-positive runs. A user-directed no-opportunity confirmatory grid ran separately.
 
 **Conclusion:** No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.
+
+## No-opportunity confirmatory grid
+
+User-directed override after the discovery stop. Six tasks (`event-normalizer`, `query-string`, `inventory-reservation`, `order-label`, `asset-base-url`, `csv-summary`), 96/96 cells. This is not an Offcut efficacy estimate.
+
+Primary counts accepted target-free cells whose sealed failure_kind is not retryable. Frozen primary still requires `failure_kind==null` and is not comparable across arms for cells classified before the CLI-warning fix.
+
+- `off`: accepted 41/48, target 3/48, primary 38/48 (frozen 38/48), LOC +1513/-80
+- `full`: accepted 43/48, target 0/48, primary 43/48 (frozen 27/48), LOC +976/-80
 
 ## Post-hoc sensitivity
 

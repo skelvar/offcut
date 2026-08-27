@@ -987,9 +987,8 @@ reference file.
   the ponytail comparison.
 - Phase 11 efficacy discovery on Codex 0.149.1 / `gpt-5.6-sol` produced 0/24
   target-positive baselines. The original confirmatory estimand did not open.
-  A later user-directed no-opportunity `off`/`full` grid is documented in
-  [`PHASE-11-EFFICACY-TASK.md`](tasks/PHASE-11-EFFICACY-TASK.md) and cannot
-  support a positive Offcut claim.
+  A later user-directed no-opportunity `off`/`full` grid completed 96/96 cells
+  and cannot support a positive Offcut claim.
 
 ---
 
