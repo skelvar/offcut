@@ -33,6 +33,7 @@ const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
 
 // Reasoning effort for paid runs. Named so the manifest can record it.
 const RUN_EFFORT = 'low';
+export const DEFAULT_API_RETRIES = 2;
 
 function parseArgs(argv) {
   const out = {
@@ -118,6 +119,10 @@ export function classifyAgentFailure(agent) {
   return 'model';
 }
 
+export function resolveApiRetries(opts) {
+  return opts.apiRetries ?? DEFAULT_API_RETRIES;
+}
+
 export function parseClaudeResult(stdout, status, spawnErr) {
   let parsed = null;
   let modelId = null;
@@ -187,6 +192,7 @@ function runClaude({
   settingsPath,
   model,
   maxBudgetUsd = null,
+  apiRetries,
   envExtra = {},
 }) {
   const env = {
@@ -197,16 +203,23 @@ function runClaude({
   // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
   const args = buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd });
 
-  const result = spawnSync('claude', args, {
-    encoding: 'utf8',
-    cwd: workDir,
-    env,
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: 3 * 60 * 1000,
-  });
-  const parsed = parseClaudeResult(result.stdout, result.status, result.error);
-  parsed.stderr = result.stderr || '';
-  parsed.attempts = 1;
+  let parsed = null;
+  for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
+    const result = spawnSync('claude', args, {
+      encoding: 'utf8',
+      cwd: workDir,
+      env,
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 3 * 60 * 1000,
+    });
+    parsed = parseClaudeResult(result.stdout, result.status, result.error);
+    parsed.stderr = result.stderr || '';
+    parsed.attempts = attempt;
+    if (parsed.ok || !parsed.apiError || attempt > apiRetries) break;
+    const waitMs = 5_000 * attempt;
+    console.error(`claude api_error (attempt ${attempt}): ${parsed.error}; sleeping ${waitMs}ms`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+  }
   return parsed;
 }
 
@@ -223,6 +236,7 @@ export function runOne(opts) {
     maxBudgetUsd,
     tasksDir,
   } = opts;
+  const apiRetries = resolveApiRetries(opts);
   if (!taskId || !arm) throw new Error('--task and --arm required');
   if (!LEGACY_ARMS.has(arm) && !JUSTIFY_ARMS.has(arm)) {
     throw new Error(`bad arm: ${arm}`);
@@ -333,6 +347,7 @@ export function runOne(opts) {
         settingsPath,
         model,
         maxBudgetUsd,
+        apiRetries,
         envExtra,
       });
       record.model_id = agent.modelId || model;

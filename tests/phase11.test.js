@@ -146,6 +146,7 @@ test('qualifier cap prefers category diversity then target count and determinist
   const first = selectQualifiers(summaries, 3);
   const second = selectQualifiers([...summaries].reverse(), 3);
   assert.deepEqual(first, second);
+  assert.deepEqual(first, ['dep-high', 'config', 'abs-a']);
   assert.equal(first.includes('dep-high'), true);
   assert.equal(new Set(first.map((id) => summaries.find((s) => s.task_id === id).category)).size, 3);
 });
@@ -156,6 +157,16 @@ test('confirmatory schedule balances arms within each seeded task-rep block', as
   const jobs = confirmatorySchedule(['a', 'b'], 8);
   assert.equal(jobs.length, 32);
   assert.deepEqual(jobs, confirmatorySchedule(['a', 'b'], 8));
+  assert.deepEqual(confirmatorySchedule(['a', 'b'], 2), [
+    { taskId: 'a', arm: 'off', rep: 1 },
+    { taskId: 'a', arm: 'full', rep: 1 },
+    { taskId: 'a', arm: 'off', rep: 2 },
+    { taskId: 'a', arm: 'full', rep: 2 },
+    { taskId: 'b', arm: 'full', rep: 1 },
+    { taskId: 'b', arm: 'off', rep: 1 },
+    { taskId: 'b', arm: 'off', rep: 2 },
+    { taskId: 'b', arm: 'full', rep: 2 },
+  ]);
   for (const taskId of ['a', 'b']) {
     for (let rep = 1; rep <= 8; rep++) {
       assert.deepEqual(
@@ -171,6 +182,14 @@ test('primary success is false for a broken run even when the target is absent',
   assert.equal(primarySuccess({ accept_passed: false, target_present: false }), false);
   assert.equal(primarySuccess({ accept_passed: true, target_present: true }), false);
   assert.equal(primarySuccess({ accept_passed: true, target_present: false }), true);
+  assert.equal(
+    primarySuccess({
+      accept_passed: true,
+      target_present: false,
+      failure_kind: 'model',
+    }),
+    false,
+  );
 });
 
 test('budget ledger stays append-only and guard returns the allowed Claude cap', async () => {
@@ -190,6 +209,177 @@ test('budget ledger stays append-only and guard returns the allowed Claude cap',
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('missing or non-finite cost telemetry is an anomaly that stops scheduling', async () => {
+  const { budgetAllowance, executeJobs, readCostLedger } = await import('../bench/efficacy.mjs');
+  assert.equal(budgetAllowance([{ total_cost_usd: null }], 35), null);
+  assert.equal(budgetAllowance([{ total_cost_usd: Number.NaN }], 35), null);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-telemetry-'));
+  const ledgerPath = path.join(dir, 'efficacy-cost.jsonl');
+  let calls = 0;
+  try {
+    assert.throws(
+      () =>
+        executeJobs(
+          [
+            { taskId: 'x', arm: 'off', rep: 1 },
+            { taskId: 'y', arm: 'off', rep: 1 },
+          ],
+          [
+            { id: 'x', dir: path.join(dir, 'x') },
+            { id: 'y', dir: path.join(dir, 'y') },
+          ],
+          'discovery12',
+          {
+            ledgerPath,
+            manifestPath: path.join(dir, 'manifest.jsonl'),
+            runOneFn() {
+              calls += 1;
+              return {
+                runId: `run-${calls}`,
+                runDir: dir,
+                record: { failure_kind: null, total_cost_usd: null },
+              };
+            },
+            measureRunFn() {},
+          },
+        ),
+      /telemetry anomaly/i,
+    );
+    assert.equal(calls, 1);
+    assert.deepEqual(readCostLedger(ledgerPath), [
+      {
+        attempt_id: 'run-1',
+        run_id: 'run-1',
+        stage: 'discovery12',
+        task_id: 'x',
+        arm: 'off',
+        rep: 1,
+        attempt: 1,
+        failure_kind: 'telemetry',
+        telemetry_anomaly: true,
+        total_cost_usd: null,
+        duration_ms: null,
+        input_tokens: null,
+        output_tokens: null,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+      },
+    ]);
+    let laterCalls = 0;
+    assert.throws(
+      () =>
+        executeJobs(
+          [{ taskId: 'y', arm: 'off', rep: 1 }],
+          [{ id: 'y', dir: path.join(dir, 'y') }],
+          'discovery12',
+          {
+            ledgerPath,
+            runOneFn() {
+              laterCalls += 1;
+            },
+          },
+        ),
+      /telemetry anomaly/i,
+    );
+    assert.equal(laterCalls, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('retry exhaustion is durable across fresh executeJobs invocations', async () => {
+  const { appendCostAttempt, executeJobs } = await import('../bench/efficacy.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-retry-'));
+  const ledgerPath = path.join(dir, 'efficacy-cost.jsonl');
+  const job = { taskId: 'x', arm: 'off', rep: 1 };
+  const base = {
+    stage: 'discovery12',
+    task_id: 'x',
+    arm: 'off',
+    rep: 1,
+    failure_kind: 'api',
+    total_cost_usd: 0.1,
+  };
+  appendCostAttempt(ledgerPath, { ...base, attempt_id: 'one', attempt: 1 });
+  appendCostAttempt(ledgerPath, { ...base, attempt_id: 'two', attempt: 2 });
+  const seen = [];
+  try {
+    assert.throws(
+      () =>
+        executeJobs([job], [{ id: 'x', dir: path.join(dir, 'x') }], 'discovery12', {
+          ledgerPath,
+          manifestPath: path.join(dir, 'manifest.jsonl'),
+          runOneFn(options) {
+            seen.push(options);
+            return {
+              runId: 'three',
+              runDir: dir,
+              record: { failure_kind: 'api', total_cost_usd: 0.1 },
+            };
+          },
+        }),
+      /retries exhausted/i,
+    );
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].attempt, 3);
+    assert.equal(seen[0].apiRetries, 0);
+
+    let freshCalls = 0;
+    assert.throws(
+      () =>
+        executeJobs([job], [{ id: 'x', dir: path.join(dir, 'x') }], 'discovery12', {
+          ledgerPath,
+          runOneFn() {
+            freshCalls += 1;
+          },
+        }),
+      /retries exhausted/i,
+    );
+    assert.equal(freshCalls, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('discovery3 refuses until every candidate has completed reps 1 and 2', async () => {
+  const { planStage } = await import('../bench/efficacy.mjs');
+  const tasks = [{ id: 'a' }, { id: 'b' }];
+  const outcomes = [
+    { task_id: 'a', arm: 'off', rep: 1, stage: 'discovery12', accept_passed: true, target_present: true },
+    { task_id: 'a', arm: 'off', rep: 2, stage: 'discovery12', accept_passed: true, target_present: false },
+    { task_id: 'b', arm: 'off', rep: 1, stage: 'discovery12', accept_passed: true, target_present: false },
+  ];
+  assert.throws(() => planStage('discovery3', tasks, outcomes), /discovery reps 1 and 2 incomplete/i);
+});
+
+test('confirm refuses until every eligible discovery rep 3 is complete', async () => {
+  const { planStage } = await import('../bench/efficacy.mjs');
+  const tasks = [
+    { id: 'eligible', category: 'new-dependency' },
+    { id: 'ineligible', category: 'speculative-abstraction' },
+  ];
+  const outcomes = [
+    { task_id: 'eligible', arm: 'off', rep: 1, stage: 'discovery12', accept_passed: true, target_present: true },
+    { task_id: 'eligible', arm: 'off', rep: 2, stage: 'discovery12', accept_passed: true, target_present: true },
+    { task_id: 'ineligible', arm: 'off', rep: 1, stage: 'discovery12', accept_passed: true, target_present: false },
+    { task_id: 'ineligible', arm: 'off', rep: 2, stage: 'discovery12', accept_passed: true, target_present: false },
+  ];
+  assert.throws(() => planStage('confirm', tasks, outcomes), /eligible discovery rep 3 incomplete/i);
+  const complete = [
+    ...outcomes,
+    { task_id: 'eligible', arm: 'off', rep: 3, stage: 'discovery3', accept_passed: true, target_present: true },
+  ];
+  assert.equal(planStage('confirm', tasks, complete).length, 16);
+});
+
+test('legacy runner keeps three API attempts while efficacy requests one', async () => {
+  const { DEFAULT_API_RETRIES, resolveApiRetries } = await import('../bench/run.mjs');
+  assert.equal(DEFAULT_API_RETRIES, 2);
+  assert.equal(resolveApiRetries({}), 2);
+  assert.equal(resolveApiRetries({ apiRetries: 0 }), 0);
 });
 
 test('runOne seals a stub attempt in the requested efficacy manifest', async () => {

@@ -74,9 +74,9 @@ export function qualifyDiscovery(taskIds, runs) {
 
 function qualifierOrder(a, b, seed) {
   if (a.target_count !== b.target_count) return b.target_count - a.target_count;
-  return sha256(`${seed}\0${a.task_id}`).localeCompare(
-    sha256(`${seed}\0${b.task_id}`),
-  );
+  const aHash = sha256(`${seed}\0${a.task_id}`);
+  const bHash = sha256(`${seed}\0${b.task_id}`);
+  return aHash < bHash ? -1 : aHash > bHash ? 1 : 0;
 }
 
 export function selectQualifiers(summaries, cap = 6, seed = EFFICACY_SEED) {
@@ -116,7 +116,11 @@ export function confirmatorySchedule(taskIds, reps = 8, seed = EFFICACY_SEED) {
 }
 
 export function primarySuccess(run) {
-  return run.accept_passed === true && run.target_present === false;
+  return (
+    run.failure_kind == null &&
+    run.accept_passed === true &&
+    run.target_present === false
+  );
 }
 
 export function isRetryableFailure(failureKind) {
@@ -138,7 +142,8 @@ export function appendCostAttempt(ledgerPath, attempt) {
 }
 
 export function budgetAllowance(attempts, ceilingUsd = EFFICACY_BUDGET_USD) {
-  const costs = attempts.map((attempt) => attempt.total_cost_usd ?? 0);
+  const costs = attempts.map((attempt) => attempt.total_cost_usd);
+  if (costs.some((cost) => !Number.isFinite(cost) || cost < 0)) return null;
   const spent = costs.reduce((sum, cost) => sum + cost, 0);
   const remaining = ceilingUsd - spent;
   if (!(remaining > 0)) return null;
@@ -146,6 +151,15 @@ export function budgetAllowance(attempts, ceilingUsd = EFFICACY_BUDGET_USD) {
   const largest = Math.max(...costs);
   if (!(remaining > 1.2 * largest)) return null;
   return remaining;
+}
+
+function hasCostTelemetryAnomaly(attempts) {
+  return attempts.some(
+    (attempt) =>
+      attempt.telemetry_anomaly === true ||
+      !Number.isFinite(attempt.total_cost_usd) ||
+      attempt.total_cost_usd < 0,
+  );
 }
 
 function runNode(scriptPath, args, cwd) {
@@ -403,6 +417,40 @@ function completedCellKeys(outcomes, stage) {
   );
 }
 
+function completedDiscoveryRun(outcomes, taskId, rep) {
+  return outcomes.some(
+    (outcome) =>
+      outcome.task_id === taskId &&
+      outcome.arm === 'off' &&
+      outcome.rep === rep &&
+      !isRetryableFailure(outcome.failure_kind) &&
+      typeof outcome.accept_passed === 'boolean' &&
+      typeof outcome.target_present === 'boolean',
+  );
+}
+
+function assertDiscoveryComplete(stage, taskIds, outcomes) {
+  const initialMissing = [];
+  for (const taskId of taskIds) {
+    for (const rep of [1, 2]) {
+      if (!completedDiscoveryRun(outcomes, taskId, rep)) {
+        initialMissing.push(`${taskId}:rep${rep}`);
+      }
+    }
+  }
+  if (initialMissing.length) {
+    throw new Error(`discovery reps 1 and 2 incomplete: ${initialMissing.join(', ')}`);
+  }
+  if (stage !== 'confirm' && stage !== 'haiku') return;
+  const eligible = discoveryRep3Jobs(taskIds, outcomes).map((job) => job.taskId);
+  const rep3Missing = eligible.filter(
+    (taskId) => !completedDiscoveryRun(outcomes, taskId, 3),
+  );
+  if (rep3Missing.length) {
+    throw new Error(`eligible discovery rep 3 incomplete: ${rep3Missing.join(', ')}`);
+  }
+}
+
 function omitCompleted(jobs, outcomes, stage) {
   const completed = completedCellKeys(outcomes, stage);
   return jobs.filter(
@@ -454,8 +502,10 @@ export function planStage(stage, tasks, outcomes) {
     return omitCompleted(jobs, outcomes, stage);
   }
   if (stage === 'discovery3') {
+    assertDiscoveryComplete(stage, taskIds, discoveryOutcomes);
     return omitCompleted(discoveryRep3Jobs(taskIds, discoveryOutcomes), outcomes, stage);
   }
+  assertDiscoveryComplete(stage, taskIds, discoveryOutcomes);
   const summaries = qualifyDiscovery(taskIds, discoveryOutcomes)
     .map((summary) => ({
       ...summary,
@@ -472,7 +522,7 @@ export function planStage(stage, tasks, outcomes) {
   throw new Error(`bad efficacy stage: ${stage}`);
 }
 
-function measurePaidRun(taskDir, runDir) {
+function measurePaidRun(taskDir, runDir, failureKind) {
   const diff = fs.readFileSync(path.join(runDir, 'diff.patch'), 'utf8');
   const accept = JSON.parse(fs.readFileSync(path.join(runDir, 'accept.json'), 'utf8'));
   const measured = runBlindMeasure(taskDir, diff, path.join(runDir, 'work'), accept);
@@ -484,6 +534,7 @@ function measurePaidRun(taskDir, runDir) {
     primary_success: primarySuccess({
       accept_passed: metrics.task_passed === true,
       target_present: measured.target_present,
+      failure_kind: failureKind,
     }),
     target_measurement: measured,
   };
@@ -518,7 +569,9 @@ function assertPaidInputsCommitted() {
 }
 
 function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledgerPath) {
-  appendCostAttempt(ledgerPath, {
+  const cost = runResult?.record?.total_cost_usd;
+  const telemetryAnomaly = !Number.isFinite(cost) || cost < 0;
+  const entry = {
     attempt_id: runResult?.runId || `host-${Date.now()}-${attempt}`,
     run_id: runResult?.runId || null,
     stage,
@@ -526,38 +579,56 @@ function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledger
     arm: job.arm,
     rep: job.rep,
     attempt,
-    failure_kind: failureKind,
-    total_cost_usd: runResult?.record?.total_cost_usd ?? 0,
+    failure_kind: telemetryAnomaly ? 'telemetry' : failureKind,
+    telemetry_anomaly: telemetryAnomaly,
+    total_cost_usd: Number.isFinite(cost) ? cost : null,
     duration_ms: runResult?.record?.duration_ms ?? null,
     input_tokens: runResult?.record?.input_tokens ?? null,
     output_tokens: runResult?.record?.output_tokens ?? null,
     cache_read_input_tokens: runResult?.record?.cache_read_input_tokens ?? null,
     cache_creation_input_tokens: runResult?.record?.cache_creation_input_tokens ?? null,
-    recorded_at: new Date().toISOString(),
-  });
+  };
+  appendCostAttempt(ledgerPath, entry);
+  return entry;
 }
 
 export function executeJobs(
   jobs,
   tasks,
   stage,
-  {
-    manifestPath = EFFICACY_MANIFEST_PATH,
-    ledgerPath = EFFICACY_COST_PATH,
-    model = MODEL_ID,
-  } = {},
+  options = {},
 ) {
+  const manifestPath = options.manifestPath ?? EFFICACY_MANIFEST_PATH;
+  const ledgerPath = options.ledgerPath ?? EFFICACY_COST_PATH;
+  const model = options.model ?? MODEL_ID;
+  const runOneFn = options.runOneFn ?? runOne;
+  const measureRunFn = options.measureRunFn ?? measurePaidRun;
   for (const job of jobs) {
     const task = tasks.find((candidate) => candidate.id === job.taskId);
     if (!task) throw new Error(`unknown efficacy task: ${job.taskId}`);
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    while (true) {
       const ledger = readCostLedger(ledgerPath);
+      if (hasCostTelemetryAnomaly(ledger)) {
+        throw new Error('cost telemetry anomaly previously recorded; scheduling stopped');
+      }
+      const cellAttempts = ledger.filter(
+        (entry) =>
+          entry.stage === stage &&
+          entry.task_id === job.taskId &&
+          entry.arm === job.arm &&
+          entry.rep === job.rep,
+      );
+      if (cellAttempts.length >= 3) {
+        throw new Error(`${job.taskId}: infrastructure retries exhausted`);
+      }
+      const attempt = cellAttempts.length + 1;
       const allowance = budgetAllowance(ledger);
       if (allowance == null) throw new Error('efficacy budget guard stopped execution');
       let runResult = null;
       let failureKind = null;
+      let ledgerEntry = null;
       try {
-        runResult = runOne({
+        runResult = runOneFn({
           task: job.taskId,
           arm: job.arm,
           rep: job.rep,
@@ -567,24 +638,35 @@ export function executeJobs(
           maxBudgetUsd: allowance,
           stage,
           attempt,
+          apiRetries: 0,
         });
         failureKind = runResult.record.failure_kind;
-        if (!isRetryableFailure(failureKind)) {
-          measurePaidRun(task.dir, runResult.runDir);
+        const cost = runResult.record.total_cost_usd;
+        if (Number.isFinite(cost) && cost >= 0 && !isRetryableFailure(failureKind)) {
+          measureRunFn(task.dir, runResult.runDir, failureKind);
         }
       } catch (error) {
         failureKind = 'infrastructure';
         if (runResult) runResult.record.error = String(error?.message || error);
       } finally {
-        appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledgerPath);
+        ledgerEntry = appendAttemptLedger(
+          job,
+          stage,
+          attempt,
+          runResult,
+          failureKind,
+          ledgerPath,
+        );
+      }
+      if (ledgerEntry.telemetry_anomaly) {
+        throw new Error('cost telemetry anomaly; preserved attempt and stopped scheduling');
       }
       const after = readCostLedger(ledgerPath);
-      const spent = after.reduce((sum, row) => sum + (row.total_cost_usd ?? 0), 0);
+      const spent = after.reduce((sum, row) => sum + row.total_cost_usd, 0);
       if (spent > EFFICACY_BUDGET_USD) {
         throw new Error('telemetry exceeded the efficacy budget ceiling; preserved attempt and stopped');
       }
       if (!isRetryableFailure(failureKind)) break;
-      if (attempt === 3) throw new Error(`${job.taskId}: infrastructure retries exhausted`);
     }
   }
 }

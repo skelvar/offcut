@@ -80,9 +80,12 @@ than represented as live hook exposure.
 Discovery is `off` only.
 
 1. `discovery12`: all 12 tasks, reps 1 and 2, for 24 runs.
-2. `discovery3`: give a task rep 3 only when at least one of its first two
+2. Do not plan `discovery3` until every candidate has completed both initial
+   reps.
+3. `discovery3`: give a task rep 3 only when at least one of its first two
    total runs both passes acceptance and is target-positive.
-3. A task qualifies only when all three total runs exist, the target is
+4. Do not run qualification until every eligible rep 3 is complete.
+5. A task qualifies only when all three total runs exist, the target is
    present in at least 2/3, and acceptance passes in at least 2/3.
 
 The denominator remains all three total runs. A failed accept does not vanish
@@ -118,12 +121,14 @@ schedule's destructive failed-run resumption is not used.
 The primary run outcome is:
 
 ```text
-accept passed AND task-specific target absent
+no model/API/host/infrastructure failure
+AND accept passed
+AND task-specific target absent
 ```
 
 Every other result, including an acceptance failure with a small or
-target-absent diff, is primary failure. Report target prevalence and
-acceptance separately.
+target-absent diff or a failed Claude process that left acceptable code, is
+primary failure. Report target prevalence and acceptance separately.
 
 The task-specific measure receives only the opaque diff, opaque worktree, and
 acceptance result. It never receives arm, transcript, Offcut state, execution
@@ -168,7 +173,10 @@ Otherwise report no positive efficacy claim.
 Paid execution requires `--execute`. Retry only API, host, or infrastructure
 errors, at most three attempts for a planned run. Model failure and
 acceptance failure are outcomes, not retry reasons. Preserve every opaque run
-directory and every attempt.
+directory and every attempt. Attempt number and exhaustion are derived from
+the append-only cost ledger's stage/task/arm/rep cell, so restarting the
+process cannot reset retries. The legacy runner retains its three-call API
+retry default; efficacy explicitly requests one host call per ledger attempt.
 
 `bench/efficacy-cost.jsonl` is append-only and records every attempt. Never
 reset, truncate, or delete it. All attempt costs count. Before a paid call:
@@ -180,6 +188,8 @@ reset, truncate, or delete it. All attempt costs count. Before a paid call:
 4. pass the resulting remaining allowance through Claude's
    `--max-budget-usd`.
 
+Missing, negative, or non-finite `total_cost_usd` is recorded as a telemetry
+anomaly, never coerced to zero, and stops all further paid scheduling.
 If first-call telemetry alone exceeds the total ceiling, preserve the attempt
 and stop. The same rule applies to any later telemetry anomaly.
 
@@ -194,7 +204,8 @@ There are three mandatory evidence gates:
    measures, and all fixtures before the first model call.
 2. **Raw discovery before qualifier selection:** commit every discovery
    attempt, both append-only ledgers, and raw run artifacts before computing
-   qualifiers.
+   qualifiers. The gate also verifies all initial cells and every eligible
+   adaptive rep 3 are complete.
 3. **Raw confirmatory before report:** commit every confirmatory attempt and
    raw artifact before joining arms or producing conclusions.
 
