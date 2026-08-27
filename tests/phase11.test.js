@@ -1241,22 +1241,60 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     envelope: 'delegate exactly',
   });
   assert.deepEqual(args, [
-    'exec',
-    '--json',
-    '--ephemeral',
-    '-s',
+    '--sandbox',
     'workspace-write',
     '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
     '-C',
     'D:\\work',
+    'exec',
+    '--json',
+    '--ephemeral',
     'delegate exactly',
   ]);
   assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
   assert.equal(args.includes('-a'), false);
   assert.equal(args.some((arg) => /claude/i.test(arg)), false);
   assert.equal(args.includes('--max-budget-usd'), false);
+});
+
+test('Codex 0.149.1 parses frozen global options without a model call', async (t) => {
+  const version = spawnSync('codex', ['--version'], { encoding: 'utf8' });
+  if (
+    version.status !== 0 ||
+    (version.stdout || version.stderr || '').trim() !== 'codex-cli 0.149.1'
+  ) {
+    t.skip('requires installed codex-cli 0.149.1');
+    return;
+  }
+  const { buildCodexArgs } = await import('../bench/run.mjs');
+  const built = buildCodexArgs({
+    workDir: os.tmpdir(),
+    envelope: 'THIS_PROMPT_MUST_NOT_BE_SENT',
+  });
+  const execIndex = built.indexOf('exec');
+  const parseOnlyArgs = [...built.slice(0, execIndex + 1), '--help'];
+  assert.deepEqual(parseOnlyArgs, [
+    '--sandbox',
+    'workspace-write',
+    '--ask-for-approval',
+    'never',
+    '--dangerously-bypass-hook-trust',
+    '-C',
+    os.tmpdir(),
+    'exec',
+    '--help',
+  ]);
+  assert.equal(parseOnlyArgs.includes('THIS_PROMPT_MUST_NOT_BE_SENT'), false);
+  assert.equal(parseOnlyArgs.includes('--json'), false);
+  const parsed = spawnSync('codex', parseOnlyArgs, {
+    cwd: os.tmpdir(),
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.match(`${parsed.stdout || ''}\n${parsed.stderr || ''}`, /Usage: codex exec/i);
 });
 
 test('Codex isolated home contains only auth, neutral config, role, and arm hooks', async () => {

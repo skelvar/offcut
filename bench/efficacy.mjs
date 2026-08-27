@@ -751,16 +751,16 @@ export function codexPreflight({
     const envelope = buildCodexEnvelope('Preflight ticket bytes.\n');
     const args = buildCodexArgs({ workDir: tempRoot, envelope });
     const expectedPrefix = [
-      'exec',
-      '--json',
-      '--ephemeral',
-      '-s',
+      '--sandbox',
       'workspace-write',
       '--ask-for-approval',
       'never',
       '--dangerously-bypass-hook-trust',
       '-C',
       tempRoot,
+      'exec',
+      '--json',
+      '--ephemeral',
     ];
     if (
       JSON.stringify(args.slice(0, expectedPrefix.length)) !==

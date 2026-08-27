@@ -215,16 +215,16 @@ export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = nu
 
 export function buildCodexArgs({ workDir, envelope }) {
   return [
-    'exec',
-    '--json',
-    '--ephemeral',
-    '-s',
+    '--sandbox',
     'workspace-write',
     '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
     '-C',
     workDir,
+    'exec',
+    '--json',
+    '--ephemeral',
     envelope,
   ];
 }
