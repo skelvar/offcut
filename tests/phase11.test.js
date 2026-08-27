@@ -1214,8 +1214,6 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     prompt,
   });
   assert.deepEqual(args, [
-    '--sandbox',
-    'workspace-write',
     '--approve-for-me',
     '--dangerously-bypass-hook-trust',
     '--profile',
@@ -1230,6 +1228,7 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
   assert.equal(args.at(-1), prompt);
   assert.equal(args.some((arg) => /spawn_agent|delegate exactly/i.test(arg)), false);
   assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+  assert.equal(args.includes('--sandbox'), false);
   assert.equal(args.includes('--ask-for-approval'), false);
   assert.equal(args.includes('-a'), false);
   assert.equal(args.some((arg) => /claude/i.test(arg)), false);
@@ -1253,8 +1252,6 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
   const execIndex = built.indexOf('exec');
   const parseOnlyArgs = [...built.slice(0, execIndex + 1), '--help'];
   assert.deepEqual(parseOnlyArgs, [
-    '--sandbox',
-    'workspace-write',
     '--approve-for-me',
     '--dangerously-bypass-hook-trust',
     '--profile',
@@ -1267,6 +1264,7 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
   assert.equal(parseOnlyArgs.includes('THIS_PROMPT_MUST_NOT_BE_SENT'), false);
   assert.equal(parseOnlyArgs.includes('--json'), false);
   assert.equal(parseOnlyArgs.includes('--ask-for-approval'), false);
+  assert.equal(parseOnlyArgs.includes('--sandbox'), false);
   assert.equal(
     parseOnlyArgs.includes('--dangerously-bypass-approvals-and-sandbox'),
     false,
@@ -2033,6 +2031,10 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(result.record.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
     assert.equal(result.record.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
     assert.equal(result.record.approval_mode, 'automatic_review');
+    assert.equal(
+      result.record.effective_sandbox,
+      'workspace-write (approve-for-me)',
+    );
     assert.match(result.record.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(result.record, 'custom_agent_role'), false);
     assert.equal(Object.hasOwn(result.record, 'role_sha256'), false);
@@ -2290,6 +2292,7 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
               custom_agent_kind: 'named_top_level_profile',
               custom_agent_name: 'ticket-worker',
               approval_mode: 'automatic_review',
+              effective_sandbox: 'workspace-write (approve-for-me)',
               config_sha256: 'config-hash',
               profile_config_sha256: 'profile-config-hash',
               hooks_sha256: 'hooks-hash',
@@ -2317,6 +2320,7 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
     assert.equal(codex[0].custom_agent_kind, 'named_top_level_profile');
     assert.equal(codex[0].custom_agent_name, 'ticket-worker');
     assert.equal(codex[0].approval_mode, 'automatic_review');
+    assert.equal(codex[0].effective_sandbox, 'workspace-write (approve-for-me)');
     assert.equal(Object.hasOwn(codex[0], 'custom_agent_role'), false);
     assert.equal(codex[0].config_sha256, 'config-hash');
     assert.equal(codex[0].profile_config_sha256, 'profile-config-hash');
@@ -2373,6 +2377,7 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
     assert.equal(result.custom_agent_kind, 'named_top_level_profile');
     assert.equal(result.custom_agent_name, 'ticket-worker');
     assert.equal(result.approval_mode, 'automatic_review');
+    assert.equal(result.effective_sandbox, 'workspace-write (approve-for-me)');
     assert.match(result.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(result, 'custom_agent_role'), false);
     assert.equal(result.model_id, undefined);
@@ -2476,6 +2481,7 @@ test('Codex live preflight records one verified named profile then refuses rerun
     assert.equal(first.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
     assert.equal(first.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
     assert.equal(first.approval_mode, 'automatic_review');
+    assert.equal(first.effective_sandbox, 'workspace-write (approve-for-me)');
     assert.match(first.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(first, 'custom_agent_role'), false);
     assert.equal(Object.hasOwn(first, 'role_sha256'), false);

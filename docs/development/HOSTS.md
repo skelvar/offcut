@@ -549,17 +549,20 @@ Temporary homes are removed with Windows retries, verified absent on every
 exit, and excluded from evidence.
 
 Headless execution is pinned to `gpt-5.6-sol`, low reasoning effort,
-workspace-write sandboxing, ephemeral JSONL output, and
-`--dangerously-bypass-hook-trust`. Seventh live preflight
+ephemeral JSONL output, and `--dangerously-bypass-hook-trust`. Seventh live preflight
 `dfe6220d68379d20` showed that `--ask-for-approval never` forced the named
 profile's write into a read-only boundary on Windows Codex 0.149.1. Production
 now uses `--approve-for-me` and records
 `approval_mode: "automatic_review"`. Codex's arm-identical guardian/review is
 platform approval infrastructure, not a custom subagent; root attribution and
-the collaboration ban still apply. Top-level config pins
+the collaboration ban still apply. Eighth preflight `bb343c29e2cd1242` showed
+that explicit `--sandbox workspace-write` cannot be combined with automatic
+review. Codex help states that `--approve-for-me` itself uses workspace-write,
+so production omits `--sandbox` and records
+`effective_sandbox: "workspace-write (approve-for-me)"`. Top-level config pins
 `default_permissions = ":workspace"`, disables skill instruction injection,
 enables hooks, and disables multi-agent execution. The last CLI flag bypasses
-hook trust only; the workspace-write sandbox is not bypassed.
+hook trust only; the dangerous approvals-and-sandbox bypass remains forbidden.
 
 ChatGPT subscription runs expose no per-call USD telemetry. Started processes
 therefore record zero incremental API cost with explicit subscription evidence,

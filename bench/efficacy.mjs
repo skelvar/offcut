@@ -23,6 +23,7 @@ import {
   CODEX_BACKEND_ID,
   CODEX_CUSTOM_AGENT_KIND,
   CODEX_CUSTOM_AGENT_NAME,
+  CODEX_EFFECTIVE_SANDBOX,
   CODEX_HOST,
   CODEX_HOST_VERSION,
   CODEX_MODEL_ID,
@@ -54,6 +55,7 @@ export {
   CODEX_BACKEND_ID,
   CODEX_CUSTOM_AGENT_KIND,
   CODEX_CUSTOM_AGENT_NAME,
+  CODEX_EFFECTIVE_SANDBOX,
 };
 
 export function discoveryRep3Jobs(taskIds, runs) {
@@ -772,8 +774,6 @@ export function codexPreflight({
     const prompt = 'Preflight ticket bytes.\n';
     const args = buildCodexArgs({ workDir: tempRoot, prompt });
     const expectedPrefix = [
-      '--sandbox',
-      'workspace-write',
       '--approve-for-me',
       '--dangerously-bypass-hook-trust',
       '--profile',
@@ -787,6 +787,7 @@ export function codexPreflight({
     if (
       JSON.stringify(args.slice(0, expectedPrefix.length)) !==
       JSON.stringify(expectedPrefix) ||
+      args.includes('--sandbox') ||
       args.includes('--ask-for-approval') ||
       args.includes('--dangerously-bypass-approvals-and-sandbox') ||
       args.includes('--max-budget-usd')
@@ -802,6 +803,7 @@ export function codexPreflight({
       custom_agent_kind: CODEX_CUSTOM_AGENT_KIND,
       custom_agent_name: CODEX_CUSTOM_AGENT_NAME,
       approval_mode: CODEX_APPROVAL_MODE,
+      effective_sandbox: CODEX_EFFECTIVE_SANDBOX,
       profile_config_sha256: profileConfigSha256,
       auth_kind: 'chatgpt',
     };
@@ -894,6 +896,7 @@ export function codexLivePreflight({
       custom_agent_kind: CODEX_CUSTOM_AGENT_KIND,
       custom_agent_name: CODEX_CUSTOM_AGENT_NAME,
       approval_mode: CODEX_APPROVAL_MODE,
+      effective_sandbox: CODEX_EFFECTIVE_SANDBOX,
       custom_agent_verified: agent.customAgentVerified,
       verified: preflightSuccess,
       preflight_success: preflightSuccess,
@@ -1003,6 +1006,8 @@ function appendAttemptLedger(
             runResult?.record?.custom_agent_name ?? CODEX_CUSTOM_AGENT_NAME,
           approval_mode:
             runResult?.record?.approval_mode ?? CODEX_APPROVAL_MODE,
+          effective_sandbox:
+            runResult?.record?.effective_sandbox ?? CODEX_EFFECTIVE_SANDBOX,
           custom_agent_verified:
             runResult?.record?.custom_agent_verified === true,
           user_assets_isolated:

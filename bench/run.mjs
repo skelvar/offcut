@@ -44,6 +44,7 @@ export const CODEX_MODEL_ID = 'gpt-5.6-sol';
 export const CODEX_CUSTOM_AGENT_NAME = 'ticket-worker';
 export const CODEX_CUSTOM_AGENT_KIND = 'named_top_level_profile';
 export const CODEX_APPROVAL_MODE = 'automatic_review';
+export const CODEX_EFFECTIVE_SANDBOX = 'workspace-write (approve-for-me)';
 export const CODEX_PROFILE_INSTRUCTIONS =
   'Implement the delegated maintenance ticket in the current repository. Inspect the files, make the changes required by the ticket, and run relevant checks. Do not commit or edit .codex. Return a concise summary.';
 
@@ -217,8 +218,6 @@ export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = nu
 
 export function buildCodexArgs({ workDir, prompt }) {
   return [
-    '--sandbox',
-    'workspace-write',
     '--approve-for-me',
     '--dangerously-bypass-hook-trust',
     '--profile',
@@ -1051,6 +1050,7 @@ export function runOne(opts) {
       record.custom_agent_kind = CODEX_CUSTOM_AGENT_KIND;
       record.custom_agent_name = CODEX_CUSTOM_AGENT_NAME;
       record.approval_mode = CODEX_APPROVAL_MODE;
+      record.effective_sandbox = CODEX_EFFECTIVE_SANDBOX;
       agent = runCodex({
         workDir,
         prompt: task.prompt,

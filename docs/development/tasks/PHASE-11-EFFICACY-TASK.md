@@ -53,8 +53,8 @@ authentication status. A copied `auth.json` is not proof by itself. Artifacts
 record only `auth_kind: "chatgpt"`.
 
 Codex 0.149.1's modern permission precedence is pinned explicitly with
-base and profile `default_permissions = ":workspace"`, while the CLI remains
-`--profile ticket-worker --sandbox workspace-write --approve-for-me`.
+base and profile `default_permissions = ":workspace"`, while the CLI uses
+`--profile ticket-worker --approve-for-me`.
 The named profile contains the neutral `developer_instructions`, requested
 model, and effort. Base config contains `[skills] include_instructions = false`,
 `hooks = true`, and `multi_agent = false`. The fifth live preflight showed that
@@ -73,6 +73,14 @@ review while retaining workspace-write sandboxing. Records store
 `approval_mode: "automatic_review"`. This arm-identical guardian/review path is
 platform safety infrastructure, not a custom subagent or treatment component;
 the root-only audit and no-collaboration requirements remain unchanged.
+
+The eighth live preflight, `bb343c29e2cd1242`, then showed that Codex rejects
+an explicit `--sandbox` together with `--approve-for-me`. Codex 0.149.1 help
+defines automatic review itself as using workspace-write, so the active CLI
+omits `--sandbox` and records
+`effective_sandbox: "workspace-write (approve-for-me)"`. The profile's
+`default_permissions = ":workspace"` remains as defense and configuration
+evidence. The dangerous approvals-and-sandbox bypass remains forbidden.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
