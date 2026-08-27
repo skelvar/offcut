@@ -1713,14 +1713,38 @@ test('Codex missing usage and item-level errors are model failures without inven
 
 test('Codex failure parsing separates API, model, and known pre-call failures', async () => {
   const { classifyAgentFailure, parseCodexJsonl } = await import('../bench/run.mjs');
+  const cliStderr = [
+    '\u001b[31merror:\u001b[0m unexpected argument "--bad-config" found',
+    '',
+    'Usage: codex exec [OPTIONS] [PROMPT]',
+  ].join('\n');
+  const cli = parseCodexJsonl(
+    '',
+    2,
+    null,
+    {
+      durationMs: 17,
+      authKind: 'chatgpt',
+      auditEntries: [],
+      stderr: cliStderr,
+    },
+  );
   const api = parseCodexJsonl(
-    JSON.stringify({ type: 'error', message: 'rate limit exceeded (429)' }),
+    '',
     1,
     null,
-    { durationMs: 4, authKind: 'chatgpt', auditEntries: [] },
+    {
+      durationMs: 4,
+      authKind: 'chatgpt',
+      auditEntries: [],
+      stderr: 'Error: rate limit exceeded (429)',
+    },
   );
   const model = parseCodexJsonl(
-    JSON.stringify({ type: 'error', message: 'worker could not finish ticket' }),
+    [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
+      JSON.stringify({ type: 'turn.started' }),
+    ].join('\n'),
     1,
     null,
     { durationMs: 5, authKind: 'chatgpt', auditEntries: [] },
@@ -1731,6 +1755,17 @@ test('Codex failure parsing separates API, model, and known pre-call failures', 
     Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }),
     { durationMs: 1 },
   );
+  assert.equal(cli.ok, false);
+  assert.equal(cli.stderr, cliStderr);
+  assert.equal(cli.transcript, '');
+  assert.equal(cli.failureKind, 'host');
+  assert.match(cli.error, /unexpected argument "--bad-config".*Usage:/);
+  assert.doesNotMatch(cli.error, /\u001b/);
+  assert.equal(cli.telemetry.total_cost_usd, 0);
+  assert.deepEqual(cli.cost_evidence, {
+    kind: 'subscription',
+    source: 'codex_chatgpt',
+  });
   assert.equal(classifyAgentFailure(api), 'api');
   assert.equal(classifyAgentFailure(model), 'model');
   assert.equal(classifyAgentFailure(preCall), 'host');
@@ -1853,6 +1888,8 @@ test('Codex run record distinguishes requested from observed model', async () =>
         return {
           status: 0,
           stdout: [
+            JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
+            JSON.stringify({ type: 'turn.started' }),
             JSON.stringify(codexCollabSpawnEvent()),
             JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
@@ -1902,6 +1939,59 @@ test('Codex run record distinguishes requested from observed model', async () =>
   } finally {
     if (result?.runDir) fs.rmSync(result.runDir, { recursive: true, force: true });
     if (preCall?.runDir) fs.rmSync(preCall.runDir, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex failed run artifact retains CLI stderr separately from transcript', async () => {
+  const {
+    CODEX_BACKEND_ID,
+    CODEX_HOST,
+    CODEX_MODEL_ID,
+    runOne,
+  } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-stderr-artifact-'));
+  const authPath = path.join(root, 'auth.json');
+  const manifestPath = path.join(root, 'manifest.jsonl');
+  const stderr = 'error: unexpected argument "--bad-config" found\nUsage: codex exec [OPTIONS]';
+  fs.writeFileSync(authPath, '{"secret":"must-not-enter-artifacts"}');
+  let result;
+  try {
+    result = runOne({
+      task: 'config-fallback',
+      arm: 'off',
+      rep: 1,
+      model: CODEX_MODEL_ID,
+      keepWork: false,
+      manifestPath,
+      backend: CODEX_BACKEND_ID,
+      host: CODEX_HOST,
+      authPath,
+      homeParentDir: root,
+      spawnCodex(_command, args) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        return { status: 2, stdout: '', stderr, error: null };
+      },
+    });
+    assert.equal(result.record.failure_kind, 'host');
+    assert.equal(result.record.total_cost_usd, 0);
+    assert.equal(
+      fs.readFileSync(path.join(result.runDir, 'stderr.txt'), 'utf8'),
+      stderr,
+    );
+    assert.equal(
+      fs.readFileSync(path.join(result.runDir, 'transcript.jsonl'), 'utf8'),
+      '',
+    );
+    assert.match(result.record.error, /unexpected argument/);
+    assert.doesNotMatch(
+      fs.readFileSync(path.join(result.runDir, 'run.json'), 'utf8'),
+      /must-not-enter-artifacts/,
+    );
+  } finally {
+    if (result?.runDir) fs.rmSync(result.runDir, { recursive: true, force: true });
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -2192,6 +2282,8 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
         return {
           status: 0,
           stdout: [
+            JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
+            JSON.stringify({ type: 'turn.started' }),
             JSON.stringify(codexCollabSpawnEvent()),
             JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify({
@@ -2216,6 +2308,8 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     assert.equal(first.model_requested, 'gpt-5.6-sol');
     assert.equal(first.model_id, null);
     assert.equal(first.model_observation, 'requested_not_reported');
+    assert.equal(first.process_started, true);
+    assert.equal(first.inference_started, true);
     assert.equal(first.cache_creation_input_tokens, 0);
     assert.equal(first.reasoning_output_tokens, 0);
     assert.equal(calls, 1);
@@ -2239,6 +2333,63 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
       /successful Codex live preflight already exists/i,
     );
     assert.equal(calls, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex live preflight preserves immediate CLI stderr without claiming inference', async () => {
+  const { codexLivePreflight } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-stderr-'));
+  const authPath = path.join(root, 'auth.json');
+  const evidenceRoot = path.join(root, 'evidence');
+  const ledgerPath = path.join(root, 'ledger.jsonl');
+  const stderr = [
+    '\u001b[31merror:\u001b[0m unexpected argument "--bad-config" found',
+    '',
+    'Usage: codex exec [OPTIONS] [PROMPT]',
+  ].join('\n');
+  fs.writeFileSync(authPath, '{"secret":"never-diagnostic"}');
+  try {
+    const failed = codexLivePreflight({
+      execute: true,
+      authPath,
+      evidenceRoot,
+      ledgerPath,
+      spawnCodex(_command, args) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        return { status: 2, stdout: '', stderr, error: null };
+      },
+    });
+    const evidenceDir = path.join(evidenceRoot, failed.preflight_id);
+    const recorded = JSON.parse(
+      fs.readFileSync(path.join(evidenceDir, 'evidence.json'), 'utf8'),
+    );
+    assert.equal(failed.ok, false);
+    assert.equal(failed.preflight_success, false);
+    assert.equal(failed.failure_kind, 'host');
+    assert.equal(failed.exit_code, 2);
+    assert.equal(failed.total_cost_usd, 0);
+    assert.equal(failed.billing_kind, 'chatgpt_subscription');
+    assert.match(failed.error, /unexpected argument "--bad-config".*Usage:/);
+    assert.doesNotMatch(failed.error, /\u001b|\r|\n/);
+    assert.equal(recorded.error, failed.error);
+    assert.equal(recorded.exit_code, 2);
+    assert.equal(
+      fs.readFileSync(path.join(evidenceDir, 'stderr.txt'), 'utf8'),
+      stderr,
+    );
+    assert.equal(
+      fs.readFileSync(path.join(evidenceDir, 'transcript.jsonl'), 'utf8'),
+      '',
+    );
+    const artifactText = fs
+      .readdirSync(evidenceDir)
+      .map((file) => fs.readFileSync(path.join(evidenceDir, file), 'utf8'))
+      .join('\n');
+    assert.doesNotMatch(artifactText, /never-diagnostic/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

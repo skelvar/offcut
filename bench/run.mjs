@@ -124,6 +124,9 @@ export function extractClaudeTelemetry(parsed) {
 
 export function classifyAgentFailure(agent) {
   if (agent?.ok) return null;
+  if (['api', 'host', 'model'].includes(agent?.failureKind)) {
+    return agent.failureKind;
+  }
   if (agent?.apiError) return 'api';
   if (agent?.spawnError || agent?.timedOut) return 'host';
   return 'model';
@@ -571,6 +574,7 @@ export function parseCodexJsonl(
     durationMs,
     authKind = null,
     auditEntries = [],
+    stderr = '',
   } = {},
 ) {
   const events = [];
@@ -582,11 +586,23 @@ export function parseCodexJsonl(
       // Preserve malformed lines in the raw transcript; they cannot prove success.
     }
   }
+  const eventMessages = events.map(
+    (event) => event?.message || event?.error?.message || '',
+  );
   const text = [
     stdout || '',
+    stderr || '',
     spawnErr?.message || '',
-    ...events.map((event) => event?.message || event?.error?.message || ''),
+    ...eventMessages,
   ].join('\n');
+  const diagnostic = [stderr || '', spawnErr?.message || '', ...eventMessages]
+    .filter(Boolean)
+    .join('\n')
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 2_048);
   const apiError =
     /(?:rate limit|too many requests|quota|authentication|unauthorized|forbidden|api key|subscription|\b429\b|\b5\d\d\b)/i.test(
       text,
@@ -597,6 +613,13 @@ export function parseCodexJsonl(
     preCallSpawnCodes.has(spawnErr?.code) &&
     !String(stdout || '').trim();
   const callStarted = status != null;
+  const inferenceStarted = events.some(
+    (event) =>
+      event?.type === 'thread.started' ||
+      event?.type === 'turn.started',
+  );
+  const immediateHostFailure =
+    callStarted && status !== 0 && !inferenceStarted;
   const attribution = verifyCodexAgentAudit(auditEntries, events);
   const genericSpawnVerified = attribution.spawnVerified === true;
   const customAgentVerified = attribution.ok;
@@ -621,7 +644,7 @@ export function parseCodexJsonl(
     ok,
     exitCode: status,
     stdout: stdout || '',
-    stderr: '',
+    stderr: stderr || '',
     transcript: stdout || '',
     parsed: events,
     modelId,
@@ -629,11 +652,20 @@ export function parseCodexJsonl(
     authKind: subscriptionVerified ? 'chatgpt' : null,
     apiError,
     spawnError: Boolean(spawnErr),
+    processStarted: callStarted,
+    inferenceStarted,
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
     customAgentVerified,
     genericSpawnVerified,
     workerAgentId: attribution.workerAgentId,
-    failureKind: ok ? null : apiError ? 'api' : spawnErr ? 'host' : 'model',
+    failureKind:
+      ok
+        ? null
+        : apiError
+          ? 'api'
+          : spawnErr || immediateHostFailure
+            ? 'host'
+            : 'model',
     telemetry: {
       total_cost_usd: callStarted && subscriptionVerified ? 0 : null,
       duration_ms: durationMs,
@@ -649,9 +681,12 @@ export function parseCodexJsonl(
         ? { kind: 'known_zero', source: `spawn_error:${spawnErr.code}` }
         : { kind: 'call_not_started', source: 'unknown_spawn_failure' },
     error:
-      spawnErr?.message ||
-      (apiError
-        ? text.trim() || `Codex API failure (exit ${status})`
+      spawnErr
+        ? diagnostic || 'Codex process failed to start'
+        : apiError
+        ? diagnostic || `Codex API failure (exit ${status})`
+        : immediateHostFailure
+          ? diagnostic || `codex exit ${status} before thread start`
         : !subscriptionVerified && callStarted
           ? 'Codex ChatGPT authentication was not verified'
           : usage === null && callStarted
@@ -659,8 +694,8 @@ export function parseCodexJsonl(
         : !customAgentVerified
           ? `Codex did not prove completed ${CODEX_CUSTOM_ROLE} ownership`
           : eventError || status !== 0
-            ? text.trim() || `codex exit ${status}`
-            : null),
+            ? diagnostic || `codex exit ${status}`
+            : null,
   };
 }
 
@@ -762,6 +797,8 @@ export function runCodex({
         authKind: null,
         apiError: !login.spawnError,
         spawnError: Boolean(login.spawnError),
+        processStarted: false,
+        inferenceStarted: false,
         timedOut: false,
         customAgentVerified: false,
         genericSpawnVerified: false,
@@ -792,8 +829,8 @@ export function runCodex({
       durationMs: Math.max(0, Math.round(now() - started)),
       authKind: 'chatgpt',
       auditEntries: readCodexAudit(resolvedAuditPath),
+      stderr: result.stderr || '',
     });
-    parsed.stderr = result.stderr || '';
     return attachHashes(parsed);
   } finally {
     cleanupCodexHome(isolated.homeDir);
@@ -987,6 +1024,8 @@ export function runOne(opts) {
       record.config_sha256 = agent.config_sha256;
       record.role_sha256 = agent.role_sha256;
       record.hooks_sha256 = agent.hooks_sha256;
+      record.process_started = agent.processStarted;
+      record.inference_started = agent.inferenceStarted;
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();

@@ -83,7 +83,14 @@ be finite and nonnegative. Missing or malformed usage makes the run
 non-successful and leaves token fields null; it is never coerced to zero.
 Duration is wall time and raw JSONL is preserved. Error items, failed turns,
 authentication, API, and rate-limit failures remain distinct from model/tool
-failures and known pre-call spawn failures.
+failures and known pre-call spawn failures. Raw stderr is retained separately
+from the JSONL transcript and contributes to failure detection; live-preflight
+evidence records its exit code and a bounded, control-character-free diagnostic.
+An exec process that exits unsuccessfully before `thread.started` or
+`turn.started` is a host/infrastructure failure, while API-looking stderr keeps
+API classification. Once either start event appears, missing usage remains an
+unfavorable model/telemetry result. Subscription evidence means the
+ChatGPT-gated CLI process started, not that model inference necessarily began.
 
 The CLI and config pin the requested model to `gpt-5.6-sol`, but Codex 0.149.1
 does not necessarily report the observed model in exec JSONL. Records therefore

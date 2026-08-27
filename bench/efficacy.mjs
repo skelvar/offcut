@@ -829,6 +829,13 @@ export function codexLivePreflight({
       agent.transcript || '',
       'utf8',
     );
+    if (agent.stderr) {
+      fs.writeFileSync(
+        path.join(evidenceDir, 'stderr.txt'),
+        agent.stderr,
+        'utf8',
+      );
+    }
     const evidence = {
       ok: agent.ok,
       preflight_id: preflightId,
@@ -843,6 +850,10 @@ export function codexLivePreflight({
       custom_agent_verified: agent.customAgentVerified,
       verified: agent.customAgentVerified,
       preflight_success: agent.ok,
+      process_started: agent.processStarted,
+      inference_started: agent.inferenceStarted,
+      exit_code: agent.exitCode,
+      error: agent.error || null,
       billing_kind: agent.cost_evidence?.kind === 'subscription'
         ? 'chatgpt_subscription'
         : null,
