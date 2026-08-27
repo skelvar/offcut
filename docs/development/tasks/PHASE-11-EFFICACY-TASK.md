@@ -29,7 +29,7 @@ The active execution contract is now:
   `billing_kind: "chatgpt_subscription"` and subscription cost evidence; this
   does not claim that ChatGPT membership is free
 
-Six isolated live preflights preceded efficacy-task inference. The sixth,
+Nine isolated live preflights preceded efficacy-task inference. The sixth,
 `4ae70772be5f4fb0`, proved that Codex 0.149.1's custom subagent executes under a
 read-only sandbox even when its parent is workspace-writable: the exact worker
 lifecycle and `apply_patch` attempt were audited, Codex rejected the write, and
@@ -81,6 +81,8 @@ omits `--sandbox` and records
 `effective_sandbox: "workspace-write (approve-for-me)"`. The profile's
 `default_permissions = ":workspace"` remains as defense and configuration
 evidence. The dangerous approvals-and-sandbox bypass remains forbidden.
+The ninth, `927bff5b8f9afe54`, passed the named-profile write proof under the
+active contract and was sealed before discovery.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
@@ -157,6 +159,40 @@ paired root write-capable Pre/Post tool event; evidence stores proof and diff
 hashes, not the temporary path. Successful-live-preflight refusal is scoped to
 `codex-profile-v1`, so prior failed subagent preflights remain history. The live
 preflight remains outside efficacy outcomes.
+
+## 2026-08-27 post-study publication amendment
+
+Raw discovery was sealed in commit
+`4eeea606451623b3a0c18109f33b019413db81cb`. All 24 initial
+`codex-profile-v1` cells completed. Acceptance passed in 22/24, but the
+preregistered primary outcome remains the recorded 17/24 because five accepted,
+target-free runs were marked `failure_kind: "model"` by the then-frozen parser.
+Target prevalence was 0/24, so no rep-3 run was eligible, no task qualified,
+and the preregistered rule stopped the study before confirmation.
+
+Post-seal review found a classifier defect: Codex reports failed intermediate
+`command_execution`, `file_change`, or tool items even when it recovers and
+successfully completes the turn. The five affected discovery runs all had a
+zero process exit, `turn.completed`, valid usage, verified named-profile
+attribution, accepted code, and no top-level failed turn or unrecoverable error.
+The raw manifest, metrics, run records, transcripts, and ledger remain
+immutable.
+
+The parser is corrected prospectively. It records sanitized
+`recoverable_tool_failures` metadata containing only item ID, item type, status,
+and command exit code when available; command text and arguments are omitted.
+An intermediate failure is recoverable only when the process exits zero, the
+turn completes with valid usage, the named profile is verified, and no
+top-level failure or unrecoverable error exists. A nonzero process exit,
+`turn.failed`, or non-warning error remains fatal.
+
+A clearly labeled post-hoc sensitivity reclassifies those five runs, yielding
+22/24 (91.67%) primary success. It does not replace the frozen 17/24 outcome and
+cannot change the stop decision because target prevalence remains 0/24.
+Accordingly `positive_claim` is false, `efficacy_estimate` is null, and
+`confirmatory_ran` is false. The result is no efficacy estimate—not evidence of
+no effect. Enrichment failed for this model/profile, or the baseline was
+already target-free; no `off` versus `full` claim is supported.
 
 ## Frozen environment and ceiling
 

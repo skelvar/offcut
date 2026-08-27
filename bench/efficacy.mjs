@@ -30,6 +30,7 @@ import {
   CODEX_PROFILE_INSTRUCTIONS,
   buildCodexArgs,
   buildIsolatedCodexEnv,
+  classifyCodexEventFailures,
   cleanupCodexHome,
   prepareCodexHome,
   runCodex,
@@ -44,6 +45,13 @@ export const EFFICACY_BUDGET_USD = 35;
 export const EFFICACY_TASKS_DIR = path.join(BENCH_ROOT, 'efficacy-tasks');
 export const EFFICACY_MANIFEST_PATH = path.join(BENCH_ROOT, 'efficacy-manifest.jsonl');
 export const EFFICACY_COST_PATH = path.join(BENCH_ROOT, 'efficacy-cost.jsonl');
+export const EFFICACY_ANALYSIS_PATH = path.join(BENCH_ROOT, 'efficacy-analysis.json');
+export const EFFICACY_RESULTS_PATH = path.join(
+  path.dirname(BENCH_ROOT),
+  'docs',
+  'development',
+  'EFFICACY-RESULTS.md',
+);
 export const CODEX_PREFLIGHT_ROOT = path.join(BENCH_ROOT, 'codex-preflight');
 export const CODEX_PREFLIGHT_LEDGER_PATH = path.join(CODEX_PREFLIGHT_ROOT, 'ledger.jsonl');
 const CODEX_PREFLIGHT_PROOF_FILE = 'ticket-worker-write-proof.txt';
@@ -564,6 +572,418 @@ export function assertRawGateCommitted({
   }
 }
 
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function numericSummary(values) {
+  if (!values.length || values.some((value) => !Number.isFinite(value))) {
+    throw new Error('publication telemetry is missing or malformed');
+  }
+  return {
+    total: values.reduce((sum, value) => sum + value, 0),
+    median: median(values),
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function parseTranscriptEvents(transcript) {
+  const events = [];
+  for (const line of String(transcript || '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      return [];
+    }
+  }
+  return events;
+}
+
+function isPostHocRecoverable(entry, metrics, transcript) {
+  if (
+    entry.failure_kind !== 'model' ||
+    entry.custom_agent_verified !== true ||
+    metrics.task_passed !== true ||
+    metrics.target_present !== false
+  ) {
+    return false;
+  }
+  const events = parseTranscriptEvents(transcript);
+  const failures = classifyCodexEventFailures(events);
+  return (
+    events.some((event) => event?.type === 'turn.completed') &&
+    failures.recoverableToolFailures.length > 0 &&
+    !failures.unrecoverable
+  );
+}
+
+const REPORT_CATEGORY_ORDER = [
+  'new-dependency',
+  'speculative-abstraction',
+  'large-first-write',
+  'new-config-surface',
+  'unused-default-param',
+];
+
+export function buildEfficacyAnalysis({
+  manifestEntries,
+  metricsByRun,
+  taskMetas,
+  transcriptByRun,
+  preflightEvidence,
+  rawCommitSha,
+}) {
+  const scoped = manifestEntries.filter(
+    (entry) =>
+      entry.backend === CODEX_BACKEND_ID &&
+      entry.stage === 'discovery12' &&
+      entry.arm === 'off' &&
+      (entry.rep === 1 || entry.rep === 2),
+  );
+  const cellKeys = new Set(
+    scoped.map((entry) => `${entry.task_id}\0${entry.rep}`),
+  );
+  if (scoped.length !== 24 || cellKeys.size !== 24) {
+    throw new Error(
+      `report requires 24 initial cells for ${CODEX_BACKEND_ID}; found ${cellKeys.size}`,
+    );
+  }
+  const metaByTask = new Map(taskMetas.map((meta) => [meta.id, meta]));
+  const tasks = scoped
+    .map((entry) => {
+      const metrics = metricsByRun.get(entry.run_id);
+      const meta = metaByTask.get(entry.task_id);
+      if (!metrics || !meta) {
+        throw new Error(`report evidence missing for run ${entry.run_id}`);
+      }
+      if (
+        typeof metrics.target_present !== 'boolean' ||
+        typeof metrics.task_passed !== 'boolean' ||
+        typeof metrics.primary_success !== 'boolean' ||
+        !Number.isFinite(metrics.lines_added) ||
+        !Number.isFinite(metrics.lines_removed)
+      ) {
+        throw new Error(`report metrics malformed for run ${entry.run_id}`);
+      }
+      const recovered = isPostHocRecoverable(
+        entry,
+        metrics,
+        transcriptByRun.get(entry.run_id),
+      );
+      return {
+        task_id: entry.task_id,
+        category: meta.category,
+        rep: entry.rep,
+        run_id: entry.run_id,
+        target_present: metrics.target_present === true,
+        accepted: metrics.task_passed === true,
+        frozen_primary_success: metrics.primary_success === true,
+        raw_failure_kind: entry.failure_kind ?? null,
+        post_hoc_recovered_tool_failure: recovered,
+        lines_added: metrics.lines_added,
+        lines_removed: metrics.lines_removed,
+        duration_ms: entry.duration_ms,
+        input_tokens: entry.input_tokens,
+        output_tokens: entry.output_tokens,
+        cache_read_input_tokens: entry.cache_read_input_tokens,
+        reasoning_output_tokens: entry.reasoning_output_tokens,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.task_id.localeCompare(b.task_id) ||
+        a.rep - b.rep,
+    );
+  const taskIds = new Set(tasks.map((task) => task.task_id));
+  if (
+    taskIds.size !== 12 ||
+    [...taskIds].some(
+      (taskId) =>
+        !tasks.some((task) => task.task_id === taskId && task.rep === 1) ||
+        !tasks.some((task) => task.task_id === taskId && task.rep === 2),
+    )
+  ) {
+    throw new Error('report requires 24 initial cells across 12 tasks and two reps');
+  }
+  const categories = {};
+  for (const category of REPORT_CATEGORY_ORDER) {
+    const rows = tasks.filter((task) => task.category === category);
+    categories[category] = {
+      total: rows.length,
+      target_present: rows.filter((task) => task.target_present).length,
+      accepted: rows.filter((task) => task.accepted).length,
+      frozen_primary_success: rows.filter(
+        (task) => task.frozen_primary_success,
+      ).length,
+    };
+  }
+  if (
+    Object.values(categories).reduce((sum, category) => sum + category.total, 0) !==
+    tasks.length
+  ) {
+    throw new Error('report encountered an unknown efficacy category');
+  }
+  const recovered = tasks.filter(
+    (task) => task.post_hoc_recovered_tool_failure,
+  );
+  const accepted = tasks.filter((task) => task.accepted).length;
+  const targetPresent = tasks.filter((task) => task.target_present).length;
+  const frozenPrimary = tasks.filter(
+    (task) => task.frozen_primary_success,
+  ).length;
+  const first = scoped[0];
+  const legacyClaude = manifestEntries.filter(
+    (entry) => entry.host === 'claude-code',
+  );
+  const preflights = preflightEvidence.map((entry) => ({
+    preflight_id: entry.preflight_id,
+    backend: entry.backend,
+    success: entry.preflight_success === true,
+    inference_started: entry.inference_started === true,
+    write_proof_verified: entry.write_proof_verified === true,
+    failure_kind: entry.failure_kind ?? null,
+  }));
+  return {
+    schema_version: 1,
+    raw_commit_sha: rawCommitSha,
+    backend: CODEX_BACKEND_ID,
+    environment: {
+      host: first.host,
+      host_version: first.host_version,
+      model_requested: first.model_requested,
+      model_id: first.model_id ?? null,
+      model_observation: first.model_observation,
+      reasoning_effort: first.effort,
+      custom_agent_kind: first.custom_agent_kind,
+      custom_agent_name: first.custom_agent_name,
+      approval_mode: first.approval_mode,
+      effective_sandbox: first.effective_sandbox,
+      billing_kind: first.billing_kind,
+    },
+    discovery: {
+      planned_initial_cells: 24,
+      completed_initial_cells: tasks.length,
+      target_present: targetPresent,
+      accepted,
+      frozen_primary_success: frozenPrimary,
+      discovery3_planned: 0,
+      qualifiers: 0,
+    },
+    categories,
+    tasks,
+    aggregate: {
+      loc: {
+        added: tasks.reduce((sum, task) => sum + task.lines_added, 0),
+        removed: tasks.reduce((sum, task) => sum + task.lines_removed, 0),
+      },
+      duration_ms: numericSummary(tasks.map((task) => task.duration_ms)),
+      tokens: {
+        input: numericSummary(tasks.map((task) => task.input_tokens)),
+        output: numericSummary(tasks.map((task) => task.output_tokens)),
+        cache_read: numericSummary(
+          tasks.map((task) => task.cache_read_input_tokens),
+        ),
+        noncached_input: numericSummary(
+          tasks.map(
+            (task) => task.input_tokens - task.cache_read_input_tokens,
+          ),
+        ),
+        reasoning: numericSummary(
+          tasks.map((task) => task.reasoning_output_tokens),
+        ),
+      },
+      incremental_cost_usd: tasks.reduce(
+        (sum, task) =>
+          sum +
+          (metricsByRun.get(task.run_id)?.total_cost_usd ?? 0),
+        0,
+      ),
+    },
+    post_hoc_sensitivity: {
+      label: 'post_hoc',
+      recovered_intermediate_tool_failures: recovered.length,
+      primary_success: frozenPrimary + recovered.length,
+      primary_total: tasks.length,
+      primary_rate_percent:
+        Math.round(((frozenPrimary + recovered.length) / tasks.length) * 10_000) /
+        100,
+      changes_stop_decision: false,
+    },
+    preflight_history: {
+      attempts: preflights.length,
+      successful: preflights.filter((entry) => entry.success).length,
+      entries: preflights,
+    },
+    legacy_claude: {
+      attempts: legacyClaude.length,
+      subscription_403: legacyClaude.filter(
+        (entry) =>
+          entry.failure_kind === 'api' &&
+          /disabled Claude subscription access/i.test(String(entry.error || '')),
+      ).length,
+      input_tokens: legacyClaude.reduce(
+        (sum, entry) => sum + (entry.input_tokens || 0),
+        0,
+      ),
+      output_tokens: legacyClaude.reduce(
+        (sum, entry) => sum + (entry.output_tokens || 0),
+        0,
+      ),
+      reported_cost_usd: legacyClaude.reduce(
+        (sum, entry) => sum + (entry.total_cost_usd || 0),
+        0,
+      ),
+    },
+    positive_claim: false,
+    efficacy_estimate: null,
+    confirmatory_ran: false,
+    stop_reason:
+      'Preregistered stop: no baseline target-positive runs, so no tasks qualified.',
+    conclusion:
+      'No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.',
+  };
+}
+
+function efficacyReportMarkdown(analysis) {
+  const categoryLines = REPORT_CATEGORY_ORDER.map((category) => {
+    const row = analysis.categories[category];
+    return `- \`${category}\`: target ${row.target_present}/${row.total}, accepted ${row.accepted}/${row.total}, frozen primary ${row.frozen_primary_success}/${row.total}`;
+  });
+  const taskLines = [...new Set(analysis.tasks.map((task) => task.task_id))].map(
+    (taskId) => {
+      const rows = analysis.tasks.filter((task) => task.task_id === taskId);
+      return `- \`${taskId}\`: target ${rows.filter((row) => row.target_present).length}/${rows.length}, accepted ${rows.filter((row) => row.accepted).length}/${rows.length}, frozen primary ${rows.filter((row) => row.frozen_primary_success).length}/${rows.length}`;
+    },
+  );
+  return [
+    '# Phase 11 efficacy result',
+    '',
+    `Raw evidence commit: \`${analysis.raw_commit_sha}\``,
+    '',
+    '## Result',
+    '',
+    `All ${analysis.discovery.completed_initial_cells}/24 initial Codex discovery cells completed. Target prevalence was 0/24, acceptance was ${analysis.discovery.accepted}/24, and the preregistered frozen primary outcome was ${analysis.discovery.frozen_primary_success}/24.`,
+    '',
+    analysis.stop_reason,
+    '',
+    '**Conclusion:** No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.',
+    '',
+    '## Post-hoc sensitivity',
+    '',
+    `${analysis.post_hoc_sensitivity.recovered_intermediate_tool_failures} intermediate tool-command failures were recoverable under the corrected future classifier. Reclassifying them yields ${analysis.post_hoc_sensitivity.primary_success}/${analysis.post_hoc_sensitivity.primary_total} (${analysis.post_hoc_sensitivity.primary_rate_percent.toFixed(2)}%) primary success. This is post hoc and does not change the stop decision because target prevalence remains 0/24.`,
+    '',
+    '## Categories',
+    '',
+    ...categoryLines,
+    '',
+    '## Tasks',
+    '',
+    ...taskLines,
+    '',
+    '## Cost and telemetry',
+    '',
+    `- LOC: +${analysis.aggregate.loc.added}/-${analysis.aggregate.loc.removed}`,
+    `- Duration: ${analysis.aggregate.duration_ms.total} ms total; median ${analysis.aggregate.duration_ms.median} ms; range ${analysis.aggregate.duration_ms.min}-${analysis.aggregate.duration_ms.max} ms`,
+    `- Input tokens: ${analysis.aggregate.tokens.input.total}; median ${analysis.aggregate.tokens.input.median}`,
+    `- Output tokens: ${analysis.aggregate.tokens.output.total}; median ${analysis.aggregate.tokens.output.median}`,
+    `- Cache-read input tokens: ${analysis.aggregate.tokens.cache_read.total}; median ${analysis.aggregate.tokens.cache_read.median}`,
+    `- Noncached input tokens: ${analysis.aggregate.tokens.noncached_input.total}`,
+    `- Reasoning output tokens: ${analysis.aggregate.tokens.reasoning.total}; median ${analysis.aggregate.tokens.reasoning.median}`,
+    `- Incremental API billing: $${analysis.aggregate.incremental_cost_usd} (ChatGPT subscription; membership cost not measured)`,
+    '',
+    '## Environment and history',
+    '',
+    `Codex CLI ${analysis.environment.host_version}, requested model \`${analysis.environment.model_requested}\` (${analysis.environment.model_observation}; observed model ID unavailable), low reasoning, named \`${analysis.environment.custom_agent_name}\` profile, ${analysis.environment.approval_mode}, ${analysis.environment.effective_sandbox}.`,
+    '',
+    `${analysis.preflight_history.attempts} Codex preflights preceded discovery; ${analysis.preflight_history.successful} passed the final write proof. ${analysis.legacy_claude.attempts} legacy Claude attempts separately ended in subscription-disabled 403 responses with zero tokens and zero reported cost.`,
+    '',
+  ].join('\n');
+}
+
+function rawEvidenceCommit(spawnGit, repoRoot) {
+  const result = spawnGit(
+    'git',
+    [
+      'log',
+      '-1',
+      '--format=%H',
+      '--',
+      'bench/efficacy-manifest.jsonl',
+      'bench/efficacy-cost.jsonl',
+      'bench/runs',
+    ],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  const commit = String(result.stdout || '').trim();
+  if (result.status !== 0 || !/^[a-f0-9]{40}$/.test(commit)) {
+    throw new Error('raw-result commit gate could not resolve evidence commit');
+  }
+  return commit;
+}
+
+export function publishEfficacyReport({
+  repoRoot = path.dirname(BENCH_ROOT),
+  manifestPath = EFFICACY_MANIFEST_PATH,
+  runsDir = RUNS_DIR,
+  tasksDir = EFFICACY_TASKS_DIR,
+  preflightLedgerPath = CODEX_PREFLIGHT_LEDGER_PATH,
+  analysisPath = EFFICACY_ANALYSIS_PATH,
+  reportPath = EFFICACY_RESULTS_PATH,
+  spawnGit = spawnSync,
+} = {}) {
+  assertRawGateCommitted({ spawnGit, repoRoot });
+  const rawCommitSha = rawEvidenceCommit(spawnGit, repoRoot);
+  const manifestEntries = readManifest(manifestPath);
+  const scoped = manifestEntries.filter(
+    (entry) => entry.backend === CODEX_BACKEND_ID,
+  );
+  const metricsByRun = new Map();
+  const transcriptByRun = new Map();
+  for (const entry of scoped) {
+    const runDir = path.join(runsDir, entry.run_id);
+    const metricsPath = path.join(runDir, 'metrics.json');
+    if (fs.existsSync(metricsPath)) {
+      metricsByRun.set(
+        entry.run_id,
+        JSON.parse(fs.readFileSync(metricsPath, 'utf8')),
+      );
+    }
+    const transcriptPath = path.join(runDir, 'transcript.jsonl');
+    if (fs.existsSync(transcriptPath)) {
+      transcriptByRun.set(
+        entry.run_id,
+        fs.readFileSync(transcriptPath, 'utf8'),
+      );
+    }
+  }
+  const taskMetas = loadEfficacyTasks(tasksDir).map(
+    ({ id, category }) => ({ id, category }),
+  );
+  const analysis = buildEfficacyAnalysis({
+    manifestEntries,
+    metricsByRun,
+    taskMetas,
+    transcriptByRun,
+    preflightEvidence: readCostLedger(preflightLedgerPath),
+    rawCommitSha,
+  });
+  fs.mkdirSync(path.dirname(analysisPath), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(
+    analysisPath,
+    `${JSON.stringify(analysis, null, 2)}\n`,
+    'utf8',
+  );
+  fs.writeFileSync(reportPath, efficacyReportMarkdown(analysis), 'utf8');
+  return analysis;
+}
+
 export function planStage(stage, tasks, outcomes, backend) {
   const scopedOutcomes = backend
     ? outcomes.filter((outcome) => outcome.backend === backend)
@@ -907,6 +1327,9 @@ export function codexLivePreflight({
       inference_started: agent.inferenceStarted,
       warning_count: agent.warningCount,
       user_assets_isolated: agent.userAssetsIsolated,
+      recoverable_tool_failures: agent.recoverableToolFailures ?? [],
+      recoverable_tool_failure_count:
+        agent.recoverableToolFailureCount ?? 0,
       exit_code: agent.exitCode,
       error:
         agent.error ||
@@ -1012,6 +1435,10 @@ function appendAttemptLedger(
             runResult?.record?.custom_agent_verified === true,
           user_assets_isolated:
             runResult?.record?.user_assets_isolated === true,
+          recoverable_tool_failures:
+            runResult?.record?.recoverable_tool_failures ?? [],
+          recoverable_tool_failure_count:
+            runResult?.record?.recoverable_tool_failure_count ?? 0,
           verified:
             runResult?.record?.verified === true ||
             runResult?.record?.custom_agent_verified === true,
@@ -1130,6 +1557,7 @@ function parseArgs(argv) {
     selftest: false,
     printPlan: false,
     execute: false,
+    report: false,
     codexPreflight: false,
     codexLivePreflight: false,
     stage: null,
@@ -1140,6 +1568,7 @@ function parseArgs(argv) {
     if (arg === '--selftest') options.selftest = true;
     else if (arg === '--print-plan') options.printPlan = true;
     else if (arg === '--execute') options.execute = true;
+    else if (arg === '--report') options.report = true;
     else if (arg === '--codex-preflight') options.codexPreflight = true;
     else if (arg === '--codex-live-preflight') options.codexLivePreflight = true;
     else if (arg === '--stage') options.stage = argv[++index];
@@ -1154,13 +1583,33 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     console.log(
-      'Usage: node bench/efficacy.mjs --selftest | --codex-preflight | --codex-live-preflight --execute | --print-plan [--stage NAME] | --stage discovery12|discovery3|confirm --execute',
+      'Usage: node bench/efficacy.mjs --report | --selftest | --codex-preflight | --codex-live-preflight --execute | --print-plan [--stage NAME] | --stage discovery12|discovery3|confirm --execute',
     );
     return;
   }
   if (options.codexLivePreflight && !options.execute) {
     console.error('Codex live preflight requires explicit --execute');
     process.exitCode = 2;
+    return;
+  }
+  if (options.report) {
+    const analysis = publishEfficacyReport();
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          analysis_path: path.relative(path.dirname(BENCH_ROOT), EFFICACY_ANALYSIS_PATH),
+          report_path: path.relative(path.dirname(BENCH_ROOT), EFFICACY_RESULTS_PATH),
+          raw_commit_sha: analysis.raw_commit_sha,
+          completed_initial_cells: analysis.discovery.completed_initial_cells,
+          target_present: analysis.discovery.target_present,
+          qualifiers: analysis.discovery.qualifiers,
+          confirmatory_ran: analysis.confirmatory_ran,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
   if (options.codexPreflight) {

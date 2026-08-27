@@ -424,6 +424,53 @@ function canonicalCodexOrchestrationTool(toolName) {
 const CODEX_HOOK_TRUST_WARNING =
   '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
 
+export function classifyCodexEventFailures(events) {
+  const isHookTrustWarning = (event) =>
+    event?.type === 'item.completed' &&
+    event?.item?.type === 'error' &&
+    event?.item?.message === CODEX_HOOK_TRUST_WARNING;
+  const collaborationEvent = events.some(
+    (event) =>
+      event?.item?.type === 'collab_tool_call' ||
+      canonicalCodexOrchestrationTool(event?.item?.tool) !== null ||
+      /(?:collab|spawn_agent|subagent)/i.test(String(event?.type || '')),
+  );
+  const recoverableEvents = events.filter((event) => {
+    const itemType = String(event?.item?.type || '');
+    return (
+      event?.type === 'item.completed' &&
+      event?.item?.status === 'failed' &&
+      (itemType === 'command_execution' ||
+        itemType === 'file_change' ||
+        /tool(?:_call)?$/i.test(itemType)) &&
+      itemType !== 'collab_tool_call'
+    );
+  });
+  const recoverableEventSet = new Set(recoverableEvents);
+  const unrecoverable = events.some((event) => {
+    if (isHookTrustWarning(event) || recoverableEventSet.has(event)) return false;
+    return (
+      /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
+      event?.item?.type === 'error' ||
+      event?.status === 'failed' ||
+      event?.item?.status === 'failed' ||
+      collaborationEvent
+    );
+  });
+  return {
+    warningCount: events.filter(isHookTrustWarning).length,
+    unrecoverable,
+    recoverableToolFailures: recoverableEvents.map((event) => ({
+      item_id: typeof event.item.id === 'string' ? event.item.id : null,
+      item_type: event.item.type,
+      status: event.item.status,
+      ...(Number.isFinite(event.item.exit_code)
+        ? { exit_code: event.item.exit_code }
+        : {}),
+    })),
+  };
+}
+
 function normalizedEvidencePath(value, caseInsensitive) {
   const normalized =
     String(value || '')
@@ -626,27 +673,9 @@ export function parseCodexJsonl(
     callStarted && status !== 0 && !lifecycleStarted;
   const attribution = verifyCodexAgentAudit(auditEntries);
   const customAgentVerified = attribution.ok;
-  const isHookTrustWarning = (event) =>
-    event?.type === 'item.completed' &&
-    event?.item?.type === 'error' &&
-    event?.item?.message === CODEX_HOOK_TRUST_WARNING;
-  const warningCount = events.filter(isHookTrustWarning).length;
-  const collaborationEvent = events.some(
-    (event) =>
-      event?.item?.type === 'collab_tool_call' ||
-      canonicalCodexOrchestrationTool(event?.item?.tool) !== null ||
-      /(?:collab|spawn_agent|subagent)/i.test(String(event?.type || '')),
-  );
-  const eventError = events.some((event) => {
-    if (isHookTrustWarning(event)) return false;
-    return (
-      /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
-      event?.item?.type === 'error' ||
-      event?.status === 'failed' ||
-      event?.item?.status === 'failed' ||
-      collaborationEvent
-    );
-  });
+  const eventFailures = classifyCodexEventFailures(events);
+  const warningCount = eventFailures.warningCount;
+  const unrecoverableEventError = eventFailures.unrecoverable;
   const parentTurnVerified = events.some(
     (event) => event?.type === 'turn.started',
   );
@@ -658,6 +687,20 @@ export function parseCodexJsonl(
     workDir,
     isolatedHomeDir,
   });
+  const recoveryEligible =
+    status === 0 &&
+    !unrecoverableEventError &&
+    userAssetsIsolated &&
+    customAgentVerified &&
+    parentTurnVerified &&
+    usage !== null &&
+    subscriptionVerified;
+  const recoverableToolFailures = recoveryEligible
+    ? eventFailures.recoverableToolFailures
+    : [];
+  const eventError =
+    unrecoverableEventError ||
+    (eventFailures.recoverableToolFailures.length > 0 && !recoveryEligible);
   const ok =
     status === 0 &&
     !eventError &&
@@ -686,6 +729,8 @@ export function parseCodexJsonl(
     customAgentVerified,
     rootCompletedToolCount: attribution.rootCompletedToolCount || 0,
     rootCompletedWriteToolCount: attribution.rootCompletedWriteToolCount || 0,
+    recoverableToolFailures,
+    recoverableToolFailureCount: recoverableToolFailures.length,
     failureKind:
       ok
         ? null
@@ -1077,6 +1122,10 @@ export function runOne(opts) {
       record.inference_started = agent.inferenceStarted;
       record.warning_count = agent.warningCount;
       record.user_assets_isolated = agent.userAssetsIsolated;
+      record.recoverable_tool_failures =
+        agent.recoverableToolFailures ?? [];
+      record.recoverable_tool_failure_count =
+        agent.recoverableToolFailureCount ?? 0;
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();

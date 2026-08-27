@@ -563,6 +563,171 @@ test('raw commit gate refuses dirty evidence and passes tracked clean evidence',
   assert.equal(calls.every((call) => call.cwd === 'repo'), true);
 });
 
+test('efficacy report recomputes the sealed null result deterministically', async () => {
+  const {
+    buildEfficacyAnalysis,
+    publishEfficacyReport,
+  } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-report-'));
+  const firstJson = path.join(root, 'first.json');
+  const firstMarkdown = path.join(root, 'first.md');
+  const secondJson = path.join(root, 'second.json');
+  const secondMarkdown = path.join(root, 'second.md');
+  try {
+    const first = publishEfficacyReport({
+      analysisPath: firstJson,
+      reportPath: firstMarkdown,
+    });
+    const second = publishEfficacyReport({
+      analysisPath: secondJson,
+      reportPath: secondMarkdown,
+    });
+    assert.deepEqual(second, first);
+    assert.equal(fs.readFileSync(secondJson, 'utf8'), fs.readFileSync(firstJson, 'utf8'));
+    assert.equal(
+      fs.readFileSync(secondMarkdown, 'utf8'),
+      fs.readFileSync(firstMarkdown, 'utf8'),
+    );
+    assert.equal(first.raw_commit_sha, '4eeea606451623b3a0c18109f33b019413db81cb');
+    assert.deepEqual(first.discovery, {
+      planned_initial_cells: 24,
+      completed_initial_cells: 24,
+      target_present: 0,
+      accepted: 22,
+      frozen_primary_success: 17,
+      discovery3_planned: 0,
+      qualifiers: 0,
+    });
+    assert.deepEqual(first.post_hoc_sensitivity, {
+      label: 'post_hoc',
+      recovered_intermediate_tool_failures: 5,
+      primary_success: 22,
+      primary_total: 24,
+      primary_rate_percent: 91.67,
+      changes_stop_decision: false,
+    });
+    assert.deepEqual(first.aggregate.loc, { added: 681, removed: 42 });
+    assert.deepEqual(first.aggregate.duration_ms, {
+      total: 1465425,
+      median: 56197.5,
+      min: 38210,
+      max: 98182,
+    });
+    assert.equal(first.aggregate.tokens.input.total, 2123514);
+    assert.equal(first.aggregate.tokens.input.median, 77521);
+    assert.equal(first.aggregate.tokens.output.total, 35143);
+    assert.equal(first.aggregate.tokens.output.median, 1367.5);
+    assert.equal(first.aggregate.tokens.cache_read.total, 1709312);
+    assert.equal(first.aggregate.tokens.cache_read.median, 67328);
+    assert.equal(first.aggregate.tokens.noncached_input.total, 414202);
+    assert.equal(first.aggregate.tokens.reasoning.total, 7254);
+    assert.equal(first.aggregate.tokens.reasoning.median, 264);
+    assert.equal(first.aggregate.incremental_cost_usd, 0);
+    assert.equal(first.positive_claim, false);
+    assert.equal(first.efficacy_estimate, null);
+    assert.equal(first.confirmatory_ran, false);
+    assert.match(first.stop_reason, /no baseline target-positive runs/i);
+    assert.equal(first.tasks.length, 24);
+    assert.deepEqual(first.categories['new-dependency'], {
+      total: 8,
+      target_present: 0,
+      accepted: 7,
+      frozen_primary_success: 7,
+    });
+    assert.deepEqual(first.categories['speculative-abstraction'], {
+      total: 10,
+      target_present: 0,
+      accepted: 9,
+      frozen_primary_success: 4,
+    });
+    for (const category of [
+      'large-first-write',
+      'new-config-surface',
+      'unused-default-param',
+    ]) {
+      assert.deepEqual(first.categories[category], {
+        total: 2,
+        target_present: 0,
+        accepted: 2,
+        frozen_primary_success: 2,
+      });
+    }
+    assert.equal(first.environment.model_requested, 'gpt-5.6-sol');
+    assert.equal(first.environment.model_id, null);
+    assert.equal(first.environment.model_observation, 'requested_not_reported');
+    assert.equal(first.preflight_history.attempts, 9);
+    assert.equal(first.preflight_history.successful, 1);
+    assert.deepEqual(first.legacy_claude, {
+      attempts: 3,
+      subscription_403: 3,
+      input_tokens: 0,
+      output_tokens: 0,
+      reported_cost_usd: 0,
+    });
+    assert.match(
+      fs.readFileSync(firstMarkdown, 'utf8'),
+      /No efficacy estimate.*not evidence of no effect/is,
+    );
+
+    assert.throws(
+      () => buildEfficacyAnalysis({
+        manifestEntries: [],
+        metricsByRun: new Map(),
+        taskMetas: [],
+        transcriptByRun: new Map(),
+        preflightEvidence: [],
+        rawCommitSha: 'raw',
+      }),
+      /24 initial cells/i,
+    );
+    assert.throws(
+      () => buildEfficacyAnalysis({
+        manifestEntries: Array.from({ length: 24 }, (_, index) => ({
+          run_id: `wrong-${index}`,
+          backend: 'codex-custom-v1',
+          stage: 'discovery12',
+          arm: 'off',
+          rep: index < 12 ? 1 : 2,
+          task_id: `task-${index % 12}`,
+        })),
+        metricsByRun: new Map(),
+        taskMetas: [],
+        transcriptByRun: new Map(),
+        preflightEvidence: [],
+        rawCommitSha: 'raw',
+      }),
+      /24 initial cells/i,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('efficacy report refuses a dirty raw gate before writing', async () => {
+  const { publishEfficacyReport } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-report-gate-'));
+  const analysisPath = path.join(root, 'analysis.json');
+  const reportPath = path.join(root, 'report.md');
+  try {
+    assert.throws(
+      () => publishEfficacyReport({
+        analysisPath,
+        reportPath,
+        spawnGit(_command, args) {
+          return args[0] === 'status'
+            ? { status: 0, stdout: ' M bench/efficacy-manifest.jsonl\n' }
+            : { status: 0, stdout: 'tracked\n' };
+        },
+      }),
+      /raw-result commit gate/i,
+    );
+    assert.equal(fs.existsSync(analysisPath), false);
+    assert.equal(fs.existsSync(reportPath), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runOne seals a stub attempt in the requested efficacy manifest', async () => {
   const { runOne } = await import('../bench/run.mjs');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-run-'));
@@ -1774,6 +1939,102 @@ test('Codex profile audit requires root identity and paired completed tools', as
     const child = codexWorkerAudit();
     child[0][field] = 'child';
     assert.equal(parse(child).ok, false, field);
+  }
+});
+
+test('Codex recovers intermediate tool failures after a valid completed turn', async () => {
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
+  const parse = (events, status = 0) =>
+    parseCodexJsonl(
+      [
+        { type: 'thread.started', thread_id: 'thread-1' },
+        { type: 'turn.started' },
+        ...events,
+        CODEX_USAGE_EVENT,
+      ].map(JSON.stringify).join('\n'),
+      status,
+      null,
+      {
+        durationMs: 3,
+        authKind: 'chatgpt',
+        auditEntries: codexWorkerAudit(),
+      },
+    );
+  const result = parse([
+    {
+      type: 'item.completed',
+      item: {
+        id: 'inventory-tsc',
+        type: 'command_execution',
+        command: 'tsc --noEmit C:\\secret\\repo\\src.ts',
+        exit_code: 1,
+        status: 'failed',
+      },
+    },
+    {
+      type: 'item.completed',
+      item: {
+        id: 'route-rg',
+        type: 'command_execution',
+        exit_code: 1,
+        status: 'failed',
+      },
+    },
+    {
+      type: 'item.completed',
+      item: {
+        id: 'webhook-get-command',
+        type: 'command_execution',
+        exit_code: 1,
+        status: 'failed',
+      },
+    },
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.recoverableToolFailureCount, 3);
+  assert.deepEqual(result.recoverableToolFailures, [
+    {
+      item_id: 'inventory-tsc',
+      item_type: 'command_execution',
+      status: 'failed',
+      exit_code: 1,
+    },
+    {
+      item_id: 'route-rg',
+      item_type: 'command_execution',
+      status: 'failed',
+      exit_code: 1,
+    },
+    {
+      item_id: 'webhook-get-command',
+      item_type: 'command_execution',
+      status: 'failed',
+      exit_code: 1,
+    },
+  ]);
+  assert.equal(JSON.stringify(result.recoverableToolFailures).includes('secret'), false);
+
+  for (const itemType of ['file_change', 'mcp_tool_call']) {
+    const recovered = parse([{
+      type: 'item.completed',
+      item: { id: `recover-${itemType}`, type: itemType, status: 'failed' },
+    }]);
+    assert.equal(recovered.ok, true);
+    assert.equal(recovered.recoverableToolFailureCount, 1);
+  }
+
+  for (const terminal of [
+    { status: 1, events: [] },
+    { status: 0, events: [{ type: 'turn.failed', error: { message: 'terminal' } }] },
+    {
+      status: 0,
+      events: [{
+        type: 'item.completed',
+        item: { id: 'fatal', type: 'error', message: 'unrecoverable' },
+      }],
+    },
+  ]) {
+    assert.equal(parse(terminal.events, terminal.status).ok, false);
   }
 });
 
