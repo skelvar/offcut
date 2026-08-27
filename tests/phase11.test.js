@@ -872,7 +872,10 @@ export function parse(csv) {
   });
 }`,
     'pretty-ms': `import fs from 'node:fs';
-export default function pretty(ms) {
+export default function pretty(ms, options) {
+  if (options?.hideYearAndDays !== true || options?.secondsDecimalDigits !== 0) {
+    throw new Error('pretty-ms options mismatch');
+  }
   fs.writeFileSync('package-used', 'pretty-ms');
   let seconds = Math.floor(ms / 1000);
   const parts = [];
@@ -894,8 +897,11 @@ exports.stringify = function stringify(params) {
 };`,
     'sanitize-filename': `const fs = require('node:fs');
 module.exports = function sanitize(value) {
-  fs.writeFileSync('package-used', 'sanitize-filename');
-  return value;
+  let output = /^(con|prn|aux|nul|com\\d|lpt\\d)(\\..*)?$/i.test(value)
+    ? ''
+    : Buffer.from(value).subarray(0, 255).toString();
+  fs.appendFileSync('package-used', JSON.stringify({ value, output }) + '\\n');
+  return output;
 };`,
   };
   for (const task of loadEfficacyTasks().filter((candidate) => candidate.category === 'new-dependency')) {
@@ -937,7 +943,15 @@ module.exports = function sanitize(value) {
         encoding: 'utf8',
       });
       assert.equal(accept.status, 0, `${task.id}: ${accept.stderr}`);
-      assert.equal(fs.readFileSync(path.join(work, 'package-used'), 'utf8'), specifier);
+      const branchProof = fs.readFileSync(path.join(work, 'package-used'), 'utf8');
+      if (specifier === 'sanitize-filename') {
+        const calls = branchProof.trim().split(/\r?\n/).map(JSON.parse);
+        assert.equal(calls.some((call) => call.value.includes('quarterly-report') && call.output === call.value), true);
+        assert.equal(calls.some((call) => call.value === 'con' && call.output === ''), true);
+        assert.equal(calls.some((call) => call.value.length === 300 && call.output.length === 255), true);
+      } else {
+        assert.equal(branchProof, specifier);
+      }
     } finally {
       fs.rmSync(parent, { recursive: true, force: true });
     }

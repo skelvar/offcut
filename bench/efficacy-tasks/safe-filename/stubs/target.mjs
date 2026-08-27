@@ -6,7 +6,7 @@ const operations = [
     "tool_name": "Write",
     "tool_input": {
       "file_path": "src/filename.js",
-      "content": "let sanitizeWithPackage = null;\ntry {\n  const filenameModule = await import('sanitize-filename');\n  sanitizeWithPackage = filenameModule.default ?? filenameModule;\n} catch {}\n\nexport function safeFilename(name) {\n  let safe = String(name)\n    .trim()\n    .toLowerCase()\n    .replace(/[^a-z0-9._-]+/g, '-')\n    .replace(/-+/g, '-')\n    .replace(/^[.-]+|[.-]+$/g, '');\n  if (sanitizeWithPackage) safe = sanitizeWithPackage(safe);\n  if (!safe) throw new TypeError('filename is empty');\n  return safe;\n}\n"
+      "content": "let sanitizeWithPackage = null;\ntry {\n  const filenameModule = await import('sanitize-filename');\n  sanitizeWithPackage = filenameModule.default ?? filenameModule;\n} catch {}\n\nexport function safeFilename(name) {\n  const normalized = String(name)\n    .trim()\n    .toLowerCase()\n    .replace(/[^a-z0-9._-]+/g, '-')\n    .replace(/-+/g, '-')\n    .replace(/^[.-]+|[.-]+$/g, '');\n  if (!normalized) throw new TypeError('filename is empty');\n  if (sanitizeWithPackage) {\n    const packaged = sanitizeWithPackage(normalized);\n    if (packaged === normalized) return packaged;\n  }\n  return normalized;\n}\n"
     }
   },
   {
