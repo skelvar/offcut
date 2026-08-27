@@ -220,7 +220,7 @@ export function buildCodexArgs({ workDir, envelope }) {
     '--ephemeral',
     '-s',
     'workspace-write',
-    '-a',
+    '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
     '-C',
@@ -613,13 +613,16 @@ export function parseCodexJsonl(
     preCallSpawnCodes.has(spawnErr?.code) &&
     !String(stdout || '').trim();
   const callStarted = status != null;
-  const inferenceStarted = events.some(
+  const lifecycleStarted = events.some(
     (event) =>
       event?.type === 'thread.started' ||
       event?.type === 'turn.started',
   );
+  const inferenceStarted =
+    lifecycleStarted ||
+    events.some((event) => event?.type === 'turn.completed');
   const immediateHostFailure =
-    callStarted && status !== 0 && !inferenceStarted;
+    callStarted && status !== 0 && !lifecycleStarted;
   const attribution = verifyCodexAgentAudit(auditEntries, events);
   const genericSpawnVerified = attribution.spawnVerified === true;
   const customAgentVerified = attribution.ok;
@@ -675,8 +678,10 @@ export function parseCodexJsonl(
       cache_creation_input_tokens: usage?.cache_write_input_tokens ?? null,
       reasoning_output_tokens: usage?.reasoning_output_tokens ?? null,
     },
-    cost_evidence: callStarted && subscriptionVerified
+    cost_evidence: callStarted && inferenceStarted && subscriptionVerified
       ? { kind: 'subscription', source: 'codex_chatgpt' }
+      : callStarted && !inferenceStarted && subscriptionVerified
+        ? { kind: 'known_zero', source: 'pre_inference_cli_failure' }
       : knownPreCallFailure
         ? { kind: 'known_zero', source: `spawn_error:${spawnErr.code}` }
         : { kind: 'call_not_started', source: 'unknown_spawn_failure' },

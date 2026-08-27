@@ -89,8 +89,10 @@ evidence records its exit code and a bounded, control-character-free diagnostic.
 An exec process that exits unsuccessfully before `thread.started` or
 `turn.started` is a host/infrastructure failure, while API-looking stderr keeps
 API classification. Once either start event appears, missing usage remains an
-unfavorable model/telemetry result. Subscription evidence means the
-ChatGPT-gated CLI process started, not that model inference necessarily began.
+unfavorable model/telemetry result. A ChatGPT-authenticated CLI exit before
+inference records known-zero pre-inference evidence and no subscription billing
+kind; verified `auth_kind` remains separate. Subscription evidence begins only
+after inference is evidenced.
 
 The CLI and config pin the requested model to `gpt-5.6-sol`, but Codex 0.149.1
 does not necessarily report the observed model in exec JSONL. Records therefore

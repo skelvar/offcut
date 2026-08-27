@@ -1246,7 +1246,7 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     '--ephemeral',
     '-s',
     'workspace-write',
-    '-a',
+    '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
     '-C',
@@ -1254,6 +1254,7 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     'delegate exactly',
   ]);
   assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+  assert.equal(args.includes('-a'), false);
   assert.equal(args.some((arg) => /claude/i.test(arg)), false);
   assert.equal(args.includes('--max-budget-usd'), false);
 });
@@ -1714,7 +1715,7 @@ test('Codex missing usage and item-level errors are model failures without inven
 test('Codex failure parsing separates API, model, and known pre-call failures', async () => {
   const { classifyAgentFailure, parseCodexJsonl } = await import('../bench/run.mjs');
   const cliStderr = [
-    '\u001b[31merror:\u001b[0m unexpected argument "--bad-config" found',
+    "\u001b[31merror:\u001b[0m unexpected argument '-a' found",
     '',
     'Usage: codex exec [OPTIONS] [PROMPT]',
   ].join('\n');
@@ -1759,12 +1760,12 @@ test('Codex failure parsing separates API, model, and known pre-call failures', 
   assert.equal(cli.stderr, cliStderr);
   assert.equal(cli.transcript, '');
   assert.equal(cli.failureKind, 'host');
-  assert.match(cli.error, /unexpected argument "--bad-config".*Usage:/);
+  assert.match(cli.error, /unexpected argument '-a'.*Usage:/);
   assert.doesNotMatch(cli.error, /\u001b/);
   assert.equal(cli.telemetry.total_cost_usd, 0);
   assert.deepEqual(cli.cost_evidence, {
-    kind: 'subscription',
-    source: 'codex_chatgpt',
+    kind: 'known_zero',
+    source: 'pre_inference_cli_failure',
   });
   assert.equal(classifyAgentFailure(api), 'api');
   assert.equal(classifyAgentFailure(model), 'model');
@@ -1953,7 +1954,7 @@ test('Codex failed run artifact retains CLI stderr separately from transcript', 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-stderr-artifact-'));
   const authPath = path.join(root, 'auth.json');
   const manifestPath = path.join(root, 'manifest.jsonl');
-  const stderr = 'error: unexpected argument "--bad-config" found\nUsage: codex exec [OPTIONS]';
+  const stderr = "error: unexpected argument '-a' found\nUsage: codex exec [OPTIONS]";
   fs.writeFileSync(authPath, '{"secret":"must-not-enter-artifacts"}');
   let result;
   try {
@@ -1977,6 +1978,11 @@ test('Codex failed run artifact retains CLI stderr separately from transcript', 
     });
     assert.equal(result.record.failure_kind, 'host');
     assert.equal(result.record.total_cost_usd, 0);
+    assert.equal(result.record.billing_kind, null);
+    assert.deepEqual(result.record.cost_evidence, {
+      kind: 'known_zero',
+      source: 'pre_inference_cli_failure',
+    });
     assert.equal(
       fs.readFileSync(path.join(result.runDir, 'stderr.txt'), 'utf8'),
       stderr,
@@ -2345,7 +2351,7 @@ test('Codex live preflight preserves immediate CLI stderr without claiming infer
   const evidenceRoot = path.join(root, 'evidence');
   const ledgerPath = path.join(root, 'ledger.jsonl');
   const stderr = [
-    '\u001b[31merror:\u001b[0m unexpected argument "--bad-config" found',
+    "\u001b[31merror:\u001b[0m unexpected argument '-a' found",
     '',
     'Usage: codex exec [OPTIONS] [PROMPT]',
   ].join('\n');
@@ -2372,8 +2378,13 @@ test('Codex live preflight preserves immediate CLI stderr without claiming infer
     assert.equal(failed.failure_kind, 'host');
     assert.equal(failed.exit_code, 2);
     assert.equal(failed.total_cost_usd, 0);
-    assert.equal(failed.billing_kind, 'chatgpt_subscription');
-    assert.match(failed.error, /unexpected argument "--bad-config".*Usage:/);
+    assert.equal(failed.billing_kind, null);
+    assert.equal(failed.auth_kind, 'chatgpt');
+    assert.deepEqual(failed.cost_evidence, {
+      kind: 'known_zero',
+      source: 'pre_inference_cli_failure',
+    });
+    assert.match(failed.error, /unexpected argument '-a'.*Usage:/);
     assert.doesNotMatch(failed.error, /\u001b|\r|\n/);
     assert.equal(recorded.error, failed.error);
     assert.equal(recorded.exit_code, 2);

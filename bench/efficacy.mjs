@@ -756,7 +756,7 @@ export function codexPreflight({
       '--ephemeral',
       '-s',
       'workspace-write',
-      '-a',
+      '--ask-for-approval',
       'never',
       '--dangerously-bypass-hook-trust',
       '-C',
