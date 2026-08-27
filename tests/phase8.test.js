@@ -6,13 +6,15 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { normalize } from '../hooks/host.js';
+import { normalize, pluginRoot } from '../hooks/host.js';
 import {
   writeMode,
   clearMode,
   writeDefaultMode,
   readMode,
   inspectActive,
+  writeServedRoot,
+  inspectServed,
   hasFiredSignal,
   markFiredSignal,
   markPendingSignal,
@@ -427,6 +429,8 @@ test('doctor is read-only — does not create active or repair configs', () => {
     // Empty dir: doctor may mkdir for writability probe but must not write active
     runDoctor({ silent: true, root });
     assert.equal(fs.existsSync(path.join(dir, 'active')), false);
+    // Only a hook that served the ruleset may claim it did.
+    assert.equal(fs.existsSync(path.join(dir, 'served')), false);
   } finally {
     if (prev === undefined) delete process.env.OFFCUT_STATE_DIR;
     else process.env.OFFCUT_STATE_DIR = prev;
@@ -457,6 +461,180 @@ test('confirmPendingSignals moves pending to confirmed', () => {
 test('pruneOnSessionEnd is exported and safe on empty dir', () => {
   return withStateDir(() => {
     pruneOnSessionEnd('nope');
+  });
+});
+
+// --- doctor: which copy actually served the ruleset ---
+
+/** A second install root holding its own ruleset. */
+function makeCopy(body) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-copy-'));
+  const skillDir = path.join(dir, 'skills', 'offcut');
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(skillDir, 'SKILL.md'),
+    `---\nname: offcut\nversion: "0.1.0"\n---\n\n${body}\n`,
+    'utf8',
+  );
+  return dir;
+}
+
+function touch(p, secondsFromNow) {
+  const t = Date.now() / 1000 + secondsFromNow;
+  fs.utimesSync(p, t, t);
+}
+
+test('doctor: a second copy served the ruleset → warn naming both roots', () => {
+  return withStateDir(() => {
+    writeMode('full');
+    const other = makeCopy('other copy');
+    try {
+      writeServedRoot(other);
+      const result = runDoctor({ silent: true, root });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.ok(served, 'ruleset served line required');
+      assert.equal(served.verdict, 'warn');
+      assert.match(served.detail, /different copy/i);
+      assert.ok(served.detail.includes(other), 'must name the copy that served');
+      assert.ok(served.detail.includes(root), 'must name the root doctor checked');
+    } finally {
+      fs.rmSync(other, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor: same copy served it and the ruleset is unchanged → ok', () => {
+  return withStateDir(() => {
+    writeMode('full');
+    const copy = makeCopy('current');
+    try {
+      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), -3600);
+      writeServedRoot(copy);
+      const result = runDoctor({ silent: true, root: copy });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(served.verdict, 'ok');
+      assert.match(served.detail, /this root/i);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor: ruleset edited after the last SessionStart → warn to restart', () => {
+  // Editing SKILL.md does not reach a session already running. CI checking that
+  // AGENTS.md is fresh says nothing about what the live session holds.
+  return withStateDir(() => {
+    writeMode('full');
+    const copy = makeCopy('edited after activation');
+    try {
+      writeServedRoot(copy);
+      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), 120);
+      const result = runDoctor({ silent: true, root: copy });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(served.verdict, 'warn');
+      assert.match(served.detail, /restart/i);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor: a mid-session mode switch does not mask an edited ruleset', () => {
+  // `active` is rewritten by every mode switch, so it cannot date the last read.
+  return withStateDir(() => {
+    writeMode('full');
+    const copy = makeCopy('body');
+    try {
+      writeServedRoot(copy);
+      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), 120);
+      writeMode('lite');
+      const result = runDoctor({ silent: true, root: copy });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(served.verdict, 'warn', 'mode switch must not refresh the read clock');
+      assert.match(served.detail, /restart/i);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor: no record of which copy served → warn, not a silent OK', () => {
+  return withStateDir(() => {
+    writeMode('full');
+    const result = runDoctor({ silent: true, root });
+    const served = result.lines.find((l) => l.check === 'ruleset served');
+    assert.equal(served.verdict, 'warn');
+    assert.match(served.detail, /unknown/i);
+  });
+});
+
+test('doctor: mode off reports nothing served rather than warning', () => {
+  return withStateDir(() => {
+    writeMode('off');
+    const result = runDoctor({ silent: true, root });
+    const served = result.lines.find((l) => l.check === 'ruleset served');
+    assert.equal(served.verdict, 'ok');
+    assert.match(served.detail, /off/i);
+  });
+});
+
+test('handleActivate records the root it served from', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'sid' }),
+    );
+    const rec = inspectServed();
+    assert.equal(rec.state, 'ok');
+    assert.equal(path.resolve(rec.root), path.resolve(pluginRoot()));
+  });
+});
+
+test('handleActivate records nothing when the mode is off', async () => {
+  await withStateDir(async (dir) => {
+    writeDefaultMode('off');
+    clearMode();
+    const out = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'sid' }),
+    );
+    assert.equal(out, null);
+    assert.equal(fs.existsSync(path.join(dir, 'served')), false);
+  });
+});
+
+test('doctor catches drift no config scan can see: one copy served, another checked', async () => {
+  // The measured failure. A host-managed plugin copy registers through its own
+  // bundled manifest, so the host settings file never names it — a config scan
+  // finds only the checkout. Meanwhile the model is fed the other copy's text
+  // and every other check reports healthy.
+  await withStateDir(async () => {
+    const stale = makeCopy('STALE RULESET MARKER');
+    const prev = process.env.PLUGIN_ROOT;
+    process.env.PLUGIN_ROOT = stale;
+    try {
+      writeDefaultMode('full');
+      clearMode();
+      const out = await handleActivate(
+        normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'sid' }),
+      );
+      assert.match(
+        out.hookSpecificOutput.additionalContext,
+        /STALE RULESET MARKER/,
+        'the model really was served the other copy',
+      );
+
+      const result = runDoctor({ silent: true, root });
+      const readable = result.lines.find((l) => l.check === 'ruleset');
+      const servedLine = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(readable.verdict, 'ok', 'the readable-file check alone reports healthy');
+      assert.equal(servedLine.verdict, 'warn', 'drift must not read as healthy');
+      assert.ok(servedLine.detail.includes(stale));
+    } finally {
+      if (prev === undefined) delete process.env.PLUGIN_ROOT;
+      else process.env.PLUGIN_ROOT = prev;
+      fs.rmSync(stale, { recursive: true, force: true });
+    }
   });
 });
 

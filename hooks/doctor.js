@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { inspectActive, paths, DEFAULT_MODE } from './state.js';
+import { inspectActive, inspectServed, paths, DEFAULT_MODE } from './state.js';
 import { loadRuleset } from './rules.js';
 import { pluginRoot, HOST_FACTS, installTargets } from './host.js';
 
@@ -98,6 +98,20 @@ function detectInstalledHosts() {
     out.push({ host: t.host, file: t.file, config });
   }
   return out;
+}
+
+/** Install-root identity, case-insensitive where the filesystem is. */
+function sameDir(a, b) {
+  if (!a || !b) return false;
+  try {
+    const norm = (x) => {
+      const r = path.resolve(String(x));
+      return process.platform === 'win32' ? r.toLowerCase() : r;
+    };
+    return norm(a) === norm(b);
+  } catch {
+    return false;
+  }
 }
 
 function formatAge(mtime) {
@@ -204,6 +218,48 @@ export function runDoctor(opts = {}) {
       'warn',
       'ruleset',
       `unreadable — using hardcoded fallback (${skillPath})`,
+    );
+  }
+
+  // 5b. Is the ruleset the model actually received the one sitting here?
+  // Check 5 proves a file is readable at this root; it cannot prove a hook read
+  // it. Two copies can be installed at once and only the hook that ran knows
+  // which it opened, so this compares its record against this root.
+  // offcut: a bench OFFCUT_RULESET_PATH override still records the plugin root,
+  // so this line reads OK while the override supplies the text. Record the
+  // served source alongside the root if that override ever ships to users.
+  const served = inspectServed();
+  if (active.state === 'ok' && active.mode === 'off') {
+    record('ok', 'ruleset served', 'mode off — no ruleset is being served');
+  } else if (served.state === 'missing') {
+    record(
+      'warn',
+      'ruleset served',
+      'unknown — no SessionStart has recorded which copy it served; start a new session, and if this line persists then the copy that runs predates this check',
+    );
+  } else if (!sameDir(served.root, root)) {
+    record(
+      'warn',
+      'ruleset served',
+      `a different copy served it — ${served.root}, not this root (${root}); both are installed, the model gets whichever hook fires, so edits here need never reach it`,
+    );
+  } else {
+    let rulesetMtime = null;
+    try {
+      rulesetMtime = fs.statSync(skillPath).mtime;
+    } catch {
+      // unreadable is check 5's business, not this one's
+    }
+    // served's mtime is the moment the ruleset was read. `active` is the wrong
+    // clock here: a mid-session mode switch rewrites it and would hide an edit.
+    const editedSince =
+      rulesetMtime && served.mtime && rulesetMtime.getTime() > served.mtime.getTime();
+    record(
+      editedSince ? 'warn' : 'ok',
+      'ruleset served',
+      editedSince
+        ? `this root, but SKILL.md changed ${formatAge(rulesetMtime)} — after the last SessionStart, so the running session still holds the older text; restart to serve it`
+        : `this root — ${served.root}`,
     );
   }
 

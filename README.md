@@ -272,14 +272,20 @@ node hooks/doctor.js
 ```
 
 Reports state, last activation, detected host and tier, ruleset readability,
-hook script presence, subagent coverage and language coverage. Read-only — it
-prints the repair command rather than editing your config, and exits non-zero
-when unhealthy so it works in CI.
+which copy of the ruleset actually reached the model, hook script presence,
+subagent coverage and language coverage. Read-only — it prints the repair
+command rather than editing your config, and exits non-zero when unhealthy so
+it works in CI.
+
+Two copies can be installed at once: a checkout you edit, and a host-managed
+plugin copy that registers itself through its own bundled manifest. The host's
+config never names the second one, so doctor asks the hook that ran which copy
+it read, and warns when that is not the one you are editing.
 
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 167 tests
+node --test tests/*.test.js   # 176 tests
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus
 node scripts/scan.mjs hooks   # dogfood

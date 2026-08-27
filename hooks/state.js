@@ -26,6 +26,10 @@ function defaultPath() {
   return path.join(stateDir(), 'default');
 }
 
+function servedPath() {
+  return path.join(stateDir(), 'served');
+}
+
 // Per-session, not global. Concurrent sessions share one state dir, so a single
 // turn file lets one session's SessionStart reset another's lite-mode cadence.
 function turnPath(sessionId) {
@@ -74,6 +78,47 @@ export function inspectActive() {
     const mode = normalizeMode(raw);
     if (!mode) return { state: 'corrupt', raw, mtime: st.mtime };
     return { state: 'ok', mode, mtime: st.mtime };
+  } catch {
+    return { state: 'missing' };
+  }
+}
+
+/**
+ * Record which checkout served the ruleset at SessionStart.
+ *
+ * Two copies of Offcut can be installed at once — a working checkout whose hook
+ * paths live in the host's settings file, and a host-managed plugin copy that
+ * registers itself through its own bundled manifest. Nothing in the settings
+ * file mentions the second one, so it cannot be found by inspecting configs;
+ * only the hook that ran knows which copy it read. When the two hold different
+ * ruleset text the model silently gets whichever hook fires first.
+ *
+ * Best-effort, like every write here: losing this costs a diagnostic, not a turn.
+ * @param {string} root
+ * @returns {boolean}
+ */
+export function writeServedRoot(root) {
+  const r = String(root ?? '').trim();
+  if (!r) return false;
+  try {
+    ensureDir();
+    fs.writeFileSync(servedPath(), r + '\n', 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @returns {{ state: 'missing' | 'ok', root?: string, mtime?: Date }}
+ */
+export function inspectServed() {
+  try {
+    if (!fs.existsSync(servedPath())) return { state: 'missing' };
+    const st = fs.statSync(servedPath());
+    const root = fs.readFileSync(servedPath(), 'utf8').replace(/^\uFEFF/, '').trim();
+    if (!root) return { state: 'missing' };
+    return { state: 'ok', root, mtime: st.mtime };
   } catch {
     return { state: 'missing' };
   }
@@ -452,6 +497,7 @@ export function paths() {
     dir: stateDir(),
     active: activePath(),
     default: defaultPath(),
+    served: servedPath(),
     turn: turnPath(),
     turnFor: turnPath,
     firedFor: firedPath,

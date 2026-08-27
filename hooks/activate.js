@@ -3,11 +3,12 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runHook, emit } from './host.js';
+import { runHook, emit, pluginRoot } from './host.js';
 import {
   activateSession,
   resetTurn,
   resetSuppression,
+  writeServedRoot,
   CONTEXT_WIPING_SOURCES,
 } from './state.js';
 import { sessionContext } from './rules.js';
@@ -26,7 +27,11 @@ export async function handleActivate(norm) {
 
   if (mode === 'off') return null;
 
-  return emit(norm.host, 'session_start', sessionContext(mode));
+  // Same root for the record and the emission, so what doctor reads is what the
+  // model got — not a second guess at which copy this is.
+  const root = pluginRoot();
+  writeServedRoot(root);
+  return emit(norm.host, 'session_start', sessionContext(mode, root));
 }
 
 const isMain =

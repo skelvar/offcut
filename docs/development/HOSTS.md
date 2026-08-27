@@ -470,3 +470,37 @@ If doctor is running, there is a session — activation older than a long sessio
 means `SessionStart` did not fire for it. Threshold lowered to 24h and the
 message now says hooks are probably not running. Regression test in
 `tests/phase8.test.js`.
+
+## A second copy served the ruleset while doctor reported OK (2026-08-27)
+
+Offcut was installed twice on one machine: this checkout, whose hook paths
+`tools/install.mjs` writes into the host settings file, and a host-managed
+plugin copy installed from a directory marketplace 53 commits earlier. Both
+registered hooks, and the plugin copy served the session.
+
+Its ruleset still carried the headings `Deliberate shortcuts` and `What never
+gets simplified away`, renamed in the checkout to `Name the shortcuts you take
+on purpose` and `Where the question does not apply` 53 commits before. The
+model was given the old text for a whole session. At the same time:
+
+- `doctor` reported `OK ruleset: readable — <checkout>/skills/offcut/SKILL.md`
+- CI reported `AGENTS.md` fresh, since it is generated from the checkout
+- the host's update command reported *already at the latest version (0.1.0)* —
+  it compares the version string, and the version had not moved while the
+  content had
+
+Nothing was wrong with the copy doctor could see. The copy that ran was
+unreachable to it: a host-managed plugin registers hooks through its own
+bundled manifest, so the settings file never names it and no amount of config
+inspection finds it.
+
+Only the hook that ran knows which copy it opened. `SessionStart` now records
+its root in the state dir, and doctor compares that against the root it is
+checking — warning when they differ, and separately when `SKILL.md` changed
+after the last `SessionStart`, since an edit does not reach a session already
+running. Regression tests in `tests/phase8.test.js`, including one that asserts
+the readable-file check still reports `OK` on the same install where the new
+check warns.
+
+Refreshing the stale copy took an uninstall and reinstall. A version-gated
+update will not do it.
