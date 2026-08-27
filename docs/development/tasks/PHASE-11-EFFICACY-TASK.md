@@ -63,11 +63,18 @@ collaboration item whose `agents_states[agent_id].status` is `completed`.
 Interrupted, errored, shutdown, not-found, or failed collaboration state is a
 model failure. Audited Pre/Post entries sharing a tool-use ID must report the
 same identity and normalized tool name. The exact worker may use any tool. A
-parent, default, or other-agent tool call is a model failure unless it is a
-case/separator variant of `spawn_agent`, `wait`, `close_agent`, or `send_input`
-and a corresponding completed collaboration item targets the exact worker ID.
-This rejects Bash, shell, exec, editor, and unknown parent calls without
-reading tool input.
+parent, default, or other-agent tool call is a model failure unless it is
+`spawn_agent`, `wait`, or `close_agent`; hook-facing
+`multi_agent_v1spawn_agent`, `multi_agent_v1wait_agent`, and
+`multi_agent_v1close_agent` names and casing variants normalize to those three
+operations. `send_input` is never allowed in either audit or JSONL evidence.
+Each parent collaboration item requires exactly one audited Pre/Post pair, and
+each such audit pair requires one collaboration item targeting the exact
+worker. Codex 0.149.1's collaboration item has no item ID to correlate with the
+hook `tool_use_id`, so this version uses exact canonical-operation counts after
+pairing each audit ID; a future item ID would replace that count correlation.
+This rejects missing, extra, unpaired, Bash, shell, exec, editor, and unknown
+parent calls without reading tool input.
 
 Tokens are aggregated from valid `turn.completed` usage, including
 `cache_write_input_tokens` as cache-creation tokens and
@@ -96,9 +103,9 @@ runs, eligible rep 3 runs, and at most 96 confirmatory runs.
 
 The no-model `--codex-preflight` checks the frozen local contract. The separate
 `--codex-live-preflight --execute` makes one trivial isolated custom-role call,
-requires generic JSONL spawn proof plus audited worker start/stop attribution,
-and records opaque evidence outside efficacy outcomes. A successful live
-preflight cannot be repeated.
+requires generic JSONL spawn proof, paired parent orchestration audits, and
+audited worker start/stop attribution, then records opaque evidence outside
+efficacy outcomes. A successful live preflight cannot be repeated.
 
 ## Frozen environment and ceiling
 

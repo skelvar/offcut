@@ -393,6 +393,39 @@ function observedCodexModel(events) {
   return null;
 }
 
+function canonicalCodexOrchestrationTool(toolName) {
+  const normalized =
+    typeof toolName === 'string'
+      ? toolName.toLowerCase().replace(/[^a-z0-9]/g, '')
+      : '';
+  if (
+    normalized === 'spawnagent' ||
+    normalized === 'multiagentv1spawnagent'
+  ) {
+    return 'spawn_agent';
+  }
+  if (
+    normalized === 'wait' ||
+    normalized === 'waitagent' ||
+    normalized === 'multiagentv1waitagent'
+  ) {
+    return 'wait';
+  }
+  if (
+    normalized === 'closeagent' ||
+    normalized === 'multiagentv1closeagent'
+  ) {
+    return 'close_agent';
+  }
+  if (
+    normalized === 'sendinput' ||
+    normalized === 'multiagentv1sendinput'
+  ) {
+    return 'send_input';
+  }
+  return null;
+}
+
 export function verifyCodexAgentAudit(entries, events) {
   const starts = entries.filter(
     (entry) =>
@@ -422,16 +455,6 @@ export function verifyCodexAgentAudit(entries, events) {
         event?.item?.type === 'collab_tool_call',
     )
     .map((event) => event.item);
-  const normalizeTool = (toolName) =>
-    typeof toolName === 'string'
-      ? toolName.toLowerCase().replace(/[^a-z0-9]/g, '')
-      : '';
-  const orchestrationTools = new Map([
-    ['spawnagent', 'spawn_agent'],
-    ['wait', 'wait'],
-    ['closeagent', 'close_agent'],
-    ['sendinput', 'send_input'],
-  ]);
   const toolCalls = new Map();
   for (const entry of toolEvents) {
     if (typeof entry.tool_use_id !== 'string' || !entry.tool_use_id) {
@@ -440,32 +463,30 @@ export function verifyCodexAgentAudit(entries, events) {
     const identity = {
       agentId: entry.agent_id,
       agentType: entry.agent_type,
-      tool: normalizeTool(entry.tool_name),
+      tool: String(entry.tool_name || ''),
+      canonicalTool: canonicalCodexOrchestrationTool(entry.tool_name),
+      phases: new Map([[entry.hook_event_name, 1]]),
     };
     const prior = toolCalls.get(entry.tool_use_id);
     if (
       prior &&
       (prior.agentId !== identity.agentId ||
         prior.agentType !== identity.agentType ||
-        prior.tool !== identity.tool)
+        prior.tool.toLowerCase() !== identity.tool.toLowerCase())
     ) {
       return { ok: false, workerAgentId };
     }
-    toolCalls.set(entry.tool_use_id, identity);
-  }
-  const availableOrchestration = new Map();
-  for (const item of collabItems) {
-    const tool = normalizeTool(item.tool);
-    const targetsWorker =
-      item.receiver_thread_ids?.includes(workerAgentId) ||
-      Object.hasOwn(item.agents_states || {}, workerAgentId);
-    if (item.status === 'completed' && targetsWorker) {
-      availableOrchestration.set(
-        tool,
-        (availableOrchestration.get(tool) || 0) + 1,
+    if (prior) {
+      prior.phases.set(
+        entry.hook_event_name,
+        (prior.phases.get(entry.hook_event_name) || 0) + 1,
       );
+    } else {
+      toolCalls.set(entry.tool_use_id, identity);
     }
   }
+  const allowedParentTools = new Set(['spawn_agent', 'wait', 'close_agent']);
+  const auditedCounts = new Map();
   for (const identity of toolCalls.values()) {
     if (
       identity.agentId === workerAgentId &&
@@ -473,12 +494,42 @@ export function verifyCodexAgentAudit(entries, events) {
     ) {
       continue;
     }
-    const collabTool = orchestrationTools.get(identity.tool);
-    const available = availableOrchestration.get(normalizeTool(collabTool)) || 0;
-    if (!collabTool || available === 0) {
+    if (
+      !allowedParentTools.has(identity.canonicalTool) ||
+      identity.phases.get('PreToolUse') !== 1 ||
+      identity.phases.get('PostToolUse') !== 1
+    ) {
       return { ok: false, workerAgentId };
     }
-    availableOrchestration.set(normalizeTool(collabTool), available - 1);
+    auditedCounts.set(
+      identity.canonicalTool,
+      (auditedCounts.get(identity.canonicalTool) || 0) + 1,
+    );
+  }
+  const collabCounts = new Map();
+  for (const item of collabItems) {
+    const canonicalTool = canonicalCodexOrchestrationTool(item.tool);
+    const targetsWorker =
+      item.receiver_thread_ids?.includes(workerAgentId) ||
+      Object.hasOwn(item.agents_states || {}, workerAgentId);
+    if (
+      !allowedParentTools.has(canonicalTool) ||
+      item.status !== 'completed' ||
+      !targetsWorker
+    ) {
+      return { ok: false, workerAgentId };
+    }
+    collabCounts.set(
+      canonicalTool,
+      (collabCounts.get(canonicalTool) || 0) + 1,
+    );
+  }
+  // offcut: Codex 0.149.1 CollabToolCallItem has no item id to join with
+  // hook tool_use_id; require exact paired-operation counts until it exposes one.
+  for (const tool of allowedParentTools) {
+    if ((auditedCounts.get(tool) || 0) !== (collabCounts.get(tool) || 0)) {
+      return { ok: false, workerAgentId };
+    }
   }
   const spawnVerified = collabItems.some(
     (item) =>

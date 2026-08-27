@@ -1164,6 +1164,12 @@ function codexCollabTerminalEvent(workerId = 'worker-1', workerStatus = 'complet
 
 function codexWorkerAudit(role = 'ticket-worker') {
   return [
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'multi_agent_v1spawn_agent',
+      toolUseId: 'parent-spawn',
+    }),
     {
       hook_event_name: 'SubagentStart',
       session_id: 'session-1',
@@ -1197,7 +1203,19 @@ function codexWorkerAudit(role = 'ticket-worker') {
       agent_id: 'worker-1',
       agent_type: role,
     },
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'multi_agent_v1wait_agent',
+      toolUseId: 'parent-wait',
+    }),
   ];
+}
+
+function codexReadOnlyWorkerAudit(role = 'ticket-worker') {
+  return codexWorkerAudit(role).filter(
+    (entry) => entry.tool_use_id !== 'write-1',
+  );
 }
 
 function appendCodexAudit(file, entries = codexWorkerAudit()) {
@@ -1525,38 +1543,88 @@ test('Codex lifecycle proof correlates spawn, terminal state, stop, and write ow
     assert.equal(parse(successfulCollab, parentTool).ok, false, toolName);
   }
 
-  const parentOrchestration = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  parentOrchestration.splice(
-    -1,
-    0,
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'SpawnAgent',
-      toolUseId: 'parent-spawn',
-    }),
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'wait',
-      toolUseId: 'parent-wait',
-    }),
+  assert.equal(parse(successfulCollab, workerAudit).ok, true);
+
+  const missingSpawnAudit = workerAudit.filter(
+    (entry) => entry.tool_use_id !== 'parent-spawn',
   );
-  assert.equal(parse(successfulCollab, parentOrchestration).ok, true);
+  assert.equal(parse(successfulCollab, missingSpawnAudit).ok, false);
+
+  const missingWaitAudit = workerAudit.filter(
+    (entry) => entry.tool_use_id !== 'parent-wait',
+  );
+  assert.equal(parse(successfulCollab, missingWaitAudit).ok, false);
+
+  const unpairedWaitAudit = workerAudit.filter(
+    (entry) =>
+      entry.tool_use_id !== 'parent-wait' ||
+      entry.hook_event_name !== 'PostToolUse',
+  );
+  assert.equal(parse(successfulCollab, unpairedWaitAudit).ok, false);
+
+  const unmatchedCloseAudit = [
+    ...workerAudit,
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'multi_agent_v1close_agent',
+      toolUseId: 'parent-close',
+    }),
+  ];
+  assert.equal(parse(successfulCollab, unmatchedCloseAudit).ok, false);
+
+  const close = codexCollabTerminalEvent();
+  close.item.tool = 'close_agent';
+  assert.equal(
+    parse([...successfulCollab, close], unmatchedCloseAudit).ok,
+    true,
+  );
+
+  const sendInput = codexCollabTerminalEvent();
+  sendInput.item.tool = 'send_input';
+  const sendInputAudit = [
+    ...workerAudit,
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'multi_agent_v1send_input',
+      toolUseId: 'parent-send',
+    }),
+  ];
+  assert.equal(
+    parse([...successfulCollab, sendInput], workerAudit).ok,
+    false,
+  );
+  assert.equal(
+    parse(successfulCollab, sendInputAudit).ok,
+    false,
+  );
 
   const workerBash = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  workerBash[1].tool_name = 'Bash';
-  workerBash[2].tool_name = 'bash';
+  workerBash.find(
+    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PreToolUse',
+  ).tool_name = 'Bash';
+  workerBash.find(
+    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PostToolUse',
+  ).tool_name = 'bash';
   assert.equal(parse(successfulCollab, workerBash).ok, true);
 
   const inconsistentPair = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  inconsistentPair[1].tool_name = 'Bash';
-  inconsistentPair[2].tool_name = 'bash';
-  inconsistentPair[2].agent_id = 'parent-1';
-  inconsistentPair[2].agent_type = 'default';
+  const inconsistentPre = inconsistentPair.find(
+    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PreToolUse',
+  );
+  const inconsistentPost = inconsistentPair.find(
+    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PostToolUse',
+  );
+  inconsistentPre.tool_name = 'Bash';
+  inconsistentPost.tool_name = 'bash';
+  inconsistentPost.agent_id = 'parent-1';
+  inconsistentPost.agent_type = 'default';
   assert.equal(parse(successfulCollab, inconsistentPair).ok, false);
 
-  const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).slice(0, -1);
+  const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).filter(
+    (entry) => entry.hook_event_name !== 'SubagentStop',
+  );
   assert.equal(parse(successfulCollab, absentStop).ok, false);
 
   const receiverMismatch = parse([
@@ -1778,10 +1846,10 @@ test('Codex run record distinguishes requested from observed model', async () =>
         if (args[0] === 'login') {
           return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
         }
-        appendCodexAudit(options.env.OFFCUT_AGENT_AUDIT_PATH, [
-          codexWorkerAudit(CODEX_CUSTOM_ROLE)[0],
-          codexWorkerAudit(CODEX_CUSTOM_ROLE).at(-1),
-        ]);
+        appendCodexAudit(
+          options.env.OFFCUT_AGENT_AUDIT_PATH,
+          codexReadOnlyWorkerAudit(CODEX_CUSTOM_ROLE),
+        );
         return {
           status: 0,
           stdout: [
@@ -2117,10 +2185,10 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
           return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
         }
         calls += 1;
-        appendCodexAudit(options.env.OFFCUT_AGENT_AUDIT_PATH, [
-          codexWorkerAudit(CODEX_CUSTOM_ROLE)[0],
-          codexWorkerAudit(CODEX_CUSTOM_ROLE).at(-1),
-        ]);
+        appendCodexAudit(
+          options.env.OFFCUT_AGENT_AUDIT_PATH,
+          codexReadOnlyWorkerAudit(CODEX_CUSTOM_ROLE),
+        );
         return {
           status: 0,
           stdout: [
