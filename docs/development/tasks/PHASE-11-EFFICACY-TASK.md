@@ -38,11 +38,12 @@ itself. Only after this gate may a started process receive subscription billing
 evidence. Artifacts record only `auth_kind: "chatgpt"`.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
-`SubagentStop`, `PreToolUse`, and `PostToolUse`; write matchers include
-`Write|Edit|apply_patch`. It appends only nonsecret agent/event attribution to
-the per-run audit JSONL and emits no model context. The `off` arm contains only
-these audit hooks. The `full` arm contains the identical audit hooks plus the
-shipped Offcut hooks.
+`SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
+so they audit Bash/shell and unknown tools as well as editor tools. They append
+only nonsecret agent/event attribution to the per-run audit JSONL and never
+record tool input or emit model context. The `off` arm contains only these
+audit hooks. The `full` arm contains the identical audit hooks plus the shipped
+Offcut hooks.
 
 The temporary home is removed with Windows retries after every path, verified
 absent, and never retained as an artifact. Cleanup residue fails loudly without
@@ -60,8 +61,13 @@ provides transcript and usage. One audited `SubagentStart` with
 occurred but reports no success field. Terminal success instead requires a
 collaboration item whose `agents_states[agent_id].status` is `completed`.
 Interrupted, errored, shutdown, not-found, or failed collaboration state is a
-model failure. Every audited write-like Pre/Post event must belong to that
-worker; a parent, default, or other-agent write is also a model failure.
+model failure. Audited Pre/Post entries sharing a tool-use ID must report the
+same identity and normalized tool name. The exact worker may use any tool. A
+parent, default, or other-agent tool call is a model failure unless it is a
+case/separator variant of `spawn_agent`, `wait`, `close_agent`, or `send_input`
+and a corresponding completed collaboration item targets the exact worker ID.
+This rejects Bash, shell, exec, editor, and unknown parent calls without
+reading tool input.
 
 Tokens are aggregated from valid `turn.completed` usage, including
 `cache_write_input_tokens` as cache-creation tokens and

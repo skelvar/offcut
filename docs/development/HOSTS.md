@@ -522,13 +522,15 @@ provider/base-URL environment overrides are removed. A copied auth file alone
 does not establish subscription billing.
 
 Both arms carry identical silent attribution hooks for subagent start/stop and
-write pre/post events. The `off` arm has only those audit hooks; `full` adds the
-shipped settings with `apply_patch` matching. The audit records allowlisted
-lifecycle identifiers only, emits no context, and proves one `ticket-worker`
-start and matching stop. The stop is lifecycle evidence, not a success signal.
-Success comes from a correlated collaboration state of `completed`, after the
-completed spawn's `receiver_thread_ids` includes the audited worker ID. Every
-audited write must belong to that worker.
+all tool pre/post events, with no audit matcher. The `off` arm has only those
+audit hooks; `full` adds the shipped settings with `apply_patch` matching. The
+audit records allowlisted lifecycle identifiers only, emits no context, and
+proves one `ticket-worker` start and matching stop. The stop is lifecycle
+evidence, not a success signal. Success comes from a correlated collaboration
+state of `completed`, after the completed spawn's `receiver_thread_ids`
+includes the audited worker ID. The worker may use tools; every non-worker tool
+call fails attribution except spawn/wait/close/send-input orchestration
+correlated to that exact worker.
 Temporary homes are removed with Windows retries, verified absent on every
 exit, and excluded from evidence.
 

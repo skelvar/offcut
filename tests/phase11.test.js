@@ -1204,6 +1204,18 @@ function appendCodexAudit(file, entries = codexWorkerAudit()) {
   fs.appendFileSync(file, `${entries.map(JSON.stringify).join('\n')}\n`);
 }
 
+function codexToolAuditPair({ agentId, agentType, toolName, toolUseId }) {
+  return ['PreToolUse', 'PostToolUse'].map((hookEventName) => ({
+    hook_event_name: hookEventName,
+    session_id: 'session-1',
+    turn_id: 'turn-1',
+    agent_id: agentId,
+    agent_type: agentType,
+    tool_name: toolName,
+    tool_use_id: toolUseId,
+  }));
+}
+
 test('Codex args pin the isolated custom-agent execution contract', async () => {
   const { buildCodexArgs } = await import('../bench/run.mjs');
   const args = buildCodexArgs({
@@ -1277,7 +1289,7 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
         group.hooks?.some((hook) => hook.command.includes('codex-agent-audit.mjs')));
       assert.ok(audit, `off arm ${event} audit hook`);
       if (event === 'PreToolUse' || event === 'PostToolUse') {
-        assert.match(audit.matcher, /Write\|Edit\|apply_patch/);
+        assert.equal(Object.hasOwn(audit, 'matcher'), false);
       }
       assert.equal(audit.hooks[0].command.includes('OFFCUT'), false);
     }
@@ -1497,6 +1509,52 @@ test('Codex lifecycle proof correlates spawn, terminal state, stop, and write ow
     tool_use_id: 'parent-write',
   });
   assert.equal(parse(successfulCollab, parentWrite).ok, false);
+
+  for (const toolName of ['Bash', 'shell', 'exec', 'mystery_tool']) {
+    const parentTool = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+    parentTool.splice(
+      -1,
+      0,
+      ...codexToolAuditPair({
+        agentId: 'parent-1',
+        agentType: 'default',
+        toolName,
+        toolUseId: `parent-${toolName}`,
+      }),
+    );
+    assert.equal(parse(successfulCollab, parentTool).ok, false, toolName);
+  }
+
+  const parentOrchestration = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  parentOrchestration.splice(
+    -1,
+    0,
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'SpawnAgent',
+      toolUseId: 'parent-spawn',
+    }),
+    ...codexToolAuditPair({
+      agentId: 'parent-1',
+      agentType: 'default',
+      toolName: 'wait',
+      toolUseId: 'parent-wait',
+    }),
+  );
+  assert.equal(parse(successfulCollab, parentOrchestration).ok, true);
+
+  const workerBash = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  workerBash[1].tool_name = 'Bash';
+  workerBash[2].tool_name = 'bash';
+  assert.equal(parse(successfulCollab, workerBash).ok, true);
+
+  const inconsistentPair = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  inconsistentPair[1].tool_name = 'Bash';
+  inconsistentPair[2].tool_name = 'bash';
+  inconsistentPair[2].agent_id = 'parent-1';
+  inconsistentPair[2].agent_type = 'default';
+  assert.equal(parse(successfulCollab, inconsistentPair).ok, false);
 
   const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).slice(0, -1);
   assert.equal(parse(successfulCollab, absentStop).ok, false);

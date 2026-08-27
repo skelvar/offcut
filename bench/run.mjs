@@ -266,9 +266,8 @@ function codexRoleText() {
   ].join('\n');
 }
 
-function auditHookGroup(matcher) {
+function auditHookGroup() {
   return {
-    ...(matcher ? { matcher } : {}),
     hooks: [
       {
         type: 'command',
@@ -285,8 +284,8 @@ export function buildCodexHooksSettings(arm) {
   const auditEvents = {
     SubagentStart: auditHookGroup(),
     SubagentStop: auditHookGroup(),
-    PreToolUse: auditHookGroup('Write|Edit|apply_patch'),
-    PostToolUse: auditHookGroup('Write|Edit|apply_patch'),
+    PreToolUse: auditHookGroup(),
+    PostToolUse: auditHookGroup(),
   };
   for (const [event, group] of Object.entries(auditEvents)) {
     settings.hooks[event] = [...(settings.hooks[event] || []), group];
@@ -411,21 +410,11 @@ export function verifyCodexAgentAudit(entries, events) {
       entry?.agent_type === CODEX_CUSTOM_ROLE,
   );
   if (stops.length !== 1) return { ok: false, workerAgentId };
-  const writeEvents = entries.filter(
+  const toolEvents = entries.filter(
     (entry) =>
       (entry?.hook_event_name === 'PreToolUse' ||
-        entry?.hook_event_name === 'PostToolUse') &&
-      ['Write', 'Edit', 'apply_patch'].includes(entry?.tool_name),
+        entry?.hook_event_name === 'PostToolUse'),
   );
-  if (
-    writeEvents.some(
-      (entry) =>
-        entry.agent_id !== workerAgentId ||
-        entry.agent_type !== CODEX_CUSTOM_ROLE,
-    )
-  ) {
-    return { ok: false, workerAgentId };
-  }
   const collabItems = events
     .filter(
       (event) =>
@@ -433,6 +422,64 @@ export function verifyCodexAgentAudit(entries, events) {
         event?.item?.type === 'collab_tool_call',
     )
     .map((event) => event.item);
+  const normalizeTool = (toolName) =>
+    typeof toolName === 'string'
+      ? toolName.toLowerCase().replace(/[^a-z0-9]/g, '')
+      : '';
+  const orchestrationTools = new Map([
+    ['spawnagent', 'spawn_agent'],
+    ['wait', 'wait'],
+    ['closeagent', 'close_agent'],
+    ['sendinput', 'send_input'],
+  ]);
+  const toolCalls = new Map();
+  for (const entry of toolEvents) {
+    if (typeof entry.tool_use_id !== 'string' || !entry.tool_use_id) {
+      return { ok: false, workerAgentId };
+    }
+    const identity = {
+      agentId: entry.agent_id,
+      agentType: entry.agent_type,
+      tool: normalizeTool(entry.tool_name),
+    };
+    const prior = toolCalls.get(entry.tool_use_id);
+    if (
+      prior &&
+      (prior.agentId !== identity.agentId ||
+        prior.agentType !== identity.agentType ||
+        prior.tool !== identity.tool)
+    ) {
+      return { ok: false, workerAgentId };
+    }
+    toolCalls.set(entry.tool_use_id, identity);
+  }
+  const availableOrchestration = new Map();
+  for (const item of collabItems) {
+    const tool = normalizeTool(item.tool);
+    const targetsWorker =
+      item.receiver_thread_ids?.includes(workerAgentId) ||
+      Object.hasOwn(item.agents_states || {}, workerAgentId);
+    if (item.status === 'completed' && targetsWorker) {
+      availableOrchestration.set(
+        tool,
+        (availableOrchestration.get(tool) || 0) + 1,
+      );
+    }
+  }
+  for (const identity of toolCalls.values()) {
+    if (
+      identity.agentId === workerAgentId &&
+      identity.agentType === CODEX_CUSTOM_ROLE
+    ) {
+      continue;
+    }
+    const collabTool = orchestrationTools.get(identity.tool);
+    const available = availableOrchestration.get(normalizeTool(collabTool)) || 0;
+    if (!collabTool || available === 0) {
+      return { ok: false, workerAgentId };
+    }
+    availableOrchestration.set(normalizeTool(collabTool), available - 1);
+  }
   const spawnVerified = collabItems.some(
     (item) =>
       item.tool === 'spawn_agent' &&

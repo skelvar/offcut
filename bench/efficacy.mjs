@@ -697,9 +697,9 @@ function validatePreparedCodexHome(homeDir, arm) {
     if (!audit) throw new Error(`${arm} arm missing ${event} agent audit hook`);
     if (
       (event === 'PreToolUse' || event === 'PostToolUse') &&
-      !audit.matcher?.includes('apply_patch')
+      Object.hasOwn(audit, 'matcher')
     ) {
-      throw new Error(`${arm} arm ${event} audit must match apply_patch`);
+      throw new Error(`${arm} arm ${event} agent audit must capture every tool`);
     }
   }
   if (
