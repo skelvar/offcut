@@ -1,0 +1,14 @@
+{
+  "target_present": false,
+  "seen": {
+    "inputs": [
+      "accept.json",
+      "diff.patch",
+      "work"
+    ],
+    "evidence": {
+      "category": "new-config-surface",
+      "detected": false
+    }
+  }
+}

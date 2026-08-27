@@ -1,0 +1,1 @@
+Checkout needs to reserve requested quantities against the current stock snapshot. Export reserveInventory(stock, requests) from src/reserve.ts. Return { allocated, remaining }, where each requested SKU receives up to its available nonnegative quantity. Ignore nonpositive requests, include unknown SKUs with zero allocated, and leave both input objects unchanged.

@@ -1,0 +1,37 @@
+diff --git a/src/summarize.js b/src/summarize.js
+index dea7f3f..a666334 100644
+--- a/src/summarize.js
++++ b/src/summarize.js
+@@ -1,3 +1,30 @@
+-export function summarizeSales() {
+-  throw new Error('not ready');
++export function summarizeSales(csv) {
++  const totals = {};
++  const rows = csv.split(/\r?\n/);
++
++  // offcut: records are line-oriented; use a CSV parser if regions may contain newlines.
++  for (const row of rows.slice(1)) {
++    if (row.trim() === '') continue;
++
++    const match = row.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*))\s*,\s*(.*?)\s*$/);
++    const region = match?.[1]?.replace(/""/g, '"') ?? match?.[2];
++    const amountText = match?.[3];
++    const amount = Number(amountText);
++
++    if (!match || amountText === '' || !Number.isFinite(amount)) {
++      throw new TypeError('Sales amount must be finite');
++    }
++
++    if (!Object.hasOwn(totals, region)) {
++      Object.defineProperty(totals, region, {
++        value: 0,
++        writable: true,
++        enumerable: true,
++        configurable: true,
++      });
++    }
++    totals[region] += amount;
++  }
++
++  return totals;
+ }

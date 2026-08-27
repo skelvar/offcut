@@ -1,0 +1,61 @@
+diff --git a/src/summarize.js b/src/summarize.js
+index dea7f3f..dc64c53 100644
+--- a/src/summarize.js
++++ b/src/summarize.js
+@@ -1,3 +1,54 @@
+-export function summarizeSales() {
+-  throw new Error('not ready');
++function parseRow(row) {
++  const fields = [];
++  let field = '';
++  let quoted = false;
++
++  for (let index = 0; index < row.length; index += 1) {
++    const character = row[index];
++
++    if (character === '"') {
++      if (quoted && row[index + 1] === '"') {
++        field += '"';
++        index += 1;
++      } else {
++        quoted = !quoted;
++      }
++    } else if (character === ',' && !quoted) {
++      fields.push(field);
++      field = '';
++    } else {
++      field += character;
++    }
++  }
++
++  fields.push(field);
++  return fields;
++}
++
++export function summarizeSales(csv) {
++  const totals = {};
++  const rows = csv.split(/\r?\n/);
++
++  for (const row of rows.slice(1)) {
++    if (row.trim() === '') continue;
++
++    const [region, amountText] = parseRow(row);
++    const amount = Number(amountText);
++
++    if (!Number.isFinite(amount)) {
++      throw new TypeError(`Invalid sales amount: ${amountText}`);
++    }
++
++    const previous = Object.prototype.hasOwnProperty.call(totals, region)
++      ? totals[region]
++      : 0;
++    Object.defineProperty(totals, region, {
++      value: previous + amount,
++      enumerable: true,
++      configurable: true,
++      writable: true,
++    });
++  }
++
++  return totals;
+ }

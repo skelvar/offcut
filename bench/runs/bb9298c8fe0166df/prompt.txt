@@ -1,0 +1,1 @@
+Packing slips need a consistent order heading. Export formatOrderLabel(order) from src/order-label.js. Require order.id and order.customer to be nonempty after trimming, then return "#<id> — <CUSTOMER>" with the customer converted to uppercase. Throw TypeError when either required value is absent or blank.

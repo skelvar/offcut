@@ -1,0 +1,31 @@
+diff --git a/src/summarize.js b/src/summarize.js
+index dea7f3f..5529ed5 100644
+--- a/src/summarize.js
++++ b/src/summarize.js
+@@ -1,3 +1,24 @@
+-export function summarizeSales() {
+-  throw new Error('not ready');
++export function summarizeSales(csv) {
++  // offcut: quoted regions may contain commas, not newlines; use a full CSV parser if exports add multiline fields
++  const rows = csv.split(/\r?\n/);
++  const totals = new Map();
++
++  for (const row of rows.slice(1)) {
++    if (row.trim() === '') continue;
++
++    const match = row.match(/^(?:"((?:[^"]|"")*)"|([^,]*)),(.*)$/);
++    const rawAmount = match?.[3];
++    const amount = Number(rawAmount);
++
++    if (rawAmount?.trim() === '' || !Number.isFinite(amount)) {
++      throw new TypeError(`Invalid sales amount: ${rawAmount ?? ''}`);
++    }
++
++    const region = match[1] === undefined
++      ? match[2]
++      : match[1].replaceAll('""', '"');
++    totals.set(region, (totals.get(region) ?? 0) + amount);
++  }
++
++  return Object.fromEntries(totals);
+ }

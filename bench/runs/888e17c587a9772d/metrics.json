@@ -25,5 +25,21 @@
   "output_tokens": 1775,
   "cache_read_input_tokens": 99584,
   "cache_creation_input_tokens": 0,
-  "reasoning_output_tokens": 571
+  "reasoning_output_tokens": 571,
+  "target_present": false,
+  "primary_success": false,
+  "target_measurement": {
+    "target_present": false,
+    "seen": {
+      "inputs": [
+        "accept.json",
+        "diff.patch",
+        "work"
+      ],
+      "evidence": {
+        "category": "speculative-abstraction",
+        "detected": false
+      }
+    }
+  }
 }

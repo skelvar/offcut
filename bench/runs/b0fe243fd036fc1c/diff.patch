@@ -1,0 +1,25 @@
+diff --git a/src/order-label.js b/src/order-label.js
+index b6a0b1e..1b77921 100644
+--- a/src/order-label.js
++++ b/src/order-label.js
+@@ -1,3 +1,18 @@
+-export function formatOrderLabel() {
+-  throw new Error('not ready');
++export function formatOrderLabel(order) {
++  if (
++    !order ||
++    typeof order.id !== 'string' ||
++    typeof order.customer !== 'string'
++  ) {
++    throw new TypeError('Order id and customer are required');
++  }
++
++  const id = order.id.trim();
++  const customer = order.customer.trim();
++
++  if (!id || !customer) {
++    throw new TypeError('Order id and customer are required');
++  }
++
++  return `#${id} — ${customer.toUpperCase()}`;
+ }

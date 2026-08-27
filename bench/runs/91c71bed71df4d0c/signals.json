@@ -1,0 +1,13 @@
+{
+  "signals_fired": [
+    "unused-default-param"
+  ],
+  "signals_fired_count": 1,
+  "signals_in_diff": [],
+  "signals_in_diff_count": 0,
+  "flagged_survived": [],
+  "flagged_cleared": [
+    "unused-default-param"
+  ],
+  "flagged_pattern_survived": false
+}
