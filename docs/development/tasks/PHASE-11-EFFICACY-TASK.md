@@ -188,8 +188,13 @@ reset, truncate, or delete it. All attempt costs count. Before a paid call:
 4. pass the resulting remaining allowance through Claude's
    `--max-budget-usd`.
 
-Missing, negative, or non-finite `total_cost_usd` is recorded as a telemetry
-anomaly, never coerced to zero, and stops all further paid scheduling.
+Missing, negative, or non-finite `total_cost_usd` after a call may have started
+is recorded as a telemetry anomaly, never coerced to zero, and stops all
+further paid scheduling. A host failure is recorded at `$0` only when explicit
+spawn evidence proves the Claude process never started; that evidence is
+stored in the ledger and the attempt remains retryable. Host classification
+alone is not evidence of zero cost. Known-zero pre-call failures do not consume
+the conservative `$1.00` cap for the first call that actually starts.
 If first-call telemetry alone exceeds the total ceiling, preserve the attempt
 and stop. The same rule applies to any later telemetry anomaly.
 

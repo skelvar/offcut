@@ -82,6 +82,10 @@ test('retry classification separates API and host failures from model failures',
   assert.equal(classifyAgentFailure(api), 'api');
   assert.equal(classifyAgentFailure(host), 'host');
   assert.equal(classifyAgentFailure(model), 'model');
+  assert.deepEqual(host.cost_evidence, {
+    kind: 'known_zero',
+    source: 'spawn_error:ENOENT',
+  });
   const { isRetryableFailure } = await import('../bench/efficacy.mjs');
   assert.equal(isRetryableFailure('api'), true);
   assert.equal(isRetryableFailure('host'), true);
@@ -240,7 +244,11 @@ test('missing or non-finite cost telemetry is an anomaly that stops scheduling',
               return {
                 runId: `run-${calls}`,
                 runDir: dir,
-                record: { failure_kind: null, total_cost_usd: null },
+                record: {
+                  failure_kind: 'host',
+                  cost_evidence: { kind: 'call_started', source: 'spawn_timeout' },
+                  total_cost_usd: null,
+                },
               };
             },
             measureRunFn() {},
@@ -260,6 +268,7 @@ test('missing or non-finite cost telemetry is an anomaly that stops scheduling',
         attempt: 1,
         failure_kind: 'telemetry',
         telemetry_anomaly: true,
+        cost_evidence: { kind: 'call_started', source: 'spawn_timeout' },
         total_cost_usd: null,
         duration_ms: null,
         input_tokens: null,
@@ -285,6 +294,60 @@ test('missing or non-finite cost telemetry is an anomaly that stops scheduling',
       /telemetry anomaly/i,
     );
     assert.equal(laterCalls, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('known pre-call host failures record zero cost and retry durably', async () => {
+  const { executeJobs, readCostLedger } = await import('../bench/efficacy.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-precall-'));
+  const ledgerPath = path.join(dir, 'efficacy-cost.jsonl');
+  let calls = 0;
+  const allowances = [];
+  try {
+    executeJobs(
+      [{ taskId: 'x', arm: 'off', rep: 1 }],
+      [{ id: 'x', dir: path.join(dir, 'x') }],
+      'discovery12',
+      {
+        ledgerPath,
+        runOneFn(options) {
+          calls += 1;
+          allowances.push(options.maxBudgetUsd);
+          if (calls < 3) {
+            return {
+              runId: `host-${calls}`,
+              runDir: dir,
+              record: {
+                failure_kind: 'host',
+                cost_evidence: {
+                  kind: 'known_zero',
+                  source: 'spawn_error:ENOENT',
+                },
+                total_cost_usd: null,
+              },
+            };
+          }
+          return {
+            runId: 'success',
+            runDir: dir,
+            record: {
+              failure_kind: null,
+              cost_evidence: { kind: 'telemetry', source: 'claude_json' },
+              total_cost_usd: 0.2,
+            },
+          };
+        },
+        measureRunFn() {},
+      },
+    );
+    assert.equal(calls, 3);
+    assert.deepEqual(allowances, [1, 1, 1]);
+    const ledger = readCostLedger(ledgerPath);
+    assert.deepEqual(ledger.map((entry) => entry.total_cost_usd), [0, 0, 0.2]);
+    assert.deepEqual(ledger.map((entry) => entry.telemetry_anomaly), [false, false, false]);
+    assert.deepEqual(ledger.map((entry) => entry.attempt), [1, 2, 3]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -380,6 +443,88 @@ test('legacy runner keeps three API attempts while efficacy requests one', async
   assert.equal(DEFAULT_API_RETRIES, 2);
   assert.equal(resolveApiRetries({}), 2);
   assert.equal(resolveApiRetries({ apiRetries: 0 }), 0);
+});
+
+test('legacy runClaude retries two API failures before succeeding', async () => {
+  const { runClaude } = await import('../bench/run.mjs');
+  assert.equal(typeof runClaude, 'function');
+  let calls = 0;
+  const waits = [];
+  const originalError = console.error;
+  let result;
+  try {
+    console.error = () => {};
+    result = runClaude({
+      workDir: process.cwd(),
+      prompt: 'Implement the ticket.',
+      stateDir: os.tmpdir(),
+      settingsPath: path.join(os.tmpdir(), 'settings.json'),
+      model: 'claude-sonnet-5',
+      maxBudgetUsd: 1,
+      apiRetries: 2,
+      spawnClaude() {
+        calls += 1;
+        return calls < 3
+          ? {
+              status: 1,
+              stdout: JSON.stringify({
+                is_error: true,
+                terminal_reason: 'api_error',
+                api_error_status: 529,
+              }),
+              stderr: '',
+              error: null,
+            }
+          : {
+              status: 0,
+              stdout: JSON.stringify({
+                is_error: false,
+                result: 'done',
+                total_cost_usd: 0.2,
+              }),
+              stderr: '',
+              error: null,
+            };
+      },
+      sleepFn(ms) {
+        waits.push(ms);
+      },
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [5_000, 10_000]);
+  assert.equal(result.ok, true);
+  assert.equal(result.attempts, 3);
+});
+
+test('raw commit gate refuses dirty evidence and passes tracked clean evidence', async () => {
+  const { assertRawGateCommitted } = await import('../bench/efficacy.mjs');
+  assert.equal(typeof assertRawGateCommitted, 'function');
+  const tracked = { status: 0, stdout: 'tracked\n', stderr: '' };
+  const dirtyGit = (_command, args) =>
+    args[0] === 'status'
+      ? { status: 0, stdout: '?? bench/efficacy-cost.jsonl\n', stderr: '' }
+      : tracked;
+  assert.throws(
+    () => assertRawGateCommitted({ spawnGit: dirtyGit, repoRoot: 'repo' }),
+    /attempts must be committed/i,
+  );
+
+  const calls = [];
+  const cleanGit = (command, args, options) => {
+    calls.push({ command, args, cwd: options.cwd });
+    return args[0] === 'status'
+      ? { status: 0, stdout: '', stderr: '' }
+      : tracked;
+  };
+  assert.doesNotThrow(() =>
+    assertRawGateCommitted({ spawnGit: cleanGit, repoRoot: 'repo' }),
+  );
+  assert.equal(calls.filter((call) => call.args[0] === 'ls-files').length, 2);
+  assert.equal(calls.at(-1).args[0], 'status');
+  assert.equal(calls.every((call) => call.cwd === 'repo'), true);
 });
 
 test('runOne seals a stub attempt in the requested efficacy manifest', async () => {

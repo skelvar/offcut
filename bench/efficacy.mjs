@@ -147,7 +147,10 @@ export function budgetAllowance(attempts, ceilingUsd = EFFICACY_BUDGET_USD) {
   const spent = costs.reduce((sum, cost) => sum + cost, 0);
   const remaining = ceilingUsd - spent;
   if (!(remaining > 0)) return null;
-  if (!attempts.length) return Math.min(remaining, 1);
+  const noCallStarted =
+    !attempts.length ||
+    attempts.every((attempt) => attempt.cost_evidence?.kind === 'known_zero');
+  if (noCallStarted) return Math.min(remaining, 1);
   const largest = Math.max(...costs);
   if (!(remaining > 1.2 * largest)) return null;
   return remaining;
@@ -458,18 +461,21 @@ function omitCompleted(jobs, outcomes, stage) {
   );
 }
 
-function assertRawGateCommitted() {
+export function assertRawGateCommitted({
+  spawnGit = spawnSync,
+  repoRoot = path.dirname(BENCH_ROOT),
+} = {}) {
   for (const relative of [
     'bench/efficacy-manifest.jsonl',
     'bench/efficacy-cost.jsonl',
   ]) {
-    const tracked = spawnSync('git', ['ls-files', '--error-unmatch', relative], {
-      cwd: path.dirname(BENCH_ROOT),
+    const tracked = spawnGit('git', ['ls-files', '--error-unmatch', relative], {
+      cwd: repoRoot,
       encoding: 'utf8',
     });
     if (tracked.status !== 0) throw new Error(`raw-result commit gate not met: ${relative}`);
   }
-  const status = spawnSync(
+  const status = spawnGit(
     'git',
     [
       'status',
@@ -479,7 +485,7 @@ function assertRawGateCommitted() {
       'bench/efficacy-cost.jsonl',
       'bench/runs',
     ],
-    { cwd: path.dirname(BENCH_ROOT), encoding: 'utf8' },
+    { cwd: repoRoot, encoding: 'utf8' },
   );
   if (status.status !== 0 || status.stdout.trim()) {
     throw new Error('raw-result commit gate not met: efficacy attempts must be committed');
@@ -570,7 +576,12 @@ function assertPaidInputsCommitted() {
 
 function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledgerPath) {
   const cost = runResult?.record?.total_cost_usd;
-  const telemetryAnomaly = !Number.isFinite(cost) || cost < 0;
+  const costEvidence = runResult?.record?.cost_evidence ?? null;
+  const knownPreCallZero =
+    isRetryableFailure(failureKind) &&
+    costEvidence?.kind === 'known_zero';
+  const measuredCost = Number.isFinite(cost) && cost >= 0;
+  const telemetryAnomaly = !measuredCost && !knownPreCallZero;
   const entry = {
     attempt_id: runResult?.runId || `host-${Date.now()}-${attempt}`,
     run_id: runResult?.runId || null,
@@ -581,7 +592,8 @@ function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledger
     attempt,
     failure_kind: telemetryAnomaly ? 'telemetry' : failureKind,
     telemetry_anomaly: telemetryAnomaly,
-    total_cost_usd: Number.isFinite(cost) ? cost : null,
+    cost_evidence: costEvidence,
+    total_cost_usd: measuredCost ? cost : knownPreCallZero ? 0 : null,
     duration_ms: runResult?.record?.duration_ms ?? null,
     input_tokens: runResult?.record?.input_tokens ?? null,
     output_tokens: runResult?.record?.output_tokens ?? null,

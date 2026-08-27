@@ -142,6 +142,20 @@ export function parseClaudeResult(stdout, status, spawnErr) {
     (typeof apiStatus === 'number' && apiStatus >= 400) ||
     /session limit|hit your.*limit|rate limit|overloaded/i.test(resultText);
   const ok = status === 0 && !(parsed && parsed.is_error);
+  const telemetry = extractClaudeTelemetry(parsed);
+  const preCallSpawnCodes = new Set(['ENOENT', 'EACCES']);
+  const knownPreCallFailure =
+    status == null &&
+    preCallSpawnCodes.has(spawnErr?.code) &&
+    !(stdout || '').trim();
+  const costEvidence = Number.isFinite(telemetry.total_cost_usd)
+    ? { kind: 'telemetry', source: 'claude_json' }
+    : knownPreCallFailure
+      ? { kind: 'known_zero', source: `spawn_error:${spawnErr.code}` }
+      : {
+          kind: 'call_started',
+          source: spawnErr?.code === 'ETIMEDOUT' ? 'spawn_timeout' : 'missing_telemetry',
+        };
   return {
     ok,
     exitCode: status,
@@ -153,7 +167,8 @@ export function parseClaudeResult(stdout, status, spawnErr) {
     apiError: Boolean(apiError),
     spawnError: Boolean(spawnErr),
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
-    telemetry: extractClaudeTelemetry(parsed),
+    telemetry,
+    cost_evidence: costEvidence,
     error:
       spawnErr?.message ||
       (apiError
@@ -185,7 +200,7 @@ export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = nu
   return args;
 }
 
-function runClaude({
+export function runClaude({
   workDir,
   prompt,
   stateDir,
@@ -193,6 +208,8 @@ function runClaude({
   model,
   maxBudgetUsd = null,
   apiRetries,
+  spawnClaude,
+  sleepFn,
   envExtra = {},
 }) {
   const env = {
@@ -202,10 +219,14 @@ function runClaude({
   };
   // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
   const args = buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd });
+  const invokeClaude = spawnClaude ?? spawnSync;
+  const wait = sleepFn ?? ((ms) => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  });
 
   let parsed = null;
   for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
-    const result = spawnSync('claude', args, {
+    const result = invokeClaude('claude', args, {
       encoding: 'utf8',
       cwd: workDir,
       env,
@@ -218,7 +239,7 @@ function runClaude({
     if (parsed.ok || !parsed.apiError || attempt > apiRetries) break;
     const waitMs = 5_000 * attempt;
     console.error(`claude api_error (attempt ${attempt}): ${parsed.error}; sleeping ${waitMs}ms`);
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    wait(waitMs);
   }
   return parsed;
 }
@@ -373,6 +394,7 @@ export function runOne(opts) {
       record.failure_kind = classifyAgentFailure(agent);
     }
     Object.assign(record, agent.telemetry || {});
+    record.cost_evidence = agent.cost_evidence || null;
     if (agent.attempts && agent.attempts > 1) {
       record.retried = true;
       record.attempts = agent.attempts;
