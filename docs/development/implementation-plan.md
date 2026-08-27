@@ -911,13 +911,13 @@ bounded by what was measured.
 | Deferred | Return when |
 |---|---|
 | `references/` files | An eval shows the agent missing a question that more detail fixes |
-| Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient. As of Phase 7 they do not: 4.4% fire rate on 1662 real files, 0/40 on labeled negatives |
-| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density. Currently 2 in-repo, both state-file pruning, both owned by Phase 8 |
+| Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient. They do not: 0/95 on labeled negatives, and 2 findings across the 65 independent files in the real-code corpus |
+| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density. Currently zero in-repo — Phase 8 paid off both state-file pruning markers, and a test asserts they stay gone |
 | `gain` command (impact scoreboard) | A benchmark shows a real effect. Phase 5 measured no detectable effect, and its signals were later found to be 30/30 false positives, so there is still nothing to show |
 | Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
 | Repository-wide scanning *by the persistent mode* | Never — it is a different product. Shipped as the user-invoked `/offcut-audit` command in Phase 4; the distinction is who initiates it |
 | Cross-host verification beyond Claude Code | A second host has users asking |
-| Benchmark against other tools | Offcut has independent reproducible results first |
+| Benchmark against other tools, ponytail included | Offcut has an independent real-code result worth comparing. It does not yet: the corpus yields 65 independent files, so the honest figure is 2 of 65 rather than a rate. Two confounds are already removed (ponytail is scored as the comparison subject, and Offcut's skill descriptions no longer cede the generic phrasing to it), so what remains is sample size. Measuring skill activation between the two is part of this and defers with it — see [`COEXIST.md`](COEXIST.md) §5 |
 | Signed releases, marketplace listing | There are users to protect |
 
 ---

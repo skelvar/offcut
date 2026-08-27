@@ -227,16 +227,18 @@ install.
 
 ### No comparison to other tools
 
-Offcut has not been benchmarked against ponytail or anything similar. If that
-happens, the numbers go here whichever way they fall.
+Offcut has not been benchmarked against ponytail or anything similar, and that
+comparison is **deferred rather than scheduled**. The reason is the real-code row
+above: 65 independent files is too thin a base to compare anything against. If it
+ever runs, the numbers go here whichever way they fall.
 
-Two confounds are known already and have to be controlled before any such number
-means anything. Ponytail's source sits in the plugin cache that feeds the
-real-code corpus above, so it is classified as the comparison subject and kept
-out of the publishable rate. And Offcut's skill descriptions were briefly written
-to cede the generic "review for over-engineering" phrasing to ponytail by name,
-which would have decided an activation comparison before it ran; that deference
-is gone, and [`COEXIST.md`](docs/development/COEXIST.md) §5 records why.
+Two confounds were found and removed while establishing that, so nobody has to
+rediscover them. Ponytail's source sits in the plugin cache that feeds the
+real-code corpus, so it is classified as the comparison subject and kept out of
+the publishable rate. And Offcut's skill descriptions briefly ceded the generic
+"review for over-engineering" phrasing to ponytail by name, which would have
+decided an activation comparison before it ran;
+[`COEXIST.md`](docs/development/COEXIST.md) §5 records that.
 
 ## How it works
 

@@ -103,10 +103,11 @@ run over a diff or a tree, reporting exactly which named signals fired — and
 their negative triggers only separate Offcut's own skills from each other
 (`review` vs `audit` vs mode switches). No third-party plugin is named.
 
-Routing under the new descriptions is **not** claimed here. Measuring it needs
-both plugins installed at their shipped versions, and "which skill does a generic
-over-engineering request activate" is an Offcut-versus-ponytail comparison — it
-belongs to the benchmark, not to a coexistence note. If both match, that is an
+Routing under the new descriptions is **not** claimed here, and is not queued as
+pending work. Measuring it needs both plugins installed at their shipped
+versions, and "which skill does a generic over-engineering request activate" is
+an Offcut-versus-ponytail comparison — so it defers with that benchmark under
+[§14 of the plan](implementation-plan.md#14-deferred). If both match, that is an
 accurate outcome rather than a bug: one scans, one advises.
 
 No hook-side intent detection was added, then or now.

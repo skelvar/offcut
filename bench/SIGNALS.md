@@ -189,6 +189,10 @@ silent without a corpus by design. **Its 0.0% here means "not exercised", not
 "clean."** It needs a separate measurement that builds a cross-file corpus per
 project. Do not read this row as a pass.
 
+**Closed in the Phase 7 section below.** `realcode.mjs` builds a per-project
+corpus and `exportedUnusedExercised` is asserted true, so the signal can no
+longer report clean without having run. Measured there at 6 files, 0.4%.
+
 ### What this settles about the stopping condition
 
 The ceiling is **not** where it looked. Seven of eight signals fire on ≤3.7% of
