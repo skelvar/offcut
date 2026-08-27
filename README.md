@@ -65,7 +65,9 @@ ln -s ~/.offcut-src/skills/offcut-audit  .grok/skills/offcut-audit
 
 ### Anything else
 
-Copy `AGENTS.md` to your repo root. Most agents read it as project rules.
+Copy `AGENTS.md` to your repo root. Most agents read it as project rules —
+verified on Cursor (2026-08-27) with no Offcut install present at all. The
+ruleset arrives; the mode and the write-time challenge still need hooks.
 
 ### Uninstall
 
@@ -285,7 +287,7 @@ it read, and warns when that is not the one you are editing.
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 176 tests
+node --test tests/*.test.js   # 177 tests
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus
 node scripts/scan.mjs hooks   # dogfood

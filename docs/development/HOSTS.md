@@ -504,3 +504,21 @@ check warns.
 
 Refreshing the stale copy took an uninstall and reinstall. A version-gated
 update will not do it.
+
+## The AGENTS.md route delivers on a host with no adapter (Cursor, 2026-08-27)
+
+Cursor has no Offcut adapter: `installTargets()` has no entry for it, there is
+no `~/.cursor/hooks.json` and no repo-level `.cursor/`, so no Offcut hook ran.
+
+The repo-root `AGENTS.md` was still delivered to the model verbatim as an
+always-applied project rule, attributed to `<repo>/AGENTS.md`. That is the
+hook-less route the README documents in those words — *copy `AGENTS.md` to your
+repo root, most agents read it as project rules* — previously exercised only on
+Grok Build. Offcut's four skills also appeared in the host's available-skill
+list, resolved out of the Claude Code plugin cache; that follows from the cache
+existing on this machine and is not a Cursor install path.
+
+What this does **not** establish: the mode, the per-turn cadence and the
+write-time challenge all require hooks, and no hook ran. Cursor's row in the
+README stays untested and the adapter stays deferred under §5.4. The single
+claim it supports is that the hook-less fallback is not Grok-specific.
