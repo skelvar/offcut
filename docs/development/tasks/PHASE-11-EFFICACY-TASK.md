@@ -198,6 +198,30 @@ Accordingly `positive_claim` is false, `efficacy_estimate` is null, and
 no effect. Enrichment failed for this model/profile, or the baseline was
 already target-free; no `off` versus `full` claim is supported.
 
+## 2026-08-27 no-opportunity confirmatory override
+
+The user then directed remaining confirmatory execution. Discovery still has
+no qualified tasks, so this is not the original efficacy estimand and cannot
+support a positive Offcut claim.
+
+It asks a different, labeled question:
+
+> On tickets whose sealed baseline was already target-free, does shipped
+> `full` mode change acceptance, size, or recorded failure versus `off`?
+
+Rules for this override:
+
+- Frozen discovery outcomes, including 17/24 primary success and 0/24 target
+  prevalence, stay immutable.
+- No discovery rep 3 is added.
+- Select six tasks with the original cap rule (distinct categories first, then
+  hash) treating every discovery target count as zero.
+- Run a fresh `off`/`full` grid, eight reps per arm, 96 cells, same seed and
+  blocked arm order.
+- Backend remains `codex-profile-v1` with the `ticket-worker` named profile.
+- `positive_claim` stays false. `efficacy_estimate` stays null.
+- Report the override grid separately from discovery.
+
 ## Frozen environment and ceiling
 
 The following is the original frozen host section, preserved as study history.

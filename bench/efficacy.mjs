@@ -113,6 +113,18 @@ function qualifierOrder(a, b, seed) {
   return aHash < bHash ? -1 : aHash > bHash ? 1 : 0;
 }
 
+export function selectNoOpportunityTasks(tasks, cap = 6, seed = EFFICACY_SEED) {
+  return selectQualifiers(
+    tasks.map((task) => ({
+      task_id: task.id,
+      category: task.category,
+      target_count: 0,
+    })),
+    cap,
+    seed,
+  );
+}
+
 export function selectQualifiers(summaries, cap = 6, seed = EFFICACY_SEED) {
   const sorted = [...summaries].sort((a, b) => qualifierOrder(a, b, seed));
   const categoryWinners = [];
@@ -639,6 +651,74 @@ function isTranscriptSensitivityCandidate(entry, metrics, transcript) {
   );
 }
 
+function confirmArmRows(rows) {
+  return {
+    cells: rows.length,
+    accepted: rows.filter((row) => row.accepted).length,
+    target_present: rows.filter((row) => row.target_present).length,
+    primary_success: rows.filter((row) => row.primary_success).length,
+    lines_added: rows.reduce((sum, row) => sum + row.lines_added, 0),
+    lines_removed: rows.reduce((sum, row) => sum + row.lines_removed, 0),
+  };
+}
+
+function summarizeNoOpportunityConfirm(confirmOutcomes, metricsByRun, metaByTask) {
+  if (confirmOutcomes.length === 0) return null;
+  const expectedIds = selectNoOpportunityTasks(
+    [...metaByTask.values()].map((meta) => ({
+      id: meta.id,
+      category: meta.category,
+    })),
+  );
+  const expectedKeys = new Set();
+  for (const taskId of expectedIds) {
+    for (let rep = 1; rep <= 8; rep++) {
+      expectedKeys.add(`${taskId}\0off\0${rep}`);
+      expectedKeys.add(`${taskId}\0full\0${rep}`);
+    }
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const entry of confirmOutcomes) {
+    const metrics = metricsByRun.get(entry.run_id);
+    const key = `${entry.task_id}\0${entry.arm}\0${entry.rep}`;
+    if (!expectedKeys.has(key) || seen.has(key) || !metrics) {
+      throw new Error('no-opportunity confirm grid is incomplete or unexpected');
+    }
+    if (
+      typeof metrics.target_present !== 'boolean' ||
+      typeof metrics.task_passed !== 'boolean' ||
+      typeof metrics.primary_success !== 'boolean' ||
+      !Number.isFinite(metrics.lines_added) ||
+      !Number.isFinite(metrics.lines_removed)
+    ) {
+      throw new Error(`confirm metrics malformed for run ${entry.run_id}`);
+    }
+    seen.add(key);
+    rows.push({
+      task_id: entry.task_id,
+      arm: entry.arm,
+      rep: entry.rep,
+      accepted: metrics.task_passed === true,
+      target_present: metrics.target_present === true,
+      primary_success: metrics.primary_success === true,
+      lines_added: metrics.lines_added,
+      lines_removed: metrics.lines_removed,
+    });
+  }
+  if (seen.size !== expectedKeys.size) {
+    throw new Error('no-opportunity confirm grid is incomplete or unexpected');
+  }
+  return {
+    label: 'no_opportunity_confirm',
+    task_ids: expectedIds,
+    planned_cells: expectedKeys.size,
+    completed_cells: rows.length,
+    off: confirmArmRows(rows.filter((row) => row.arm === 'off')),
+    full: confirmArmRows(rows.filter((row) => row.arm === 'full')),
+  };
+}
+
 const REPORT_CATEGORY_ORDER = [
   'new-dependency',
   'speculative-abstraction',
@@ -755,12 +835,14 @@ export function buildEfficacyAnalysis({
   if (discovery3Outcomes.length) {
     throw new Error('discovery3 outcomes contradict the null stop');
   }
-  if (confirmOutcomes.length) {
-    throw new Error('confirm outcomes contradict the null stop');
-  }
   if (qualifiers.length) {
     throw new Error('qualifiers contradict the null stop');
   }
+  const noOpportunityConfirm = summarizeNoOpportunityConfirm(
+    confirmOutcomes,
+    metricsByRun,
+    metaByTask,
+  );
   const categories = {};
   for (const category of REPORT_CATEGORY_ORDER) {
     const rows = tasks.filter((task) => task.category === category);
@@ -787,10 +869,12 @@ export function buildEfficacyAnalysis({
   const frozenPrimary = tasks.filter(
     (task) => task.frozen_primary_success,
   ).length;
-  const confirmatoryRan = confirmOutcomes.length > 0;
+  const confirmatoryRan = noOpportunityConfirm != null;
   const stopReason =
     discovery3Jobs.length === 0 && qualifiers.length === 0
-      ? 'Preregistered stop: no baseline target-positive runs, so no tasks qualified.'
+      ? confirmatoryRan
+        ? 'Discovery stop unchanged: no baseline target-positive runs. A user-directed no-opportunity confirmatory grid ran separately.'
+        : 'Preregistered stop: no baseline target-positive runs, so no tasks qualified.'
       : null;
   const first = scoped[0];
   const legacyClaude = manifestEntries.filter(
@@ -907,10 +991,26 @@ export function buildEfficacyAnalysis({
     positive_claim: false,
     efficacy_estimate: null,
     confirmatory_ran: confirmatoryRan,
+    no_opportunity_confirm: noOpportunityConfirm,
     stop_reason: stopReason,
     conclusion:
       'No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.',
   };
+}
+
+function noOpportunityConfirmMarkdown(grid) {
+  if (!grid) return [];
+  const armLine = (name, row) =>
+    `- \`${name}\`: accepted ${row.accepted}/${row.cells}, target ${row.target_present}/${row.cells}, primary ${row.primary_success}/${row.cells}, LOC +${row.lines_added}/-${row.lines_removed}`;
+  return [
+    '## No-opportunity confirmatory grid',
+    '',
+    `User-directed override after the discovery stop. Six tasks (${grid.task_ids.map((id) => `\`${id}\``).join(', ')}), ${grid.completed_cells}/${grid.planned_cells} cells. This is not an Offcut efficacy estimate.`,
+    '',
+    armLine('off', grid.off),
+    armLine('full', grid.full),
+    '',
+  ];
 }
 
 function efficacyReportMarkdown(analysis) {
@@ -937,6 +1037,7 @@ function efficacyReportMarkdown(analysis) {
     '',
     '**Conclusion:** No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.',
     '',
+    ...noOpportunityConfirmMarkdown(analysis.no_opportunity_confirm),
     '## Post-hoc sensitivity',
     '',
     `The sealed transcripts contain ${analysis.post_hoc_sensitivity.transcript_candidate_runs} runs with terminal \`turn.completed\`, valid usage, and only recoverable item-level tool failures. If those transcript conditions are treated as completion, primary success would be ${analysis.post_hoc_sensitivity.upper_bound_primary_success}/${analysis.post_hoc_sensitivity.primary_total} (${analysis.post_hoc_sensitivity.primary_rate_percent.toFixed(2)}%).`,
@@ -1083,7 +1184,13 @@ export function planStage(stage, tasks, outcomes, backend) {
       category: tasks.find((task) => task.id === summary.task_id)?.category,
     }));
   if (stage === 'confirm') {
-    const qualifiers = selectQualifiers(summaries);
+    let qualifiers = selectQualifiers(summaries);
+    if (qualifiers.length === 0) {
+      const targetPositive = discoveryOutcomes.some(
+        (outcome) => outcome.accept_passed === true && outcome.target_present === true,
+      );
+      if (!targetPositive) qualifiers = selectNoOpportunityTasks(tasks);
+    }
     return omitCompleted(
       confirmatorySchedule(qualifiers, 8),
       scopedOutcomes,

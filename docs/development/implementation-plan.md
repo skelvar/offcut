@@ -985,6 +985,11 @@ reference file.
   rewrite on `Subagent`, never source-code input.
 - Cursor is Tier 1 in README, doctor and host facts; the only deferred work is
   the ponytail comparison.
+- Phase 11 efficacy discovery on Codex 0.149.1 / `gpt-5.6-sol` produced 0/24
+  target-positive baselines. The original confirmatory estimand did not open.
+  A later user-directed no-opportunity `off`/`full` grid is documented in
+  [`PHASE-11-EFFICACY-TASK.md`](tasks/PHASE-11-EFFICACY-TASK.md) and cannot
+  support a positive Offcut claim.
 
 ---
 

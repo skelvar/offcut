@@ -474,6 +474,37 @@ test('confirm refuses until every eligible discovery rep 3 is complete', async (
   assert.equal(planStage('confirm', tasks, complete).length, 16);
 });
 
+test('zero-target discovery plans a six-task no-opportunity confirmatory grid', async () => {
+  const { loadEfficacyTasks, planStage, selectNoOpportunityTasks } = await import(
+    '../bench/efficacy.mjs'
+  );
+  const tasks = loadEfficacyTasks();
+  const selected = selectNoOpportunityTasks(tasks);
+  assert.deepEqual(selected, [
+    'event-normalizer',
+    'query-string',
+    'inventory-reservation',
+    'order-label',
+    'asset-base-url',
+    'csv-summary',
+  ]);
+  const outcomes = tasks.flatMap((task) =>
+    [1, 2].map((rep) => ({
+      task_id: task.id,
+      arm: 'off',
+      rep,
+      stage: 'discovery12',
+      accept_passed: true,
+      target_present: false,
+    })),
+  );
+  const jobs = planStage('confirm', tasks, outcomes);
+  assert.equal(jobs.length, 96);
+  assert.deepEqual([...new Set(jobs.map((job) => job.taskId))], selected);
+  assert.equal(jobs.filter((job) => job.arm === 'off').length, 48);
+  assert.equal(jobs.filter((job) => job.arm === 'full').length, 48);
+});
+
 test('legacy runner keeps three API attempts while efficacy requests one', async () => {
   const { DEFAULT_API_RETRIES, resolveApiRetries } = await import('../bench/run.mjs');
   assert.equal(DEFAULT_API_RETRIES, 2);
@@ -628,6 +659,7 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
     assert.equal(first.aggregate.tokens.reasoning.total, 7254);
     assert.equal(first.aggregate.tokens.reasoning.median, 264);
     assert.equal(first.aggregate.incremental_cost_usd, 0);
+    assert.equal(first.no_opportunity_confirm, null);
     assert.equal(first.positive_claim, false);
     assert.equal(first.efficacy_estimate, null);
     assert.equal(first.confirmatory_ran, false);
@@ -761,23 +793,38 @@ test('null efficacy report refuses evidence that contradicts the stop', async ()
     }),
     /target-positive.*null stop/i,
   );
-  for (const stage of ['discovery3', 'confirm']) {
-    assert.throws(
-      () => buildEfficacyAnalysis({
-        ...base,
-        manifestEntries: [
-          ...manifestEntries,
-          {
-            ...codexEntries[0],
-            run_id: `${stage}-contradiction`,
-            stage,
-            rep: stage === 'discovery3' ? 3 : 1,
-          },
-        ],
-      }),
-      new RegExp(`${stage}.*null stop`, 'i'),
-    );
-  }
+  assert.throws(
+    () => buildEfficacyAnalysis({
+      ...base,
+      manifestEntries: [
+        ...manifestEntries,
+        {
+          ...codexEntries[0],
+          run_id: 'discovery3-contradiction',
+          stage: 'discovery3',
+          rep: 3,
+        },
+      ],
+    }),
+    /discovery3.*null stop/i,
+  );
+  assert.throws(
+    () => buildEfficacyAnalysis({
+      ...base,
+      manifestEntries: [
+        ...manifestEntries,
+        {
+          ...codexEntries[0],
+          run_id: 'confirm-incomplete',
+          stage: 'confirm',
+          task_id: 'asset-base-url',
+          arm: 'off',
+          rep: 1,
+        },
+      ],
+    }),
+    /no-opportunity confirm grid is incomplete/i,
+  );
 });
 
 test('efficacy report refuses a dirty raw gate before writing', async () => {

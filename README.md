@@ -193,7 +193,7 @@ and `new-file` was a constant rather than a heuristic.
 ## What we measured
 
 Offcut also ships a persistent mode that re-asks the question every turn and
-challenges a write before the file exists. We tried three times to show it
+challenges a write before the file exists. We tried four times to show it
 changes what an agent builds, and could not.
 
 | Experiment | Question | Result |
@@ -201,6 +201,7 @@ changes what an agent builds, and could not.
 | Premise | Do agents over-build at all? | **No structural over-building** in 12 runs |
 | Benchmark | Does a challenge change output? | Untestable — nothing occurred to prevent |
 | Framing | Does "is it justified?" beat "what's cheapest?" | **No** — and **0 structural over-building across 90 runs** |
+| Efficacy discovery | When a signal-shaped opportunity exists, does `full` remove it? | **No estimate** — Codex `gpt-5.6-sol` produced **0/24** targets on 12 tickets, so the frozen rule never opened `off` vs `full`. Acceptance 22/24; frozen primary 17/24. |
 
 The last one closed the obvious objection to the first. It used multi-file,
 placement-ambiguous tasks with ambient future pressure — the conditions where
