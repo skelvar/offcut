@@ -42,7 +42,7 @@ export const CODEX_HOST = 'codex-cli';
 export const CODEX_HOST_VERSION = '0.149.1';
 export const CODEX_MODEL_ID = 'gpt-5.6-sol';
 export const CODEX_CUSTOM_AGENT_NAME = 'ticket-worker';
-export const CODEX_CUSTOM_AGENT_KIND = 'top_level_profile';
+export const CODEX_CUSTOM_AGENT_KIND = 'named_top_level_profile';
 export const CODEX_PROFILE_INSTRUCTIONS =
   'Implement the delegated maintenance ticket in the current repository. Inspect the files, make the changes required by the ticket, and run relevant checks. Do not commit or edit .codex. Return a concise summary.';
 
@@ -221,6 +221,8 @@ export function buildCodexArgs({ workDir, prompt }) {
     '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
+    '--profile',
+    CODEX_CUSTOM_AGENT_NAME,
     '-C',
     workDir,
     'exec',
@@ -237,16 +239,22 @@ function tomlString(value) {
 function codexConfigText() {
   return [
     'default_permissions = ":workspace"',
-    `model = ${tomlString(CODEX_MODEL_ID)}`,
-    'model_reasoning_effort = "low"',
-    `developer_instructions = ${tomlString(CODEX_PROFILE_INSTRUCTIONS)}`,
-    '',
     '[skills]',
     'include_instructions = false',
     '',
     '[features]',
     'multi_agent = false',
     'hooks = true',
+    '',
+  ].join('\n');
+}
+
+function codexProfileText() {
+  return [
+    'default_permissions = ":workspace"',
+    `model = ${tomlString(CODEX_MODEL_ID)}`,
+    'model_reasoning_effort = "low"',
+    `developer_instructions = ${tomlString(CODEX_PROFILE_INSTRUCTIONS)}`,
     '',
   ].join('\n');
 }
@@ -290,12 +298,19 @@ export function prepareCodexHome({
   try {
     fs.copyFileSync(authPath, path.join(homeDir, 'auth.json'));
     const config = codexConfigText();
+    const profileConfig = codexProfileText();
     const hooks = buildCodexHooksSettings(arm);
     fs.writeFileSync(path.join(homeDir, 'config.toml'), config, 'utf8');
+    fs.writeFileSync(
+      path.join(homeDir, `${CODEX_CUSTOM_AGENT_NAME}.config.toml`),
+      profileConfig,
+      'utf8',
+    );
     fs.writeFileSync(path.join(homeDir, 'hooks.json'), `${JSON.stringify(hooks, null, 2)}\n`, 'utf8');
     return {
       homeDir,
       config_sha256: sha256(config),
+      profile_config_sha256: sha256(profileConfig),
       role_sha256: null,
       hooks_sha256: sha256(`${JSON.stringify(hooks, null, 2)}\n`),
     };
@@ -807,6 +822,7 @@ export function runCodex({
   const attachHashes = (result) => Object.assign(result, {
     prompt_sha256: sha256(prompt),
     config_sha256: isolated.config_sha256,
+    profile_config_sha256: isolated.profile_config_sha256,
     role_sha256: isolated.role_sha256,
     hooks_sha256: isolated.hooks_sha256,
   });
@@ -1054,6 +1070,7 @@ export function runOne(opts) {
       record.custom_agent_verified = agent.customAgentVerified;
       record.verified = agent.customAgentVerified;
       record.config_sha256 = agent.config_sha256;
+      record.profile_config_sha256 = agent.profile_config_sha256;
       record.hooks_sha256 = agent.hooks_sha256;
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;

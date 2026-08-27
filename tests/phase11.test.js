@@ -1219,6 +1219,8 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
+    '--profile',
+    'ticket-worker',
     '-C',
     'D:\\work',
     'exec',
@@ -1256,6 +1258,8 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
     '--ask-for-approval',
     'never',
     '--dangerously-bypass-hook-trust',
+    '--profile',
+    'ticket-worker',
     '-C',
     os.tmpdir(),
     'exec',
@@ -1272,7 +1276,57 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
   assert.match(`${parsed.stdout || ''}\n${parsed.stderr || ''}`, /Usage: codex exec/i);
 });
 
-test('Codex isolated home defines a neutral top-level profile and arm hooks', async () => {
+test('Codex 0.149.1 renders named profile instructions without a model call', async (t) => {
+  const version = spawnSync('codex', ['--version'], { encoding: 'utf8' });
+  if (
+    version.status !== 0 ||
+    (version.stdout || version.stderr || '').trim() !== 'codex-cli 0.149.1'
+  ) {
+    t.skip('requires installed codex-cli 0.149.1');
+    return;
+  }
+  const {
+    CODEX_PROFILE_INSTRUCTIONS,
+    buildIsolatedCodexEnv,
+    cleanupCodexHome,
+    prepareCodexHome,
+  } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-codex-profile-'));
+  const authPath = path.join(root, 'auth.json');
+  fs.writeFileSync(authPath, '{}');
+  const isolated = prepareCodexHome({ arm: 'off', authPath, parentDir: root });
+  try {
+    const env = buildIsolatedCodexEnv({
+      homeDir: isolated.homeDir,
+      stateDir: path.join(root, 'state'),
+      auditPath: path.join(root, 'audit.jsonl'),
+    });
+    const parsed = spawnSync(
+      'codex',
+      [
+        '--profile',
+        'ticket-worker',
+        'debug',
+        'prompt-input',
+        'PROFILE_SELECTION_PROBE',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 30_000,
+        env,
+      },
+    );
+    assert.equal(parsed.status, 0, parsed.stderr);
+    assert.match(parsed.stdout, /PROFILE_SELECTION_PROBE/);
+    assert.equal(parsed.stdout.includes(CODEX_PROFILE_INSTRUCTIONS), true);
+  } finally {
+    cleanupCodexHome(isolated.homeDir);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex isolated home defines a neutral named top-level profile and arm hooks', async () => {
   const {
     CODEX_CUSTOM_AGENT_KIND,
     CODEX_CUSTOM_AGENT_NAME,
@@ -1291,25 +1345,33 @@ test('Codex isolated home defines a neutral top-level profile and arm hooks', as
       'auth.json',
       'config.toml',
       'hooks.json',
+      'ticket-worker.config.toml',
     ]);
     assert.equal(fs.readFileSync(path.join(off.homeDir, 'auth.json'), 'utf8'), secret);
     const config = fs.readFileSync(path.join(off.homeDir, 'config.toml'), 'utf8');
     assert.match(config, /multi_agent\s*=\s*false/);
     assert.match(config, /hooks\s*=\s*true/);
-    assert.match(config, new RegExp(`model\\s*=\\s*"${CODEX_MODEL_ID.replaceAll('.', '\\.')}"`));
     const defaultPermissions =
       config.match(/^default_permissions\s*=.*$/gm) || [];
     assert.deepEqual(defaultPermissions, ['default_permissions = ":workspace"']);
     assert.ok(config.indexOf(defaultPermissions[0]) < config.indexOf('['));
     assert.match(config, /\[skills\]\r?\ninclude_instructions = false/);
-    assert.match(config, new RegExp(CODEX_PROFILE_INSTRUCTIONS.split(' ')[0]));
-    assert.match(config, /^developer_instructions = /m);
+    const profile = fs.readFileSync(
+      path.join(off.homeDir, 'ticket-worker.config.toml'),
+      'utf8',
+    );
+    assert.match(profile, new RegExp(`model\\s*=\\s*"${CODEX_MODEL_ID.replaceAll('.', '\\.')}"`));
+    assert.match(profile, /model_reasoning_effort\s*=\s*"low"/);
+    assert.match(profile, /^default_permissions = ":workspace"$/m);
+    assert.match(profile, new RegExp(CODEX_PROFILE_INSTRUCTIONS.split(' ')[0]));
+    assert.match(profile, /^developer_instructions = /m);
     assert.equal(CODEX_CUSTOM_AGENT_NAME, 'ticket-worker');
-    assert.equal(CODEX_CUSTOM_AGENT_KIND, 'top_level_profile');
+    assert.equal(CODEX_CUSTOM_AGENT_KIND, 'named_top_level_profile');
+    assert.match(off.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(off.role_sha256, null);
     assert.equal(fs.existsSync(path.join(off.homeDir, 'agents')), false);
     assert.doesNotMatch(
-      config,
+      profile,
       /\b(?:offcut|efficacy|experiment|treatment|control|baseline|minimal|simple|cheap|dependenc|abstract)\b/i,
     );
     const offHooks = JSON.parse(fs.readFileSync(path.join(off.homeDir, 'hooks.json')));
@@ -1347,12 +1409,16 @@ test('Codex isolated home defines a neutral top-level profile and arm hooks', as
   }
 });
 
-test('Codex top-level profile receives the verbatim task prompt without an envelope', async () => {
+test('Codex named profile is selected and receives the verbatim task prompt', async () => {
   const { buildCodexArgs } = await import('../bench/run.mjs');
   const ticket = 'Change the formatter.\nKeep its public output stable.\n';
   const args = buildCodexArgs({ workDir: 'D:\\work', prompt: ticket });
   assert.equal(args.at(-1), ticket);
-  assert.equal(args.some((arg) => /spawn_agent|delegate|ticket-worker/i.test(arg)), false);
+  assert.deepEqual(
+    args.slice(args.indexOf('--profile'), args.indexOf('--profile') + 2),
+    ['--profile', 'ticket-worker'],
+  );
+  assert.equal(args.some((arg) => /spawn_agent|delegate/i.test(arg)), false);
 });
 
 test('Codex agent audit records only silent nonsecret lifecycle attribution', () => {
@@ -1962,6 +2028,7 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(result.record.model_observation, 'requested_not_reported');
     assert.equal(result.record.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
     assert.equal(result.record.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
+    assert.match(result.record.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(result.record, 'custom_agent_role'), false);
     assert.equal(Object.hasOwn(result.record, 'role_sha256'), false);
     assert.equal(Object.hasOwn(result.record, 'envelope_sha256'), false);
@@ -2215,9 +2282,10 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
               model_requested: 'gpt-5.6-sol',
               model_id: null,
               model_observation: 'requested_not_reported',
-              custom_agent_kind: 'top_level_profile',
+              custom_agent_kind: 'named_top_level_profile',
               custom_agent_name: 'ticket-worker',
               config_sha256: 'config-hash',
+              profile_config_sha256: 'profile-config-hash',
               hooks_sha256: 'hooks-hash',
               total_cost_usd: 0,
               cache_creation_input_tokens: 6,
@@ -2240,10 +2308,11 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
     assert.equal(codex[0].cache_creation_input_tokens, 6);
     assert.equal(codex[0].reasoning_output_tokens, 9);
     assert.equal(codex[0].verified, true);
-    assert.equal(codex[0].custom_agent_kind, 'top_level_profile');
+    assert.equal(codex[0].custom_agent_kind, 'named_top_level_profile');
     assert.equal(codex[0].custom_agent_name, 'ticket-worker');
     assert.equal(Object.hasOwn(codex[0], 'custom_agent_role'), false);
     assert.equal(codex[0].config_sha256, 'config-hash');
+    assert.equal(codex[0].profile_config_sha256, 'profile-config-hash');
     assert.equal(Object.hasOwn(codex[0], 'role_sha256'), false);
     assert.equal(codex[0].hooks_sha256, 'hooks-hash');
   } finally {
@@ -2294,8 +2363,9 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
     assert.equal(result.auth_kind, 'chatgpt');
     assert.equal(result.model_requested, 'gpt-5.6-sol');
     assert.equal(result.backend, 'codex-profile-v1');
-    assert.equal(result.custom_agent_kind, 'top_level_profile');
+    assert.equal(result.custom_agent_kind, 'named_top_level_profile');
     assert.equal(result.custom_agent_name, 'ticket-worker');
+    assert.match(result.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(result, 'custom_agent_role'), false);
     assert.equal(result.model_id, undefined);
     assert.equal(loginStatusCalls, 2);
@@ -2330,7 +2400,7 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
   }
 });
 
-test('Codex live preflight records one verified top-level profile then refuses rerun', async () => {
+test('Codex live preflight records one verified named profile then refuses rerun', async () => {
   const {
     CODEX_CUSTOM_AGENT_KIND,
     CODEX_CUSTOM_AGENT_NAME,
@@ -2397,6 +2467,7 @@ test('Codex live preflight records one verified top-level profile then refuses r
     assert.equal(first.custom_agent_verified, true);
     assert.equal(first.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
     assert.equal(first.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
+    assert.match(first.profile_config_sha256, /^[a-f0-9]{64}$/);
     assert.equal(Object.hasOwn(first, 'custom_agent_role'), false);
     assert.equal(Object.hasOwn(first, 'role_sha256'), false);
     assert.equal(Object.hasOwn(first, 'envelope_sha256'), false);

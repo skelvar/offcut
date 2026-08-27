@@ -659,31 +659,47 @@ function validatePreparedCodexHome(homeDir, arm) {
   const entries = fs.readdirSync(homeDir).sort();
   if (
     JSON.stringify(entries) !==
-    JSON.stringify(['auth.json', 'config.toml', 'hooks.json'])
+    JSON.stringify([
+      'auth.json',
+      'config.toml',
+      'hooks.json',
+      `${CODEX_CUSTOM_AGENT_NAME}.config.toml`,
+    ].sort())
   ) {
     throw new Error(`unexpected isolated CODEX_HOME entries: ${entries.join(', ')}`);
   }
   const config = fs.readFileSync(path.join(homeDir, 'config.toml'), 'utf8');
+  const profileConfig = fs.readFileSync(
+    path.join(homeDir, `${CODEX_CUSTOM_AGENT_NAME}.config.toml`),
+    'utf8',
+  );
   const hooks = JSON.parse(fs.readFileSync(path.join(homeDir, 'hooks.json'), 'utf8'));
   const defaultPermissions =
     config.match(/^default_permissions\s*=.*$/gm) || [];
   if (
-    !config.includes(`model = "${CODEX_MODEL_ID}"`) ||
-    !config.includes('model_reasoning_effort = "low"') ||
     defaultPermissions.length !== 1 ||
     defaultPermissions[0] !== 'default_permissions = ":workspace"' ||
     config.indexOf(defaultPermissions[0]) > config.indexOf('[') ||
     (config.match(/^include_instructions = false$/gm) || []).length !== 1 ||
     !/\[skills\]\r?\ninclude_instructions = false/.test(config) ||
-    !config.includes(`developer_instructions = ${JSON.stringify(CODEX_PROFILE_INSTRUCTIONS)}`) ||
     !config.includes('multi_agent = false') ||
     !config.includes('hooks = true')
   ) {
     throw new Error('isolated Codex config does not match the frozen contract');
   }
   if (
+    !profileConfig.includes(`model = "${CODEX_MODEL_ID}"`) ||
+    !profileConfig.includes('model_reasoning_effort = "low"') ||
+    !profileConfig.includes('default_permissions = ":workspace"') ||
+    !profileConfig.includes(
+      `developer_instructions = ${JSON.stringify(CODEX_PROFILE_INSTRUCTIONS)}`,
+    )
+  ) {
+    throw new Error('isolated Codex named profile does not match the frozen contract');
+  }
+  if (
     /\b(?:offcut|efficacy|experiment|treatment|control|baseline|minimal|simple|cheap|dependenc|abstract)\b/i.test(
-      config,
+      profileConfig,
     )
   ) {
     throw new Error('Codex profile contains prohibited treatment framing');
@@ -728,10 +744,12 @@ export function codexPreflight({
   const version = assertCodexVersion(spawnHost);
   if (!fs.existsSync(authPath)) throw new Error('Codex auth file missing');
   const prepared = [];
+  let profileConfigSha256 = null;
   try {
     for (const arm of ['off', 'full']) {
       const isolated = prepareCodexHome({ arm, authPath, parentDir: tempRoot });
       prepared.push(isolated.homeDir);
+      profileConfigSha256 ??= isolated.profile_config_sha256;
       validatePreparedCodexHome(isolated.homeDir, arm);
       const env = buildIsolatedCodexEnv({
         homeDir: isolated.homeDir,
@@ -757,6 +775,8 @@ export function codexPreflight({
       '--ask-for-approval',
       'never',
       '--dangerously-bypass-hook-trust',
+      '--profile',
+      CODEX_CUSTOM_AGENT_NAME,
       '-C',
       tempRoot,
       'exec',
@@ -779,6 +799,7 @@ export function codexPreflight({
       model_requested: CODEX_MODEL_ID,
       custom_agent_kind: CODEX_CUSTOM_AGENT_KIND,
       custom_agent_name: CODEX_CUSTOM_AGENT_NAME,
+      profile_config_sha256: profileConfigSha256,
       auth_kind: 'chatgpt',
     };
   } finally {
@@ -898,6 +919,7 @@ export function codexLivePreflight({
       cost_evidence: agent.cost_evidence,
       prompt_sha256: agent.prompt_sha256,
       config_sha256: agent.config_sha256,
+      profile_config_sha256: agent.profile_config_sha256,
       hooks_sha256: agent.hooks_sha256,
       failure_kind: preflightSuccess
         ? null
@@ -985,6 +1007,8 @@ function appendAttemptLedger(
           billing_kind: runResult?.record?.billing_kind ?? null,
           auth_kind: runResult?.record?.auth_kind ?? null,
           config_sha256: runResult?.record?.config_sha256 ?? null,
+          profile_config_sha256:
+            runResult?.record?.profile_config_sha256 ?? null,
           hooks_sha256: runResult?.record?.hooks_sha256 ?? null,
         }
       : {}),

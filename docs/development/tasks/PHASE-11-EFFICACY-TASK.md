@@ -38,8 +38,11 @@ before task inference. Its evidence and ledger rows remain immutable history
 and cannot enter or consume `codex-profile-v1` cells.
 
 Each call uses a new isolated `CODEX_HOME` containing a byte-for-byte copy of
-the authenticated user's `auth.json`, minimal top-level profile config,
-arm-specific `hooks.json`, and an otherwise empty user-home directory. No
+the authenticated user's `auth.json`, minimal base `config.toml`, the named
+`ticket-worker.config.toml` profile, arm-specific `hooks.json`, and an otherwise
+empty user-home directory. Codex 0.149.1 identifies `--profile` as
+`CONFIG_PROFILE_V2` and layers `$CODEX_HOME/<name>.config.toml`; a
+`[profiles.ticket-worker]` table would not select the agent in this version. No
 `agents/` role file exists. `HOME` and `USERPROFILE` point to the empty
 directory; agent/skill home overrides are cleared, while `PATH` and system
 directories are unchanged. This prevents ordinary home resolution from
@@ -50,13 +53,14 @@ authentication status. A copied `auth.json` is not proof by itself. Artifacts
 record only `auth_kind: "chatgpt"`.
 
 Codex 0.149.1's modern permission precedence is pinned explicitly with
-top-level `default_permissions = ":workspace"`, while the CLI remains
-`--sandbox workspace-write --ask-for-approval never`. The same config contains
-the neutral `developer_instructions`, requested model and effort,
-`[skills] include_instructions = false`, `hooks = true`, and
-`multi_agent = false`. The fifth live preflight showed that HOME isolation
-alone still allowed an attempted read of a global `.agents/skills` path, so
-every run fails closed if transcript or stderr references the absolute
+base and profile `default_permissions = ":workspace"`, while the CLI remains
+`--profile ticket-worker --sandbox workspace-write --ask-for-approval never`.
+The named profile contains the neutral `developer_instructions`, requested
+model, and effort. Base config contains `[skills] include_instructions = false`,
+`hooks = true`, and `multi_agent = false`. The fifth live preflight showed that
+HOME isolation alone still allowed an attempted read of a global
+`.agents/skills` path, so every run fails closed if transcript or stderr
+references the absolute
 `<original-user-home>/.agents/skills` or `.codex/skills` trees. Relative prose
 and paths under the work directory or temporary isolated home are permitted,
 and records expose `user_assets_isolated` without persisting path values.
@@ -74,9 +78,9 @@ absent, and never retained as an artifact. Cleanup residue fails loudly without
 printing paths or authentication bytes. Codex receives the exact task prompt
 directly; there is no delegation envelope or orchestration parent. Neither the
 profile instructions nor task wrapping adds study or arm framing. Records
-store `custom_agent_kind: "top_level_profile"`,
-`custom_agent_name: "ticket-worker"`, and the config and hook hashes. There is
-no role hash or envelope hash.
+store `custom_agent_kind: "named_top_level_profile"`,
+`custom_agent_name: "ticket-worker"`, and base-config, profile-config, and hook
+hashes. There is no role hash or envelope hash.
 
 The silent hook audit is now exclusionary attribution evidence. Any
 `SubagentStart`, `SubagentStop`, child `agent_id`/`agent_type`, collaboration

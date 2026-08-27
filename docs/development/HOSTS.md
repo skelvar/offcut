@@ -521,12 +521,17 @@ inference. Claude and custom-subagent rows remain immutable and do not consume
 the active `codex-profile-v1` retries or outcomes.
 
 The runner now creates a fresh isolated `CODEX_HOME` per attempt, copies only
-`auth.json`, and generates minimal top-level profile config plus arm-specific
-hooks. The neutral developer profile is recorded as
+`auth.json`, and generates minimal base config, a
+`ticket-worker.config.toml`, and arm-specific hooks. Codex 0.149.1 exposes
+`--profile` as `CONFIG_PROFILE_V2`, which layers
+`$CODEX_HOME/<name>.config.toml`; it does not select a
+`[profiles.ticket-worker]` table. Production arguments select
+`--profile ticket-worker` before `exec`. The neutral developer profile is
+recorded as
 `custom_agent_name: "ticket-worker"` and
-`custom_agent_kind: "top_level_profile"`; no `agents/*.toml`, role hash,
-delegation envelope, or envelope hash exists. The exact task prompt goes
-directly to `codex exec`. Before exec, an isolated
+`custom_agent_kind: "named_top_level_profile"` with a profile-config hash; no
+`agents/*.toml`, role hash, delegation envelope, or envelope hash exists. The
+exact task prompt goes directly to `codex exec`. Before exec, an isolated
 `codex login status` must report exactly `Logged in using ChatGPT`; API-key and
 provider/base-URL environment overrides are removed. A copied auth file alone
 does not establish subscription billing.
