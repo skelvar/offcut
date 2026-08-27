@@ -8,7 +8,7 @@
     {
       "name": "offcut",
       "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./",
       "author": {
         "name": "xyzbk"

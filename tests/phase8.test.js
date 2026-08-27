@@ -604,13 +604,15 @@ test('doctor: a session ran with this copy in place and left no record → warn'
   });
 });
 
-test('doctor: mode off reports nothing served rather than warning', () => {
+test('doctor: switching off does not erase what the last SessionStart served', () => {
   return withStateDir(() => {
+    writeServedRoot(root, 'claude');
     writeMode('off');
     const result = runDoctor({ silent: true, root });
     const served = result.lines.find((l) => l.check === 'ruleset served');
     assert.equal(served.verdict, 'ok');
-    assert.match(served.detail, /off/i);
+    assert.match(served.detail, /this root/i);
+    assert.doesNotMatch(served.detail, /no ruleset/i);
   });
 });
 
@@ -627,15 +629,25 @@ test('handleActivate records the root it served from', async () => {
   });
 });
 
-test('handleActivate records nothing when the mode is off', async () => {
-  await withStateDir(async (dir) => {
+test('handleActivate records which copy ran even when the mode is off', async () => {
+  await withStateDir(async () => {
     writeDefaultMode('off');
     clearMode();
     const out = await handleActivate(
       normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'sid' }),
     );
     assert.equal(out, null);
-    assert.equal(fs.existsSync(path.join(dir, 'served')), false);
+    const rec = inspectServed();
+    assert.equal(rec.state, 'ok');
+    assert.equal(path.resolve(rec.root), path.resolve(pluginRoot()));
+    assert.equal(rec.host, 'claude');
+    assert.equal(rec.emitted, false);
+
+    writeMode('full');
+    const result = runDoctor({ silent: true, root });
+    const served = result.lines.find((line) => line.check === 'ruleset served');
+    assert.equal(served.verdict, 'ok');
+    assert.match(served.detail, /mode was off.*no ruleset was served/i);
   });
 });
 

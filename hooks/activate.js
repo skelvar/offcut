@@ -25,12 +25,16 @@ export async function handleActivate(norm) {
     resetSuppression(norm.sessionId);
   }
 
+  // Record which copy actually ran even in off mode. Host-managed plugin
+  // installs are absent from user hooks config, so this is also the only
+  // execution witness doctor can use when diagnosing duplicate copies.
+  const root = pluginRoot();
+  writeServedRoot(root, norm.host, mode !== 'off');
+
   if (mode === 'off') return null;
 
   // Same root for the record and the emission, so what doctor reads is what the
   // model got — not a second guess at which copy this is.
-  const root = pluginRoot();
-  writeServedRoot(root);
   return emit(norm.host, 'session_start', sessionContext(mode, root));
 }
 

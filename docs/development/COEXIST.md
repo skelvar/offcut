@@ -1,6 +1,7 @@
 # COEXIST.md — Offcut alongside other plugins
 
-Dated Phase 9 measurements (2026-08-25). Evidence under `bench/phase9-evidence/`.
+Dated Phase 9 measurements (2026-08-25), with Cursor follow-up (2026-08-27).
+Evidence under `bench/phase9-evidence/` and in the Cursor hook contract tests.
 A claim is only made when a model quoted something, a state file changed, or a
 probe mark was written — never from "the hook ran" alone.
 
@@ -10,11 +11,12 @@ probe mark was written — never from "the hook ran" alone.
 
 | Field | Value |
 |---|---|
-| Date | 2026-08-25 |
+| Date | 2026-08-25; Cursor follow-up 2026-08-27 |
 | OS | Windows |
 | Claude Code | 2.1.243 |
 | Codex | 0.149.1 |
 | Grok Build | 1.0.5 |
+| Cursor | 3.17.19 |
 | Neighbours used | Claude: ponytail plugin + temporary `coexist-probe`; Codex: impeccable `PostToolUse` + temporary probes |
 
 ---
@@ -47,16 +49,25 @@ Offcut is **not** silently suppressed by a second context-injecting plugin on Cl
 
 ## 3. What happens when another hook denies?
 
-**Offcut never converts deny into allow.** Measured on Claude PreToolUse:
+**Offcut's write hooks never convert deny into allow.** Measured on Claude
+PreToolUse:
 
 | Order | Write result | Contexts seen |
 |---|---|---|
 | Deny first, Offcut second | **WRITE_BLOCKED** (`coexist-probe:deny-neighbour`) | `DENY_CTX_b4` only on the write path — Offcut write challenge did not surface (`NO_OFFCUT_CTX`). Reminder still arrived on UserPromptSubmit. |
 | Offcut first, deny second | **WRITE_BLOCKED** (`coexist-probe:deny-second`) | **Both** `OFFCUT_CTX` ("one implementation…") and `DENY2_CTX`. File absent. `fired-*` written. |
 
-So: deny still wins either way; Offcut does not cast `permissionDecision: allow`. If a neighbour denies *before* Offcut runs and the host short-circuits, Offcut's write-time context may be dropped with the blocked call — that is host aggregation, not Offcut overriding security.
+So: deny still wins either way; Offcut does not cast `permissionDecision:
+allow` on source-code writes. Cursor's `Subagent` inheritance returns
+`updated_input` without a `permission` field, so it appends inherited
+instructions without overriding another hook's deny. It never rewrites or votes
+on a write tool. If a neighbour denies *before* Offcut runs and the host
+short-circuits, Offcut's write-time context may be dropped with the blocked call
+— that is host aggregation, not Offcut overriding security.
 
-Contract tests in `tests/phase9.test.js` assert Offcut never emits `allow`/`deny` that could clear a neighbour deny.
+Contract tests assert write challenges never emit `allow`/`deny` that could
+clear a neighbour deny, and separately pin the permissionless Cursor
+subagent-only rewrite.
 
 ---
 
@@ -125,18 +136,23 @@ Live Codex `hooks.json` held impeccable `PostToolUse` + Offcut. After `node tool
 
 Snapshots: `bench/phase9-evidence/codex-hooks-before-uninstall.json`, `codex-hooks-after-uninstall.json`.
 
-Contract test covers two foreign hooks (security-guidance + impeccable + ponytail + remember) surviving uninstall via `mergeHooks`.
+Contract tests cover foreign hooks surviving uninstall via `mergeHooks`.
+Cursor's live config was also removed and reinstalled; its sandbox test keeps a
+foreign `beforeSubmitPrompt` handler byte-for-byte.
 
 ---
 
 ## Verdict
 
-**Offcut is safe to run alongside other plugins** on Claude Code and Codex:
+**Offcut is safe to run alongside other plugins** on Claude Code, Codex and
+Cursor:
 
 1. Multiple `additionalContext` values both reach the model.
 2. Offcut never turns a neighbour `deny` into an allow.
 3. A slow neighbour cannot stall Offcut past its own timeout.
 4. Uninstall leaves foreign hooks in place.
+5. Cursor duplicate native/compatibility copies claim one correlated delivery,
+   so they do not double-inject or advance lite cadence twice.
 
 Caveats to remember:
 

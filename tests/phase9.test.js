@@ -252,6 +252,32 @@ test('uninstall removes only Offcut groups and leaves two foreign hooks', () => 
   }
 });
 
+test('install and uninstall preserve foreign handlers sharing an Offcut group', () => {
+  const offcut = offcutGroup('PreToolUse', WRITE_MATCHER);
+  const foreign = foreignGroup('security-guidance').hooks[0];
+  const mixed = {
+    matcher: WRITE_MATCHER,
+    hooks: [foreign, offcut.hooks[0]],
+  };
+  const spec = {
+    PreToolUse: [offcut],
+  };
+
+  const cleaned = mergeHooks({ PreToolUse: [structuredClone(mixed)] }, spec, {
+    uninstall: true,
+    root,
+  });
+  assert.equal(cleaned.PreToolUse.length, 1);
+  assert.deepEqual(cleaned.PreToolUse[0].hooks, [foreign]);
+
+  const reinstalled = mergeHooks({ PreToolUse: [structuredClone(mixed)] }, spec, {
+    root,
+  });
+  assert.equal(reinstalled.PreToolUse.length, 2);
+  assert.deepEqual(reinstalled.PreToolUse[0].hooks, [foreign]);
+  assert.equal(isOurs(reinstalled.PreToolUse[1], root), true);
+});
+
 test('SessionEnd keeps fired-* so resume suppression can persist', async () => {
   const { handleSessionEnd } = await import('../hooks/session-end.js');
   const { markFiredSignal, paths: statePaths } = await import('../hooks/state.js');

@@ -14,7 +14,7 @@
 //   ${CLAUDE_PLUGIN_ROOT} is absent from settings/hooks-dir installs on all
 //   three hosts. Grok silently ignores an `args` array. This installer writes
 //   absolute paths as a single `command` string — the form that worked on
-//   Claude, Codex, and Grok. Hook scripts are not modified.
+//   Claude, Codex, Cursor, and Grok. Hook scripts are not modified.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,11 +59,19 @@ function pascalGroup(event, matcher) {
     hooks: [
       {
         type: 'command',
-        command: hookCommand(script),
+        command: `${hookCommand(script)} ${TAG}`,
         timeout: 5,
         statusMessage: TAG,
       },
     ],
+  };
+}
+
+function cursorHandler(event, matcher) {
+  return {
+    command: `${hookCommand(absScript(SCRIPTS[event]))} ${TAG}`,
+    ...(matcher ? { matcher } : {}),
+    timeout: 5,
   };
 }
 
@@ -76,6 +84,21 @@ const PASCAL = {
   // (measured Phase 9: PreToolUse silent, no fired-* for apply_patch session).
   PreToolUse: [pascalGroup('PreToolUse', 'Write|Edit|apply_patch')],
   PostToolUse: [pascalGroup('PostToolUse', 'Write|Edit|apply_patch')],
+};
+
+// Cursor's native config is versioned, camelCase, and has flat handlers.
+// Its Write tool covers whole-file and patch edits on the measured wire.
+const CURSOR = {
+  sessionStart: [cursorHandler('SessionStart')],
+  sessionEnd: [cursorHandler('SessionEnd')],
+  beforeSubmitPrompt: [cursorHandler('UserPromptSubmit')],
+  // Cursor 3.17.19 accepts subagentStart additional_context but does not pass
+  // it to the child. Its verified delivery seam is a Subagent input rewrite.
+  preToolUse: [
+    cursorHandler('PreToolUse', 'Write'),
+    cursorHandler('SubagentStart', 'Subagent'),
+  ],
+  postToolUse: [cursorHandler('PostToolUse', 'Write')],
 };
 
 /** True when a hook group was written by this installer (tag or our script path). */
@@ -111,11 +134,25 @@ export function mergeHooks(target, spec, opts = {}) {
   const remove = Boolean(opts.uninstall);
   const root = opts.root || ROOT;
   const ours = (o) => isOurs(o, root);
-  for (const [event, groups] of Object.entries(spec)) {
-    const kept = (target[event] || []).filter((g) => !ours(g));
-    const merged = remove ? kept : [...kept, ...groups];
-    if (merged.length) target[event] = merged;
+  // Remove the prior Offcut shape from every event first. This also migrates
+  // hooks that moved between lifecycle seams in a newer release. PascalCase
+  // groups can contain handlers from multiple owners, so filter their nested
+  // hooks instead of deleting a whole group when only one handler is ours.
+  for (const [event, groups] of Object.entries(target)) {
+    const kept = groups.flatMap((group) => {
+      if (!Array.isArray(group?.hooks)) return ours(group) ? [] : [group];
+      const hooks = group.hooks.filter((handler) => !ours(handler));
+      if (!hooks.length) return [];
+      if (hooks.length === group.hooks.length) return [group];
+      return [{ ...group, hooks }];
+    });
+    if (kept.length) target[event] = kept;
     else delete target[event];
+  }
+  if (!remove) {
+    for (const [event, groups] of Object.entries(spec)) {
+      target[event] = [...(target[event] || []), ...groups];
+    }
   }
   return target;
 }
@@ -165,6 +202,21 @@ function main() {
       return s;
     },
     path.join(HOME, '.codex'),
+  );
+
+  apply(
+    'cursor',
+    path.join(HOME, '.cursor', 'hooks.json'),
+    (cur) => {
+      const s = cur || { version: 1 };
+      s.version ??= 1;
+      const hooks = mergeHooks(s.hooks || {}, CURSOR, { uninstall });
+      if (Object.keys(hooks).length) s.hooks = hooks;
+      else delete s.hooks;
+      if (uninstall && Object.keys(s).every((key) => key === 'version')) return null;
+      return s;
+    },
+    path.join(HOME, '.cursor'),
   );
 
   apply(

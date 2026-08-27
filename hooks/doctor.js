@@ -4,11 +4,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { inspectActive, inspectServed, paths, DEFAULT_MODE } from './state.js';
 import { loadRuleset } from './rules.js';
-import { pluginRoot, HOST_FACTS, installTargets } from './host.js';
+import {
+  pluginRoot,
+  HOST_FACTS,
+  installTargets,
+  managedInstallTargets,
+  resolveInstalledScript,
+} from './host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -71,7 +76,8 @@ function scriptPathsFromConfig(config) {
   for (const groups of Object.values(hooks)) {
     if (!Array.isArray(groups)) continue;
     for (const group of groups) {
-      for (const h of group?.hooks || []) {
+      const handlers = Array.isArray(group?.hooks) ? group.hooks : [group];
+      for (const h of handlers) {
         const cmd = String(h?.command || '');
         if (!OFFCUT_SCRIPT_RE.test(cmd) && !cmd.includes('offcut-hooks')) continue;
         const m = cmd.match(/node\s+"([^"]+)"/i) || cmd.match(/node\s+(\S+)/i);
@@ -83,7 +89,7 @@ function scriptPathsFromConfig(config) {
 }
 
 function detectInstalledHosts() {
-  /** @type {{ host: string, file: string, config: object | null }[]} */
+  /** @type {{ host: string, file: string, config: object | null, managed?: boolean, root?: string }[]} */
   const out = [];
   for (const t of installTargets()) {
     if (!fs.existsSync(t.requiredDir)) continue;
@@ -96,6 +102,9 @@ function detectInstalledHosts() {
       blob.includes('hooks\\activate.js');
     if (!ours) continue;
     out.push({ host: t.host, file: t.file, config });
+  }
+  for (const managed of managedInstallTargets()) {
+    if (scriptPathsFromConfig(managed.config).length) out.push(managed);
   }
   return out;
 }
@@ -190,6 +199,7 @@ export function runDoctor(opts = {}) {
   }
 
   // 4. detected host(s) and tier
+  const served = inspectServed();
   const installed = detectInstalledHosts();
   if (!installed.length) {
     record('fail', 'host', 'no Offcut hooks found in known harness configs');
@@ -228,9 +238,8 @@ export function runDoctor(opts = {}) {
   // offcut: a bench OFFCUT_RULESET_PATH override still records the plugin root,
   // so this line reads OK while the override supplies the text. Record the
   // served source alongside the root if that override ever ships to users.
-  const served = inspectServed();
-  if (active.state === 'ok' && active.mode === 'off') {
-    record('ok', 'ruleset served', 'mode off — no ruleset is being served');
+  if (served.state === 'ok' && served.emitted === false) {
+    record('ok', 'ruleset served', 'mode was off at SessionStart — no ruleset was served');
   } else if (served.state === 'missing') {
     // No record splits into two very different states. If this copy's hook is
     // newer than the last SessionStart, nothing has run it yet and nothing
@@ -283,7 +292,8 @@ export function runDoctor(opts = {}) {
   let checked = 0;
   for (const inst of installed) {
     const refs = scriptPathsFromConfig(inst.config);
-    for (const abs of refs) {
+    for (let abs of refs) {
+      abs = resolveInstalledScript(inst, abs);
       if (abs.includes('${')) continue;
       checked += 1;
       if (!fs.existsSync(abs)) missing.push(abs);

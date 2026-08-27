@@ -223,6 +223,9 @@ test('contract: versions match across manifests and skill metadata', () => {
   const claudePlugin = JSON.parse(
     fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'),
   );
+  const cursorPlugin = JSON.parse(
+    fs.readFileSync(path.join(root, '.cursor-plugin', 'plugin.json'), 'utf8'),
+  );
   const market = JSON.parse(
     fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8'),
   );
@@ -231,6 +234,7 @@ test('contract: versions match across manifests and skill metadata', () => {
   assert.ok(ver);
   assert.equal(plugin.version, ver[1]);
   assert.equal(claudePlugin.version, ver[1]);
+  assert.equal(cursorPlugin.version, ver[1]);
   assert.equal(market.plugins[0].version, ver[1]);
 });
 

@@ -51,6 +51,20 @@ node ~/.offcut-src/tools/install.mjs
 Codex headless runs need trusted hooks, or write hooks stay silent — grant
 trust, or pass `--dangerously-bypass-hook-trust`.
 
+### Cursor
+
+```bash
+git clone https://github.com/xyzbk/offcut ~/.cursor/plugins/local/offcut
+```
+
+That is Cursor's [documented local-plugin path](https://cursor.com/docs/plugins)
+and loads the hooks and all four skills from `.cursor-plugin/plugin.json`. Open
+a new chat after installing.
+Alternatively, `node tools/install.mjs` merges only the native hooks into
+`~/.cursor/hooks.json`; existing handlers are preserved. Verified end to end on
+Cursor 3.17.19 (Windows, 2026-08-27), including a delivered write challenge,
+mode switches, subagent inheritance, and uninstall/reinstall.
+
 ### Grok Build
 
 Grok runs hooks but discards their output by design — a hook there can block a
@@ -65,9 +79,9 @@ ln -s ~/.offcut-src/skills/offcut-audit  .grok/skills/offcut-audit
 
 ### Anything else
 
-Copy `AGENTS.md` to your repo root. Most agents read it as project rules —
-verified on Cursor (2026-08-27) with no Offcut install present at all. The
-ruleset arrives; the mode and the write-time challenge still need hooks.
+Copy `AGENTS.md` to your repo root. Most agents read it as project rules. This
+hook-less fallback is verified on Cursor and Grok Build; the ruleset arrives,
+but modes and write-time challenges still need native hooks.
 
 ### Uninstall
 
@@ -225,7 +239,7 @@ install.
 | Codex | full | yes |
 | Grok Build | `AGENTS.md` only | yes |
 | ChatGPT, other skill hosts | no | yes |
-| Cursor | **untested** | untested |
+| Cursor 3.17.19 | full | yes |
 
 ### No comparison to other tools
 
@@ -249,17 +263,19 @@ SessionStart      write mode file, deliver the ruleset
 UserPromptSubmit  re-ask the question (~60 tokens)
 PreToolUse        run checks on the pending write, challenge via context
 PostToolUse       name what got added
-SubagentStart     subagents inherit the mode
+SubagentStart     subagents inherit the mode (Claude/Codex)
+PreToolUse        rewrite only the Subagent task to inherit it (Cursor)
 ```
 
-One config installs on Claude Code, Codex and Grok. Host differences — two
-payload dialects, four tool-name spellings, three subagent field conventions —
-are normalized in `hooks/host.js`. No hook script contains a host name, and CI
-enforces that.
+Claude Code, Codex and Grok share one PascalCase adapter; Cursor uses its native
+flat, camelCase hook config. Payloads, output fields, tool names and subagent
+delivery are normalized in `hooks/host.js`. No hook script contains a host name,
+and CI enforces that.
 
 Offcut **never denies a tool call.** It knows the shape of a write, not whether
-the requirement is right. Verified structurally: no code path emits `allow` or
-`deny`, so it cannot override another plugin's decision.
+the requirement is right. Cursor subagent inheritance returns `allow` only
+while appending the ruleset to a `Subagent` task; source-code write input is
+never rewritten.
 
 Every hook exits 0 on malformed input, empty stdin, a BOM, and stdin that never
 closes. A hook that hangs freezes a session, so that case is tested explicitly.
@@ -283,11 +299,13 @@ Two copies can be installed at once: a checkout you edit, and a host-managed
 plugin copy that registers itself through its own bundled manifest. The host's
 config never names the second one, so doctor asks the hook that ran which copy
 it read, and warns when that is not the one you are editing.
+Cursor may load native and Claude-compatible copies together; correlated hook
+deliveries are claimed once so reminders and mode counters are not duplicated.
 
 ## Develop
 
 ```bash
-node --test tests/*.test.js   # 177 tests
+node --test tests/*.test.js   # full suite
 node bench/fp.mjs             # labeled corpus
 node bench/realcode.mjs       # real-code corpus
 node scripts/scan.mjs hooks   # dogfood

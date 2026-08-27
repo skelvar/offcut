@@ -8,11 +8,12 @@ description: >
   explanation, rename-only edits, or formatting.
 license: MIT
 compatibility: >
-  Requires Node.js on the PATH for lifecycle hooks (Claude Code, Codex, Grok
-  Build). Works as an on-demand Agent Skill without hooks. Cursor and other
-  hosts are untested.
+  Requires Node.js on the PATH for lifecycle hooks (Claude Code, Codex, Cursor,
+  Grok Build). Full mode delivery is verified on Claude Code, Codex, and Cursor.
+  Grok uses AGENTS.md because its hook output is discarded. Works as an
+  on-demand Agent Skill without hooks.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: xyzbk
 ---
 

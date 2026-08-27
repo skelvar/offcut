@@ -43,6 +43,11 @@ function firedPath(sessionId) {
   return path.join(stateDir(), key ? `fired-${key}` : 'fired');
 }
 
+function claimPath(key) {
+  const safe = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 160);
+  return path.join(stateDir(), safe ? `claim-${safe}` : 'claim');
+}
+
 function sessionKey(sessionId) {
   return String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 }
@@ -84,7 +89,8 @@ export function inspectActive() {
 }
 
 /**
- * Record which checkout served the ruleset at SessionStart.
+ * Record which checkout ran at SessionStart. In active modes this is also the
+ * copy that served the ruleset; in off mode it remains an installation witness.
  *
  * Two copies of Offcut can be installed at once — a working checkout whose hook
  * paths live in the host's settings file, and a host-managed plugin copy that
@@ -95,14 +101,21 @@ export function inspectActive() {
  *
  * Best-effort, like every write here: losing this costs a diagnostic, not a turn.
  * @param {string} root
+ * @param {string} [host]
+ * @param {boolean} [emitted]
  * @returns {boolean}
  */
-export function writeServedRoot(root) {
+export function writeServedRoot(root, host, emitted = true) {
   const r = String(root ?? '').trim();
   if (!r) return false;
   try {
     ensureDir();
-    fs.writeFileSync(servedPath(), r + '\n', 'utf8');
+    const payload = {
+      root: r,
+      ...(String(host ?? '').trim() ? { host: String(host).trim() } : {}),
+      ...(emitted === false ? { emitted: false } : {}),
+    };
+    fs.writeFileSync(servedPath(), JSON.stringify(payload) + '\n', 'utf8');
     return true;
   } catch {
     return false;
@@ -110,17 +123,77 @@ export function writeServedRoot(root) {
 }
 
 /**
- * @returns {{ state: 'missing' | 'ok', root?: string, mtime?: Date }}
+ * @returns {{ state: 'missing' | 'ok', root?: string, host?: string, emitted?: boolean, mtime?: Date }}
  */
 export function inspectServed() {
   try {
     if (!fs.existsSync(servedPath())) return { state: 'missing' };
     const st = fs.statSync(servedPath());
-    const root = fs.readFileSync(servedPath(), 'utf8').replace(/^\uFEFF/, '').trim();
+    const raw = fs.readFileSync(servedPath(), 'utf8').replace(/^\uFEFF/, '').trim();
+    let root = raw;
+    let host;
+    let emitted;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        root = String(parsed.root ?? '').trim();
+        host = String(parsed.host ?? '').trim() || undefined;
+        if (typeof parsed.emitted === 'boolean') emitted = parsed.emitted;
+      }
+    } catch {
+      // v0.1 stored the root as one plain-text line
+    }
     if (!root) return { state: 'missing' };
-    return { state: 'ok', root, mtime: st.mtime };
+    return {
+      state: 'ok',
+      root,
+      ...(host ? { host } : {}),
+      ...(emitted !== undefined ? { emitted } : {}),
+      mtime: st.mtime,
+    };
   } catch {
     return { state: 'missing' };
+  }
+}
+
+/**
+ * Claim one host delivery atomically.
+ *
+ * A host can load the same plugin from native and compatibility configs at
+ * once. Both processes receive the same correlation ids and race, so exclusive
+ * creation lets exactly one perform state changes and emit context.
+ *
+ * offcut: one tiny claim file per correlated hook event; replace this with a
+ * locked per-session ledger if long sessions make state-directory growth material.
+ *
+ * Claims are immutable. The host's correlation id defines a delivery; replacing
+ * stale files creates an ABA race where two processes can both win. Distinct
+ * events must therefore carry distinct correlation ids. SessionEnd pruning
+ * removes claims after the normal stale-state window.
+ *
+ * @param {string | null | undefined} key
+ * @returns {boolean} true for the winner, or on I/O failure (fail open)
+ */
+export function claimHookDelivery(key) {
+  if (!key) return true;
+  const file = claimPath(key);
+  ensureDir();
+
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'wx');
+    return true;
+  } catch (error) {
+    if (error?.code === 'EEXIST') return false;
+    return true;
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // best-effort
+      }
+    }
   }
 }
 
@@ -425,7 +498,7 @@ export function resetSuppression(sessionId) {
 }
 
 /**
- * Remove turn-* / fired-* files older than maxAgeMs (orphans from crashed sessions).
+ * Remove turn-* / fired-* / claim-* files older than maxAgeMs.
  * @param {{ maxAgeMs?: number, now?: number }} [opts]
  * @returns {number} files removed
  */
@@ -437,7 +510,7 @@ export function pruneStaleFiles(opts = {}) {
     const dir = stateDir();
     if (!fs.existsSync(dir)) return 0;
     for (const name of fs.readdirSync(dir)) {
-      if (!/^(turn|fired)(-|$)/.test(name)) continue;
+      if (!/^(turn|fired|claim)(-|$)/.test(name)) continue;
       const p = path.join(dir, name);
       try {
         const st = fs.statSync(p);

@@ -31,8 +31,10 @@ jobs:
             const fs = require("fs");
             const ver = JSON.parse(fs.readFileSync("plugin.json","utf8")).version;
             const cp = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8"));
+            const cursor = JSON.parse(fs.readFileSync(".cursor-plugin/plugin.json","utf8"));
             const m = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8"));
             if (cp.version !== ver) throw new Error(".claude-plugin/plugin.json mismatch");
+            if (cursor.version !== ver) throw new Error(".cursor-plugin/plugin.json mismatch");
             if (m.plugins[0].version !== ver) throw new Error("marketplace mismatch");
             // Every directory under skills/ is auto-discovered and installed, so
             // checking only skills/offcut let the command skills drift to 0.3.0.

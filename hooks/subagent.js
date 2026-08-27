@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// SubagentStart — inherit the mode. Match everything; never matcher-filter on agent type.
+// Subagent inheritance. A host whose start event cannot deliver context routes
+// this script through preToolUse so the adapter can rewrite the child task.
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runHook, emit } from './host.js';
+import { runHook, emit, gate } from './host.js';
 import { readMode } from './state.js';
 import { sessionContext } from './rules.js';
 
@@ -11,8 +12,30 @@ export async function handleSubagent(norm) {
   if (!norm) return null;
   const mode = readMode();
   if (mode === 'off') return null;
+  const context = sessionContext(mode);
+
+  if (norm.event === 'pre_tool_use' && norm.toolName === 'Subagent') {
+    const input = norm.toolInput;
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      typeof input.prompt !== 'string'
+    ) {
+      return null;
+    }
+    return gate(norm.host, {
+      kind: 'rewrite',
+      input: {
+        ...input,
+        prompt: `${input.prompt}\n\n${context}`,
+      },
+    });
+  }
+
+  if (norm.event !== 'subagent_start') return null;
   // Requires hookSpecificOutput JSON; raw stdout is dropped on this event.
-  return emit(norm.host, 'subagent_start', sessionContext(mode));
+  return emit(norm.host, 'subagent_start', context);
 }
 
 const isMain =

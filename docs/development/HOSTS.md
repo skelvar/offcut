@@ -10,12 +10,13 @@ observed in a real session. Installing successfully is not verification.
 | Field | Value |
 |---|---|
 | Date started | 2026-08-24 |
-| Date closed | 2026-08-24 (follow-up same day) |
+| Date closed | 2026-08-27 (Cursor v0.2 follow-up) |
 | OS | Windows |
 | Node | v24.16.0 |
 | Claude Code | 2.1.240 |
 | Codex | 0.149.1 |
 | Grok Build | 1.0.5 (5115b46bc9) [stable] |
+| Cursor | 3.17.19 |
 | Branch | `phase-3-real` |
 | Repo | `D:\rightseam` |
 
@@ -505,10 +506,11 @@ check warns.
 Refreshing the stale copy took an uninstall and reinstall. A version-gated
 update will not do it.
 
-## The AGENTS.md route delivers on a host with no adapter (Cursor, 2026-08-27)
+## Before the native adapter: AGENTS.md delivered on Cursor (2026-08-27)
 
-Cursor has no Offcut adapter: `installTargets()` has no entry for it, there is
-no `~/.cursor/hooks.json` and no repo-level `.cursor/`, so no Offcut hook ran.
+At the time of this first measurement, Cursor had no Offcut adapter:
+`installTargets()` had no entry for it, there was no `~/.cursor/hooks.json` and
+no repo-level `.cursor/`, so no Offcut hook ran.
 
 The repo-root `AGENTS.md` was still delivered to the model verbatim as an
 always-applied project rule, attributed to `<repo>/AGENTS.md`. That is the
@@ -518,7 +520,68 @@ Grok Build. Offcut's four skills also appeared in the host's available-skill
 list, resolved out of the Claude Code plugin cache; that follows from the cache
 existing on this machine and is not a Cursor install path.
 
-What this does **not** establish: the mode, the per-turn cadence and the
-write-time challenge all require hooks, and no hook ran. Cursor's row in the
-README stays untested and the adapter stays deferred under §5.4. The single
-claim it supports is that the hook-less fallback is not Grok-specific.
+This established only that the hook-less fallback is not Grok-specific. The
+native mode gap discovered here was measured and closed in the next section.
+
+## Cursor native support — closed (3.17.19, 2026-08-27)
+
+### Wire contract
+
+- Config: `~/.cursor/hooks.json`, `version: 1`, camelCase event names and flat
+  handlers (`command`, optional `matcher`, `timeout`).
+- Payload: snake_case fields with camelCase event values; `cursor_version`
+  identifies the host, `workspace_roots[0]` supplies the workspace,
+  `tool_output` is the post-tool result, and correlation ids are
+  `generation_id`, `tool_use_id` and `subagent_id`/`tool_call_id`.
+- Context output: flat `{ "additional_context": "..." }`. Claude's nested
+  `hookSpecificOutput` shape is not Cursor's native contract.
+- Write tools arrive as `tool_name: "Write"` for both whole-file writes and
+  editor patches in this Cursor integration.
+
+Sanitized copies of every event shape are fixtures in `tests/cursor.test.js`.
+
+### Live results
+
+| Check | Result |
+|---|---|
+| Install/reload | **pass** — six native handlers loaded; later reduced to five lifecycle keys with two `preToolUse` handlers |
+| Ruleset/reminder output | **pass** — flat `additional_context` is accepted and delivered |
+| Write challenge | **pass** — a real `Write` adding a dependency produced `Offcut: new dependency…` in model context |
+| Post-write | **pass** — native `postToolUse` ran on the same write and confirmed the pending signal |
+| Modes | **pass** — Cursor payloads switched strict, off, lite and full; real subagents received strict/lite and received no mode banner while off |
+| Subagent inheritance | **pass** — see the isolated finding below |
+| Duplicate sources | **pass** — native and Claude-compatible copies emitted one reminder and advanced lite cadence once |
+| Upgrade | **pass** — reinstall removes the obsolete Offcut `subagentStart` entry before adding the verified replacement |
+| Uninstall/reinstall | **pass** — `~/.cursor/hooks.json` was removed when it held only Offcut, then recreated; sandbox tests preserve foreign groups and handlers sharing a group |
+| Doctor | **pass** — reports Cursor tier 1, validates flat absolute handlers and detects current local-plugin manifests without trusting stale session state |
+
+### `subagentStart` was a false positive
+
+Cursor logged Offcut's `subagentStart` response as valid and said it merged one
+response, but an isolated child reported that the literal `OFFCUT MODE: full`
+banner was absent. Registration and parser success were therefore not delivery.
+
+A `preToolUse` hook matching Cursor's `Subagent` tool returned `updated_input`,
+preserving every field and appending a unique token to `tool_input.prompt`. The
+child reported that token. The production hook then repeated the test with the
+real ruleset and the child reported `CURSOR_SUBAGENT_OFFCUT_OK`.
+
+The first probe also returned `permission: "allow"`. Release review caught that
+an allow from a higher-priority Cursor source could override another hook's
+deny. The response was reduced to `updated_input` only and re-run through a real
+Cursor subagent; the child reported `PERMISSIONLESS_REWRITE_OK`. The shipping
+hook therefore mutates only the task input and casts no permission vote.
+
+The shipping adapter uses this measured rewrite and no longer registers the
+ineffective native `subagentStart` handler. Source-code write input is never
+rewritten.
+
+### Coexistence finding
+
+Cursor can load Offcut simultaneously from native user hooks, Claude-compatible
+user hooks and a Claude plugin cache. It removes exact duplicate commands, but
+different installation roots remain distinct. Cursor correlation ids now feed
+an atomic, immutable claim: concurrent copies race and one emits. Common Cursor
+input includes `generation_id`, including `sessionStart`, so a resumed
+conversation gets a new delivery key without deleting a stale claim. This
+avoids an ABA race where two processes could both win an expired-claim takeover.

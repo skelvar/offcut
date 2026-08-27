@@ -8,7 +8,7 @@ description: >
 license: MIT
 compatibility: Text only. No Node.js required. Touches no mode state.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: xyzbk
 ---
 
@@ -59,7 +59,9 @@ asking for a scan.
 
 ## Hosts (short)
 
-- Claude Code / Codex: hooks deliver the persistent mode (see `docs/development/HOSTS.md`).
+- Claude Code / Codex / Cursor: hooks deliver the persistent mode (see
+  `docs/development/HOSTS.md`). Cursor degrades strict dependency approval to
+  context rather than blocking.
 - Grok Build: hooks run but discard the output Offcut needs — use `AGENTS.md`
   for the ruleset. Command skills may still work when discovered (see README /
   `docs/development/HOSTS.md`).

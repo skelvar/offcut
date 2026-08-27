@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"./hooks/activate.js\"",
+        "timeout": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node \"./hooks/session-end.js\"",
+        "timeout": 5
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"./hooks/prompt.js\"",
+        "timeout": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node \"./hooks/pre-write.js\"",
+        "matcher": "Write",
+        "timeout": 5
+      },
+      {
+        "command": "node \"./hooks/subagent.js\"",
+        "matcher": "Subagent",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node \"./hooks/post-write.js\"",
+        "matcher": "Write",
+        "timeout": 5
+      }
+    ]
+  }
+}

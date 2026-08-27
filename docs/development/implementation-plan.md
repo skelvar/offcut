@@ -3,8 +3,8 @@
 **Project name:** Offcut
 **Skill identifier:** `offcut`
 **Tagline:** *Ask what the cheapest thing that works is. Every turn. Before the code lands.*
-**Plan version:** 3.0 — revised August 24, 2026
-**Status:** Implementation-ready
+**Plan version:** 3.1 — Cursor closure, August 27, 2026
+**Status:** v0.2 release-ready
 
 ---
 
@@ -314,6 +314,14 @@ over-builds produces the same debt through a different door.
 Requires the `hookSpecificOutput` JSON form; raw stdout is dropped on this
 event.
 
+**Cursor exception (measured 2026-08-27):** Cursor 3.17.19 accepts and logs
+`additional_context` from `subagentStart`, but the child does not receive it.
+The native adapter instead matches `preToolUse` on `Subagent` and returns
+`updated_input` without a permission vote, preserving every field and appending
+the ruleset to the task prompt. A unique-token probe, a production-path
+`OFFCUT MODE` probe and a permissionless coexistence probe all reached the
+child.
+
 ### 4.6 Failure contract — every hook, without exception
 
 A hook that breaks the agent is worse than no hook. Every Offcut hook:
@@ -425,10 +433,12 @@ transcript on that host. Offcut's hooks emit context through the documented
 JSON field and write nothing to stdout directly — which the probe follows, and
 which every shipped hook must too.
 
-#### Still unmeasured
+#### Later measured
 
-Cursor, entirely (§5.4). Every claim about it in this plan is documentation-based
-and carries the same risk that the Grok payload finding just demonstrated.
+Cursor was entirely unmeasured in the original v3.0 pass. That gap is closed by
+the 2026-08-27 probe and live tests recorded in §5.4 and
+[`HOSTS.md`](HOSTS.md); the wire differed from both the original assumption and
+the other three hosts.
 
 ### 5.2 Tiers
 
@@ -438,8 +448,9 @@ plainly rather than implying every host gets the full product.
 **Tier 1 — Full.** Lifecycle hooks available **and delivered to the model**.
 Persistent mode, per-turn reminder, write-time challenge, subagent inheritance,
 statusline.
-→ **v0.1: Claude Code, Codex.** Both verified 2026-08-24 with a challenge
-observed in a real transcript.
+→ **Claude Code and Codex in v0.1; Cursor in v0.2.** Cursor 3.17.19 was
+verified on 2026-08-27 with a challenge observed in this real session and
+subagent inheritance isolated through its native rewrite seam.
 
 **Grok Build is Tier 3, not Tier 1 — corrected in Phase 3.** Its hooks install,
 run, and write state correctly, but it discards hook stdout on `SessionStart`,
@@ -497,26 +508,28 @@ point at the same hook scripts.
 
 ### 5.4 How many hosts to support, and when
 
-**v0.1 ships one hook config, two Tier 1 hosts, plus `AGENTS.md`.**
+**v0.1 shipped one hook config, two Tier 1 hosts, plus `AGENTS.md`.**
 
 One PascalCase config file installs on **Claude Code and Codex**. Grok Build
 accepts the same config and runs it, but discards the output (§5.2), so it is
 served by `AGENTS.md` instead. `AGENTS.md` adds Tier 3 for one generated file —
 and is now the only thing that works on Grok.
 
-**Cursor is deferred, and the measurement is why.** The earlier argument for
-shipping Cursor early was that a seam validated against a single implementation
-proves nothing, and three hosts sharing one schema would not exercise `host.js`.
-Probing killed that argument: Grok Build sends a **different payload dialect**
-from Claude and Codex (§5.1), so `host.js` has two real branches on day one and
-is genuinely tested by the v0.1 set.
+**v0.2 adds Cursor because a maintainer asked for it and tested it.** Cursor's
+native config is versioned, camelCase and flat rather than nested. Its payload
+uses snake_case keys, camelCase event values, `workspace_roots`, `tool_output`
+and `cursor_version`; context output is flat `additional_context`. The installer
+merges this shape into `~/.cursor/hooks.json` without replacing foreign hooks.
 
-Cursor adds a third *config* schema, which is real work, but it no longer
-unblocks anything architectural. It ships when someone asks for it and a
-maintainer can test it.
-
-What deferring Cursor costs, stated plainly: nothing architecturally, one host's
-worth of reach.
+The live run also found two wire-only behaviors that documentation-based support
+would have missed. Cursor can load native and Claude-compatible copies together,
+so Offcut atomically claims each correlated delivery and suppresses duplicates.
+Claims are immutable and keyed by Cursor's event correlation ids, including the
+`generation_id` present on `sessionStart`; expiry-based takeover was rejected
+because it creates an ABA race.
+And `subagentStart` output is parsed but not inherited, so the adapter rewrites
+only the `Subagent` task at `preToolUse`. Both paths have contract tests and
+dated live evidence in [`HOSTS.md`](HOSTS.md).
 
 Beyond that, hosts are demand-driven. **A host is never listed as supported
 without a probe run and a dated manual smoke test.** Untested hosts are listed
@@ -636,6 +649,8 @@ offcut/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── marketplace.json
+├── .cursor-plugin/
+│   └── plugin.json                # native hooks + skills, v0.2
 ├── tests/
 │   ├── hooks.test.js               # behavior
 │   ├── contract.test.js            # per-host output shapes (§5.5)
@@ -695,7 +710,7 @@ instruction text or code is rejected regardless of the source license.
 ```json
 {
   "name": "offcut",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
   "author": { "name": "xyzbk" },
   "hooks": "./hooks/hooks.json"
@@ -710,11 +725,15 @@ children only, which `skills/offcut/SKILL.md` satisfies.
 `.claude-plugin/marketplace.json` uses the self-rooted `"source": "./"` form,
 verified working in production.
 
+`.cursor-plugin/plugin.json` points Cursor at
+`adapters/cursor/hooks.json`; Cursor's plugin adapter uses relative commands,
+while `tools/install.mjs` writes absolute commands for checkout installs.
+
 Hook commands need a Windows variant guarded on Node being present, so a machine
 without Node degrades to no hooks rather than to a broken session.
 
-Versions must match across all three manifests and the skill's
-`metadata.version`. CI enforces it.
+Versions must match across every version-bearing manifest and every shipping
+skill's `metadata.version`. CI enforces it, including the Cursor manifest.
 
 ---
 
@@ -771,8 +790,9 @@ Offcut's hooks must:
 - **install no dependencies** — Node standard library only,
 - **read no files** other than the state file and the ruleset file,
 - **write no files** other than the state file and its own session markers,
-- **modify no source code** — `PreToolUse` may return `additionalContext` or
-  `escalate`, and never `updatedInput`,
+- **modify no source-code tool input** — write hooks return context or an
+  approval request only. Cursor uses `updated_input` solely on the `Subagent`
+  tool to append the inherited ruleset while preserving the original task,
 - **spawn no subprocesses**,
 - **read no secrets or environment beyond** the config-directory variables and
   the platform's own plugin-root variable,
@@ -908,18 +928,17 @@ bounded by what was measured.
 
 ## 14. Deferred
 
+The comparison is the only deferred product work:
+
 | Deferred | Return when |
 |---|---|
-| `references/` files | An eval shows the agent missing a question that more detail fixes |
-| Model-backed `PreToolUse` analysis | Deterministic signals prove insufficient. They do not: 0/95 on labeled negatives, and 2 findings across the 65 independent files in the real-code corpus |
-| `debt` command (harvest `offcut:` markers) | Markers reach meaningful density. Currently zero in-repo — Phase 8 paid off both state-file pruning markers, and a test asserts they stay gone |
-| `gain` command (impact scoreboard) | A benchmark shows a real effect. Phase 5 measured no detectable effect, and its signals were later found to be 30/30 false positives, so there is still nothing to show |
-| Intent detection in `UserPromptSubmit` | Never — skill descriptions already do this |
-| Repository-wide scanning *by the persistent mode* | Never — it is a different product. Shipped as the user-invoked `/offcut-audit` command in Phase 4; the distinction is who initiates it |
-| Cross-host verification beyond the v0.1 set | Discharged, not pending — Codex is probed and verified tier 1 with subagent delivery confirmed (2026-08-25) and Grok Build is measured tier 3, both dated in [`HOSTS.md`](HOSTS.md). Any host beyond those is demand-driven per §5.4 |
-| Cursor support | Someone asks for it and a maintainer can test it (§5.4). Not architectural: Grok's payload dialect already gives `host.js` two real branches, so Cursor adds a third config schema and no new seam. Its hook-less `AGENTS.md` route is verified (2026-08-27, [`HOSTS.md`](HOSTS.md)); the mode, the per-turn cadence and the write-time challenge are what need the adapter |
 | Benchmark against other tools, ponytail included | Offcut has an independent real-code result worth comparing. It does not yet: the corpus yields 65 independent files, so the honest figure is 2 of 65 rather than a rate. Two confounds are already removed (ponytail is scored as the comparison subject, and Offcut's skill descriptions no longer cede the generic phrasing to it), so what remains is sample size. Measuring skill activation between the two is part of this and defers with it — see [`COEXIST.md`](COEXIST.md) §5 |
-| Signed releases, marketplace listing | There are users to protect |
+
+The former rows are closed dispositions, not backlog. Extra reference files and
+model-backed write analysis have no evidence-based need; `debt` and `gain` have
+no data to show; prompt intent detection and automatic repository scans are
+explicit non-goals; Claude, Codex, Grok and Cursor now have measured support
+levels. The v0.2 manifests and release carry the distribution work.
 
 ---
 
@@ -953,6 +972,18 @@ bounded by what was measured.
 
 Not required for v0.1: a second hook host, a published benchmark, or any
 reference file.
+
+### v0.2 Cursor closure
+
+- Native manifest and flat camelCase adapter ship.
+- Installer upgrade and uninstall preserve foreign hooks and remove obsolete
+  Offcut lifecycle entries.
+- Real Cursor 3.17.19 payloads, flat `additional_context`, write challenges,
+  mode changes and duplicate config sources are covered.
+- Subagent inheritance uses the only live-proven seam: `preToolUse` input
+  rewrite on `Subagent`, never source-code input.
+- Cursor is Tier 1 in README, doctor and host facts; the only deferred work is
+  the ponytail comparison.
 
 ---
 
