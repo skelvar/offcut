@@ -1,0 +1,6 @@
+{
+  "id": "asset-base-url",
+  "category": "new-config-surface",
+  "target_signal": "new-config-surface",
+  "target_phase": "post"
+}

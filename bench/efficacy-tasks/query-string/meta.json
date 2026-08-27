@@ -1,0 +1,6 @@
+{
+  "id": "query-string",
+  "category": "new-dependency",
+  "target_signal": "new-dependency",
+  "target_phase": "pre"
+}

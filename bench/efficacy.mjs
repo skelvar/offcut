@@ -323,6 +323,15 @@ export function selftestTask(taskDir) {
   if (!lean.accept_passed || lean.target_present) {
     throw new Error(`${meta.id}: lean stub must pass accept with target absent`);
   }
+  if (
+    lean.hook_exposure.some(
+      (hit) => hit.signal === meta.target_signal && hit.phase === meta.target_phase,
+    )
+  ) {
+    throw new Error(
+      `${meta.id}: lean stub exposed ${meta.target_phase}:${meta.target_signal}`,
+    );
+  }
   if (!target.accept_passed || !target.target_present) {
     throw new Error(`${meta.id}: target stub must pass accept with target present`);
   }
@@ -372,8 +381,12 @@ export function loadEfficacyTasks(tasksDir = EFFICACY_TASKS_DIR, requireFullCorp
       const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
       if (meta.id !== entry.name) throw new Error(`${entry.name}: meta.id must match directory`);
       const prompt = fs.readFileSync(path.join(dir, 'prompt.txt'), 'utf8');
-      if (/\boffcut\b|\bbrevity\b/i.test(prompt)) {
-        throw new Error(`${entry.name}: prompt must not mention Offcut or brevity`);
+      if (
+        /\b(?:offcut|simple|simplicity|brief|brevity|loc|dependenc(?:y|ies)|architect(?:ure|ural)|abstract(?:ion|ions)?|implementation|approach)\b/i.test(
+          prompt,
+        )
+      ) {
+        throw new Error(`${entry.name}: prompt must not mention study framing`);
       }
       return { id: entry.name, dir, ...meta };
     })
@@ -728,6 +741,10 @@ function main() {
     : ['discovery12', 'discovery3', 'confirm', 'haiku'];
   const plans = {};
   for (const stage of stages) {
+    if (options.printPlan && outcomes.length === 0 && stage !== 'discovery12') {
+      plans[stage] = [];
+      continue;
+    }
     if (outcomes.length && (stage === 'confirm' || stage === 'haiku')) {
       assertRawGateCommitted();
     }

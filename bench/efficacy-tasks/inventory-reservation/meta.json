@@ -1,0 +1,6 @@
+{
+  "id": "inventory-reservation",
+  "category": "speculative-abstraction",
+  "target_signal": "speculative-abstraction",
+  "target_phase": "pre"
+}

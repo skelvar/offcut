@@ -1,0 +1,6 @@
+{
+  "id": "release-notes",
+  "category": "large-first-write",
+  "target_signal": "large-first-write",
+  "target_phase": "pre"
+}

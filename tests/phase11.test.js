@@ -8,6 +8,34 @@ import { fileURLToPath } from 'node:url';
 
 import { appendManifest } from '../bench/lib.mjs';
 
+const EFFICACY_TASKS = Object.freeze({
+  'asset-base-url': 'new-config-surface',
+  'audit-redactor': 'speculative-abstraction',
+  'csv-summary': 'new-dependency',
+  'duration-label': 'new-dependency',
+  'feature-gate': 'speculative-abstraction',
+  'inventory-reservation': 'speculative-abstraction',
+  'order-label': 'unused-default-param',
+  'query-string': 'new-dependency',
+  'release-notes': 'large-first-write',
+  'route-matcher': 'speculative-abstraction',
+  'safe-filename': 'new-dependency',
+  'webhook-signature': 'speculative-abstraction',
+});
+
+const EFFICACY_FILES = [
+  'prompt.txt',
+  'meta.json',
+  'repo',
+  'accept.mjs',
+  'measure.mjs',
+  path.join('stubs', 'lean.mjs'),
+  path.join('stubs', 'target.mjs'),
+];
+
+const FORBIDDEN_PROMPT_WORDS =
+  /\b(?:offcut|simple|simplicity|brief|brevity|loc|dependenc(?:y|ies)|architect(?:ure|ural)|abstract(?:ion|ions)?|implementation|approach)\b/i;
+
 test('appendManifest writes to a custom manifest without touching the default', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-manifest-'));
   const manifestPath = path.join(dir, 'efficacy-manifest.jsonl');
@@ -597,8 +625,142 @@ test('selftest runs lean and target stubs through accept, blind measure, and hoo
     assert.equal(result.lean.hook_exposure.some((hit) => hit.signal === 'new-dependency'), false);
     assert.deepEqual(result.lean.measure_seen, ['accept.json', 'diff.patch', 'work']);
     assert.deepEqual(result.target.measure_seen, ['accept.json', 'diff.patch', 'work']);
+    fs.writeFileSync(
+      path.join(stubsDir, 'lean.mjs'),
+      "import fs from 'node:fs';import path from 'node:path';const d=process.argv[2];const content='export const value = 1;\\n';fs.writeFileSync(path.join(d,'solution.js'),content);const p=path.join(d,'package.json');const old_string='\"dependencies\":{}';const new_string='\"dependencies\":{\"right-pad\":\"^1.0.0\"}';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(old_string,new_string));console.log(JSON.stringify({operations:[{tool_name:'Write',tool_input:{file_path:'solution.js',content}},{tool_name:'Edit',tool_input:{file_path:'package.json',old_string,new_string}}]}));\n",
+    );
+    assert.throws(
+      () => selftestTask(taskDir),
+      /lean stub exposed pre:new-dependency/i,
+    );
   } finally {
     fs.rmSync(taskDir, { recursive: true, force: true });
+  }
+});
+
+test('efficacy corpus freezes exact ticket IDs, categories, prompts, and files', async () => {
+  const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
+  const root = fileURLToPath(new URL('../bench/efficacy-tasks/', import.meta.url));
+  const tasks = loadEfficacyTasks(root);
+  assert.deepEqual(
+    Object.fromEntries(tasks.map((task) => [task.id, task.category])),
+    EFFICACY_TASKS,
+  );
+  for (const task of tasks) {
+    for (const relative of EFFICACY_FILES) {
+      assert.equal(fs.existsSync(path.join(task.dir, relative)), true, `${task.id}: missing ${relative}`);
+    }
+    assert.equal(
+      fs.existsSync(path.join(task.dir, 'repo', 'node_modules')),
+      false,
+      `${task.id}: fixture must not contain node_modules`,
+    );
+    const initialManifest = JSON.parse(
+      fs.readFileSync(path.join(task.dir, 'repo', 'package.json'), 'utf8'),
+    );
+    assert.equal(initialManifest.dependencies, undefined, `${task.id}: initial runtime packages`);
+    const prompt = fs.readFileSync(path.join(task.dir, 'prompt.txt'), 'utf8');
+    assert.doesNotMatch(prompt, FORBIDDEN_PROMPT_WORDS, `${task.id}: prompt leaks study framing`);
+    assert.equal(prompt.trim().length > 80, true, `${task.id}: prompt is not a realistic ticket`);
+    const measureSource = fs.readFileSync(path.join(task.dir, 'measure.mjs'), 'utf8');
+    assert.doesNotMatch(
+      measureSource,
+      /\b(?:arm|transcript|state-after|signals\.json|target_signal)\b/i,
+      `${task.id}: measure reads prohibited study context`,
+    );
+    assert.match(
+      measureSource,
+      /readMeasureInput|diff\.patch/,
+      `${task.id}: measure must inspect the blind diff`,
+    );
+    assert.deepEqual(
+      {
+        id: task.id,
+        category: task.category,
+        target_signal: task.target_signal,
+        target_phase: task.target_phase,
+      },
+      {
+        id: task.id,
+        category: EFFICACY_TASKS[task.id],
+        target_signal: EFFICACY_TASKS[task.id],
+        target_phase: ['new-config-surface', 'unused-default-param'].includes(task.category)
+          ? 'post'
+          : 'pre',
+      },
+    );
+  }
+});
+
+test('efficacy loader rejects prohibited prompt framing', async () => {
+  const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-prompt-'));
+  const taskDir = path.join(root, 'bad-ticket');
+  try {
+    for (const relative of EFFICACY_FILES) {
+      const target = path.join(taskDir, relative);
+      if (relative === 'repo') fs.mkdirSync(target, { recursive: true });
+      else {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, '');
+      }
+    }
+    fs.writeFileSync(
+      path.join(taskDir, 'meta.json'),
+      JSON.stringify({ id: 'bad-ticket', category: 'new-dependency' }),
+    );
+    fs.writeFileSync(
+      path.join(taskDir, 'prompt.txt'),
+      'Keep the implementation simple while updating the ticket.\n',
+    );
+    assert.throws(() => loadEfficacyTasks(root, false), /prompt must not mention/i);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('all efficacy fixtures reject the untouched repo and selftest both valid arms blindly', async () => {
+  const { loadEfficacyTasks, selftestTask } = await import('../bench/efficacy.mjs');
+  const tasks = loadEfficacyTasks();
+  for (const task of tasks) {
+    const untouched = spawnSync(process.execPath, [path.join(task.dir, 'accept.mjs'), path.join(task.dir, 'repo')], {
+      cwd: task.dir,
+      encoding: 'utf8',
+    });
+    assert.notEqual(untouched.status, 0, `${task.id}: untouched fixture must fail acceptance`);
+    const missingAcceptPath = spawnSync(process.execPath, [path.join(task.dir, 'accept.mjs')], {
+      cwd: task.dir,
+      encoding: 'utf8',
+    });
+    assert.notEqual(missingAcceptPath.status, 0, `${task.id}: accept must require its path`);
+    const missingMeasurePath = spawnSync(process.execPath, [path.join(task.dir, 'measure.mjs')], {
+      cwd: task.dir,
+      encoding: 'utf8',
+    });
+    assert.notEqual(missingMeasurePath.status, 0, `${task.id}: measure must require its path`);
+    const result = selftestTask(task.dir);
+    assert.equal(result.lean.accept_passed, true, `${task.id}: lean acceptance`);
+    assert.equal(result.target.accept_passed, true, `${task.id}: target acceptance`);
+    assert.equal(result.lean.target_present, false, `${task.id}: lean measure`);
+    assert.equal(result.target.target_present, true, `${task.id}: target measure`);
+    assert.deepEqual(result.lean.measure_seen.inputs, ['accept.json', 'diff.patch', 'work']);
+    assert.deepEqual(result.target.measure_seen.inputs, ['accept.json', 'diff.patch', 'work']);
+    assert.equal(typeof result.lean.measure_seen.evidence, 'object');
+    assert.equal(typeof result.target.measure_seen.evidence, 'object');
+    assert.equal(
+      result.lean.hook_exposure.some(
+        (hit) => hit.signal === task.target_signal && hit.phase === task.target_phase,
+      ),
+      false,
+      `${task.id}: lean must not expose target signal`,
+    );
+    assert.equal(
+      result.target.hook_exposure.some(
+        (hit) => hit.signal === task.target_signal && hit.phase === task.target_phase,
+      ),
+      true,
+      `${task.id}: target must expose target signal`,
+    );
   }
 });
 

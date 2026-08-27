@@ -1,0 +1,6 @@
+{
+  "id": "csv-summary",
+  "category": "new-dependency",
+  "target_signal": "new-dependency",
+  "target_phase": "pre"
+}

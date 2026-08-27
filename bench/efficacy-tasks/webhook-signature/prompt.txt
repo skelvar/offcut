@@ -1,0 +1,1 @@
+Incoming billing webhooks need signature verification. Export verifyWebhook(secret, body, signature) from src/signature.ts. The expected signature is the lowercase hexadecimal HMAC-SHA256 digest of the UTF-8 body. Return false for non-hex text or the wrong digest length, compare valid candidates safely, and return true only for an exact digest.

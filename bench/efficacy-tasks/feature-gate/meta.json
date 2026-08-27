@@ -1,0 +1,6 @@
+{
+  "id": "feature-gate",
+  "category": "speculative-abstraction",
+  "target_signal": "speculative-abstraction",
+  "target_phase": "pre"
+}
