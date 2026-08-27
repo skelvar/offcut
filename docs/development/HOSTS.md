@@ -506,6 +506,32 @@ check warns.
 Refreshing the stale copy took an uninstall and reinstall. A version-gated
 update will not do it.
 
+## Phase 11 efficacy host migration (2026-08-27)
+
+The efficacy study moved from Claude Code to the exact Codex CLI `0.149.1`
+custom-agent contract before any model inference completed. Claude subscription
+access had been canceled; its three preserved discovery attempts are 403
+subscription failures with zero input/output tokens and zero reported cost.
+They remain historical rows and do not consume Codex retries.
+
+The efficacy runner now creates a fresh isolated `CODEX_HOME` per attempt,
+copies only `auth.json`, and generates minimal config, the
+`offcut-efficacy-worker` role, and arm-specific hooks. The `off` arm has empty
+hooks; `full` uses the shipped settings with `apply_patch` matching. Temporary
+homes are deleted on every exit and are excluded from evidence.
+
+Headless execution is pinned to `gpt-5.6-sol`, low reasoning effort,
+workspace-write sandboxing, no approvals, ephemeral JSONL output, and
+`--dangerously-bypass-hook-trust`. The last flag bypasses hook trust only; the
+sandbox is not bypassed. Successful outcomes require an event-level
+`spawn_agent`/collaboration record naming the exact custom role.
+
+ChatGPT subscription runs expose no per-call USD telemetry. Started processes
+therefore record zero incremental API cost with explicit subscription evidence,
+while preserving tokens and wall duration. This is not a claim that membership
+is free. Phase 11 conclusions are scoped to this Codex custom-agent backend and
+cannot be generalized across hosts.
+
 ## Before the native adapter: AGENTS.md delivered on Cursor (2026-08-27)
 
 At the time of this first measurement, Cursor had no Offcut adapter:

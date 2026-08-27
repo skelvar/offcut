@@ -1113,6 +1113,484 @@ test('--print-plan works without fixtures or model execution', () => {
     'discovery12',
     'discovery3',
     'confirm',
-    'haiku',
   ]);
+});
+
+test('Codex args pin the isolated custom-agent execution contract', async () => {
+  const { buildCodexArgs } = await import('../bench/run.mjs');
+  const args = buildCodexArgs({
+    workDir: 'D:\\work',
+    envelope: 'delegate exactly',
+  });
+  assert.deepEqual(args, [
+    'exec',
+    '--json',
+    '--ephemeral',
+    '-s',
+    'workspace-write',
+    '-a',
+    'never',
+    '--dangerously-bypass-hook-trust',
+    '-C',
+    'D:\\work',
+    'delegate exactly',
+  ]);
+  assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+  assert.equal(args.some((arg) => /claude/i.test(arg)), false);
+  assert.equal(args.includes('--max-budget-usd'), false);
+});
+
+test('Codex isolated home contains only auth, neutral config, role, and arm hooks', async () => {
+  const {
+    CODEX_CUSTOM_ROLE,
+    CODEX_MODEL_ID,
+    CODEX_ROLE_INSTRUCTIONS,
+    cleanupCodexHome,
+    prepareCodexHome,
+  } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-codex-home-test-'));
+  const authPath = path.join(root, 'source-auth.json');
+  const secret = '{"token":"must-not-enter-artifacts"}';
+  fs.writeFileSync(authPath, secret);
+  try {
+    const off = prepareCodexHome({ arm: 'off', authPath, parentDir: root });
+    assert.deepEqual(fs.readdirSync(off.homeDir).sort(), [
+      'agents',
+      'auth.json',
+      'config.toml',
+      'hooks.json',
+    ]);
+    assert.equal(fs.readFileSync(path.join(off.homeDir, 'auth.json'), 'utf8'), secret);
+    const config = fs.readFileSync(path.join(off.homeDir, 'config.toml'), 'utf8');
+    assert.match(config, /multi_agent\s*=\s*true/);
+    assert.match(config, /hooks\s*=\s*true/);
+    assert.match(config, new RegExp(`model\\s*=\\s*"${CODEX_MODEL_ID.replaceAll('.', '\\.')}"`));
+    const role = fs.readFileSync(
+      path.join(off.homeDir, 'agents', `${CODEX_CUSTOM_ROLE}.toml`),
+      'utf8',
+    );
+    assert.match(role, new RegExp(`name\\s*=\\s*"${CODEX_CUSTOM_ROLE}"`));
+    assert.match(role, /model_reasoning_effort\s*=\s*"low"/);
+    assert.match(role, /sandbox_mode\s*=\s*"workspace-write"/);
+    assert.match(role, new RegExp(CODEX_ROLE_INSTRUCTIONS.split(' ')[0]));
+    assert.match(role, /description = "Executes one delegated maintenance ticket"/);
+    assert.doesNotMatch(
+      CODEX_ROLE_INSTRUCTIONS,
+      /\b(?:minimal|simple|cheap|dependenc|abstract)/i,
+    );
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(off.homeDir, 'hooks.json'))), {
+      hooks: {},
+    });
+    cleanupCodexHome(off.homeDir);
+    assert.equal(fs.existsSync(off.homeDir), false);
+
+    const full = prepareCodexHome({ arm: 'full', authPath, parentDir: root });
+    const fullHooks = JSON.parse(fs.readFileSync(path.join(full.homeDir, 'hooks.json')));
+    assert.match(fullHooks.hooks.PreToolUse[0].matcher, /apply_patch/);
+    assert.match(fullHooks.hooks.PostToolUse[0].matcher, /apply_patch/);
+    assert.notDeepEqual(fullHooks, { hooks: {} });
+    cleanupCodexHome(full.homeDir);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex envelope is arm-neutral, delegates verbatim ticket, and is hashable', async () => {
+  const { CODEX_CUSTOM_ROLE, buildCodexEnvelope } = await import('../bench/run.mjs');
+  const ticket = 'Change the formatter.\nKeep its public output stable.\n';
+  const first = buildCodexEnvelope(ticket);
+  const second = buildCodexEnvelope(ticket);
+  assert.equal(first, second);
+  assert.match(first, new RegExp(CODEX_CUSTOM_ROLE));
+  assert.match(first, /spawn_agent/);
+  assert.match(first, /wait/i);
+  assert.equal(first.includes(ticket), true);
+  assert.doesNotMatch(first, /\b(?:treatment|control arm)\b/i);
+});
+
+test('Codex JSONL aggregates completed-turn usage and requires exact role spawn proof', async () => {
+  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const spawn = {
+    type: 'item.completed',
+    item: {
+      type: 'collaboration',
+      tool: 'spawn_agent',
+      agent_type: CODEX_CUSTOM_ROLE,
+    },
+  };
+  const result = parseCodexJsonl(
+    [
+      JSON.stringify(spawn),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 10, cached_input_tokens: 4, output_tokens: 3 },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 5 },
+      }),
+    ].join('\n'),
+    0,
+    null,
+    { durationMs: 99 },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.customAgentVerified, true);
+  assert.deepEqual(result.telemetry, {
+    total_cost_usd: 0,
+    duration_ms: 99,
+    input_tokens: 17,
+    output_tokens: 8,
+    cache_read_input_tokens: 6,
+    cache_creation_input_tokens: null,
+  });
+  assert.deepEqual(result.cost_evidence, {
+    kind: 'subscription',
+    source: 'codex_chatgpt',
+  });
+
+  const markerOnly = parseCodexJsonl(
+    JSON.stringify({
+      type: 'item.completed',
+      item: { type: 'agent_message', text: `spawned ${CODEX_CUSTOM_ROLE}` },
+    }),
+    0,
+    null,
+    { durationMs: 1 },
+  );
+  assert.equal(markerOnly.ok, false);
+  assert.equal(markerOnly.customAgentVerified, false);
+  assert.equal(markerOnly.failureKind, 'model');
+
+  const workerFailed = parseCodexJsonl(
+    [
+      JSON.stringify(spawn),
+      JSON.stringify({ type: 'turn.failed', error: { message: 'tool failed' } }),
+    ].join('\n'),
+    0,
+    null,
+    { durationMs: 2 },
+  );
+  assert.equal(workerFailed.customAgentVerified, true);
+  assert.equal(workerFailed.ok, false);
+  assert.equal(workerFailed.failureKind, 'model');
+});
+
+test('Codex failure parsing separates API, model, and known pre-call failures', async () => {
+  const { classifyAgentFailure, parseCodexJsonl } = await import('../bench/run.mjs');
+  const api = parseCodexJsonl(
+    JSON.stringify({ type: 'error', message: 'rate limit exceeded (429)' }),
+    1,
+    null,
+    { durationMs: 4 },
+  );
+  const model = parseCodexJsonl(
+    JSON.stringify({ type: 'error', message: 'worker could not finish ticket' }),
+    1,
+    null,
+    { durationMs: 5 },
+  );
+  const preCall = parseCodexJsonl(
+    '',
+    null,
+    Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }),
+    { durationMs: 1 },
+  );
+  assert.equal(classifyAgentFailure(api), 'api');
+  assert.equal(classifyAgentFailure(model), 'model');
+  assert.equal(classifyAgentFailure(preCall), 'host');
+  assert.equal(preCall.telemetry.total_cost_usd, null);
+  assert.deepEqual(preCall.cost_evidence, {
+    kind: 'known_zero',
+    source: 'spawn_error:ENOENT',
+  });
+});
+
+test('Codex runner removes isolated home on success and failure without preserving auth', async () => {
+  const { CODEX_CUSTOM_ROLE, runCodex } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-codex-cleanup-'));
+  const authPath = path.join(root, 'auth-source.json');
+  fs.writeFileSync(authPath, '{"secret":"opaque"}');
+  const homes = [];
+  const fake = (_command, _args, options) => {
+    homes.push(options.env.CODEX_HOME);
+    return {
+      status: homes.length === 1 ? 0 : 1,
+      stdout: homes.length === 1
+        ? [
+            JSON.stringify({
+              type: 'item.completed',
+              item: {
+                type: 'collaboration',
+                tool: 'spawn_agent',
+                agent_type: CODEX_CUSTOM_ROLE,
+              },
+            }),
+            JSON.stringify({ type: 'turn.completed', usage: {} }),
+          ].join('\n')
+        : JSON.stringify({ type: 'error', message: 'worker failed' }),
+      stderr: '',
+      error: null,
+    };
+  };
+  try {
+    const success = runCodex({
+      workDir: root,
+      prompt: 'ticket',
+      arm: 'off',
+      stateDir: path.join(root, 'state'),
+      authPath,
+      homeParentDir: root,
+      spawnCodex: fake,
+    });
+    assert.equal(success.ok, true);
+    const failed = runCodex({
+      workDir: root,
+      prompt: 'ticket',
+      arm: 'full',
+      stateDir: path.join(root, 'state2'),
+      authPath,
+      homeParentDir: root,
+      spawnCodex: fake,
+    });
+    assert.equal(failed.ok, false);
+    assert.equal(homes.length, 2);
+    assert.equal(homes.every((home) => !fs.existsSync(home)), true);
+    assert.equal(JSON.stringify({ success, failed }).includes('opaque'), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('backend scoping ignores legacy Claude attempts and outcomes', async () => {
+  const {
+    CODEX_BACKEND_ID,
+    executeJobs,
+    planStage,
+    readCostLedger,
+  } = await import('../bench/efficacy.mjs');
+  const tasks = [{ id: 'x', dir: path.join(os.tmpdir(), 'x') }];
+  const legacyOutcome = {
+    task_id: 'x',
+    arm: 'off',
+    rep: 1,
+    stage: 'discovery12',
+    accept_passed: true,
+    target_present: false,
+  };
+  assert.deepEqual(planStage('discovery12', tasks, [legacyOutcome], CODEX_BACKEND_ID), [
+    { taskId: 'x', arm: 'off', rep: 1 },
+    { taskId: 'x', arm: 'off', rep: 2 },
+  ]);
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-backend-'));
+  const ledgerPath = path.join(root, 'ledger.jsonl');
+  fs.writeFileSync(
+    ledgerPath,
+    [1, 2, 3].map((attempt) => JSON.stringify({
+      attempt_id: `legacy-${attempt}`,
+      stage: 'discovery12',
+      task_id: 'x',
+      arm: 'off',
+      rep: 1,
+      attempt,
+      failure_kind: 'api',
+      total_cost_usd: attempt === 1 ? null : 0,
+    })).join('\n') + '\n',
+  );
+  let calls = 0;
+  try {
+    executeJobs(
+      [{ taskId: 'x', arm: 'off', rep: 1 }],
+      tasks,
+      'discovery12',
+      {
+        backend: CODEX_BACKEND_ID,
+        ledgerPath,
+        manifestPath: path.join(root, 'manifest.jsonl'),
+        runOneFn(options) {
+          calls += 1;
+          assert.equal(options.backend, CODEX_BACKEND_ID);
+          assert.equal(options.maxBudgetUsd, undefined);
+          return {
+            runId: 'codex-one',
+            runDir: root,
+            record: {
+              backend: CODEX_BACKEND_ID,
+              failure_kind: null,
+              cost_evidence: { kind: 'subscription', source: 'codex_chatgpt' },
+              custom_agent_verified: true,
+              verified: true,
+              billing_kind: 'chatgpt_subscription',
+              envelope_sha256: 'envelope-hash',
+              config_sha256: 'config-hash',
+              role_sha256: 'role-hash',
+              hooks_sha256: 'hooks-hash',
+              total_cost_usd: 0,
+            },
+          };
+        },
+        measureRunFn() {},
+      },
+    );
+    assert.equal(calls, 1);
+    const codex = readCostLedger(ledgerPath).filter((row) => row.backend === CODEX_BACKEND_ID);
+    assert.equal(codex.length, 1);
+    assert.equal(codex[0].attempt, 1);
+    assert.equal(codex[0].billing_kind, 'chatgpt_subscription');
+    assert.equal(codex[0].verified, true);
+    assert.equal(codex[0].envelope_sha256, 'envelope-hash');
+    assert.equal(codex[0].config_sha256, 'config-hash');
+    assert.equal(codex[0].role_sha256, 'role-hash');
+    assert.equal(codex[0].hooks_sha256, 'hooks-hash');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex discovery planner produces all 24 cells despite preserved Claude attempts', async () => {
+  const { CODEX_BACKEND_ID, loadEfficacyTasks, planStage } = await import('../bench/efficacy.mjs');
+  const tasks = loadEfficacyTasks();
+  const legacy = [
+    {
+      task_id: tasks[0].id,
+      arm: 'off',
+      rep: 1,
+      stage: 'discovery12',
+      failure_kind: 'api',
+      accept_passed: false,
+      target_present: false,
+    },
+  ];
+  assert.equal(planStage('discovery12', tasks, legacy, CODEX_BACKEND_ID).length, 24);
+});
+
+test('Codex no-model preflight validates generated inputs and always cleans up', async () => {
+  const { assertCodexVersion, codexPreflight } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-preflight-'));
+  const authPath = path.join(root, 'auth.json');
+  fs.writeFileSync(authPath, '{"secret":"not-output"}');
+  let execCalls = 0;
+  const homes = [];
+  try {
+    const result = codexPreflight({
+      authPath,
+      tempRoot: root,
+      spawnHost(command, args, options) {
+        if (args[0] === '--version') return { status: 0, stdout: 'codex-cli 0.149.1\n', stderr: '' };
+        execCalls += 1;
+        homes.push(options?.env?.CODEX_HOME);
+        return { status: 1, stdout: '', stderr: 'must not execute' };
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(execCalls, 0);
+    assert.equal(JSON.stringify(result).includes('not-output'), false);
+    assert.equal(
+      fs.readdirSync(root).filter((name) => name.startsWith('offcut-codex-home-')).length,
+      0,
+    );
+    assert.throws(
+      () => assertCodexVersion(() => ({
+        status: 0,
+        stdout: 'other-cli 0.149.1\n',
+        stderr: '',
+      })),
+      /Codex CLI 0\.149\.1 required/i,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex live preflight records one verified custom-role spawn then refuses rerun', async () => {
+  const {
+    CODEX_CUSTOM_ROLE,
+    codexLivePreflight,
+  } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-preflight-'));
+  const authPath = path.join(root, 'auth.json');
+  const evidenceRoot = path.join(root, 'evidence');
+  const ledgerPath = path.join(root, 'ledger.jsonl');
+  fs.writeFileSync(authPath, '{"secret":"never-artifact"}');
+  let calls = 0;
+  try {
+    const first = codexLivePreflight({
+      execute: true,
+      authPath,
+      evidenceRoot,
+      ledgerPath,
+      spawnCodex(_command, _args, options) {
+        calls += 1;
+        assert.equal(fs.existsSync(path.join(options.env.CODEX_HOME, 'auth.json')), true);
+        return {
+          status: 0,
+          stdout: [
+            JSON.stringify({
+              type: 'item.completed',
+              item: {
+                type: 'collaboration',
+                tool: 'spawn_agent',
+                agent_type: CODEX_CUSTOM_ROLE,
+              },
+            }),
+            JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }),
+          ].join('\n'),
+          stderr: '',
+          error: null,
+        };
+      },
+    });
+    assert.equal(first.ok, true);
+    assert.equal(first.custom_agent_verified, true);
+    assert.equal(calls, 1);
+    const evidenceFiles = fs.readdirSync(path.join(evidenceRoot, first.preflight_id));
+    assert.equal(evidenceFiles.includes('transcript.jsonl'), true);
+    assert.equal(evidenceFiles.includes('auth.json'), false);
+    const artifactText = evidenceFiles
+      .map((file) => fs.readFileSync(path.join(evidenceRoot, first.preflight_id, file), 'utf8'))
+      .join('\n');
+    assert.equal(artifactText.includes('never-artifact'), false);
+    assert.throws(
+      () => codexLivePreflight({
+        execute: true,
+        authPath,
+        evidenceRoot,
+        ledgerPath,
+        spawnCodex() {
+          calls += 1;
+        },
+      }),
+      /successful Codex live preflight already exists/i,
+    );
+    assert.equal(calls, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex live preflight and paid stages require execute; Haiku is retired', () => {
+  const script = fileURLToPath(new URL('../bench/efficacy.mjs', import.meta.url));
+  const live = spawnSync(process.execPath, [script, '--codex-live-preflight'], {
+    encoding: 'utf8',
+  });
+  assert.equal(live.status, 2);
+  assert.match(live.stderr, /requires explicit --execute/i);
+  const haiku = spawnSync(process.execPath, [script, '--stage', 'haiku', '--execute'], {
+    encoding: 'utf8',
+  });
+  assert.notEqual(haiku.status, 0);
+  assert.match(haiku.stderr, /Haiku.*retired|bad efficacy stage/i);
+});
+
+test('--codex-preflight never invokes codex exec', () => {
+  const source = fs.readFileSync(
+    fileURLToPath(new URL('../bench/efficacy.mjs', import.meta.url)),
+    'utf8',
+  );
+  assert.match(source, /codexPreflight/);
+  assert.doesNotMatch(
+    source.match(/function codexPreflight[\s\S]*?\n}\n/)?.[0] || '',
+    /runCodex|codexLivePreflight/,
+  );
 });

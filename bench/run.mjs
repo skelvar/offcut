@@ -4,9 +4,10 @@
 //   node bench/run.mjs --task config-fallback --arm off --rep 1 --stub lean
 //   node bench/run.mjs --task config-fallback --arm full --rep 1
 //
-// Paid mode invokes Claude Code. Dry-run --stub avoids model cost.
+// Paid mode invokes the selected host. Dry-run --stub avoids model cost.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
@@ -22,6 +23,7 @@ import {
   justifyArmConfig,
   loadTask,
   opaqueId,
+  sha256,
   tmpName,
   writeArmOverrides,
   writeMode,
@@ -34,6 +36,13 @@ const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
 // Reasoning effort for paid runs. Named so the manifest can record it.
 const RUN_EFFORT = 'low';
 export const DEFAULT_API_RETRIES = 2;
+export const CODEX_BACKEND_ID = 'codex-custom-v1';
+export const CODEX_HOST = 'codex-cli';
+export const CODEX_HOST_VERSION = '0.149.1';
+export const CODEX_MODEL_ID = 'gpt-5.6-sol';
+export const CODEX_CUSTOM_ROLE = 'offcut-efficacy-worker';
+export const CODEX_ROLE_INSTRUCTIONS =
+  'Implement the delegated maintenance ticket in the current repository. Inspect the files, make the changes required by the ticket, and run relevant checks. Do not commit or edit .codex. Return a concise summary.';
 
 function parseArgs(argv) {
   const out = {
@@ -200,6 +209,242 @@ export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = nu
   return args;
 }
 
+export function buildCodexArgs({ workDir, envelope }) {
+  return [
+    'exec',
+    '--json',
+    '--ephemeral',
+    '-s',
+    'workspace-write',
+    '-a',
+    'never',
+    '--dangerously-bypass-hook-trust',
+    '-C',
+    workDir,
+    envelope,
+  ];
+}
+
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+export function buildCodexEnvelope(ticket) {
+  return [
+    `Delegate the maintenance ticket below verbatim to the ${CODEX_CUSTOM_ROLE} custom role using spawn_agent.`,
+    'Wait for that role to finish.',
+    'Do not edit files yourself, do not spawn any other role, and do not modify the worker output afterward.',
+    '',
+    '<ticket>',
+    String(ticket),
+    '</ticket>',
+  ].join('\n');
+}
+
+function codexConfigText() {
+  return [
+    `model = ${tomlString(CODEX_MODEL_ID)}`,
+    'model_reasoning_effort = "low"',
+    '',
+    '[features]',
+    'multi_agent = true',
+    'hooks = true',
+    '',
+  ].join('\n');
+}
+
+function codexRoleText() {
+  return [
+    `name = ${tomlString(CODEX_CUSTOM_ROLE)}`,
+    'description = "Executes one delegated maintenance ticket"',
+    `developer_instructions = ${tomlString(CODEX_ROLE_INSTRUCTIONS)}`,
+    `model = ${tomlString(CODEX_MODEL_ID)}`,
+    'model_reasoning_effort = "low"',
+    'sandbox_mode = "workspace-write"',
+    '',
+  ].join('\n');
+}
+
+export function prepareCodexHome({
+  arm,
+  authPath = path.join(os.homedir(), '.codex', 'auth.json'),
+  parentDir = os.tmpdir(),
+}) {
+  if (arm !== 'off' && arm !== 'full') throw new Error(`bad Codex efficacy arm: ${arm}`);
+  if (!fs.existsSync(authPath)) throw new Error('Codex auth file missing');
+  fs.mkdirSync(parentDir, { recursive: true });
+  const homeDir = fs.mkdtempSync(path.join(parentDir, 'offcut-codex-home-'));
+  try {
+    const agentsDir = path.join(homeDir, 'agents');
+    fs.mkdirSync(agentsDir);
+    fs.copyFileSync(authPath, path.join(homeDir, 'auth.json'));
+    const config = codexConfigText();
+    const role = codexRoleText();
+    const hooks = arm === 'full' ? buildHooksSettings() : { hooks: {} };
+    fs.writeFileSync(path.join(homeDir, 'config.toml'), config, 'utf8');
+    fs.writeFileSync(
+      path.join(agentsDir, `${CODEX_CUSTOM_ROLE}.toml`),
+      role,
+      'utf8',
+    );
+    fs.writeFileSync(path.join(homeDir, 'hooks.json'), `${JSON.stringify(hooks, null, 2)}\n`, 'utf8');
+    return {
+      homeDir,
+      config_sha256: sha256(config),
+      role_sha256: sha256(role),
+      hooks_sha256: sha256(`${JSON.stringify(hooks, null, 2)}\n`),
+    };
+  } catch (error) {
+    fs.rmSync(homeDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function cleanupCodexHome(homeDir) {
+  if (homeDir) fs.rmSync(homeDir, { recursive: true, force: true });
+}
+
+function sumUsage(events, key) {
+  return events
+    .filter((event) => event?.type === 'turn.completed')
+    .reduce((sum, event) => {
+      const value = event?.usage?.[key];
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+}
+
+function hasExactRoleSpawn(events) {
+  return events.some((event) => {
+    const eventText = JSON.stringify(event);
+    const eventKind = [
+      event?.type,
+      event?.name,
+      event?.tool,
+      event?.action,
+      event?.item?.type,
+      event?.item?.name,
+      event?.item?.tool,
+      event?.item?.action,
+    ].filter(Boolean).join(' ');
+    return (
+      /spawn_agent|collaboration/i.test(eventKind) &&
+      eventText.includes(`"${CODEX_CUSTOM_ROLE}"`)
+    );
+  });
+}
+
+export function parseCodexJsonl(stdout, status, spawnErr, { durationMs = null } = {}) {
+  const events = [];
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      // Preserve malformed lines in the raw transcript; they cannot prove success.
+    }
+  }
+  const text = [
+    stdout || '',
+    spawnErr?.message || '',
+    ...events.map((event) => event?.message || event?.error?.message || ''),
+  ].join('\n');
+  const apiError =
+    /(?:rate limit|too many requests|quota|authentication|unauthorized|forbidden|api key|subscription|\b429\b|\b5\d\d\b)/i.test(
+      text,
+    );
+  const preCallSpawnCodes = new Set(['ENOENT', 'EACCES']);
+  const knownPreCallFailure =
+    status == null &&
+    preCallSpawnCodes.has(spawnErr?.code) &&
+    !String(stdout || '').trim();
+  const callStarted = status != null;
+  const customAgentVerified = hasExactRoleSpawn(events);
+  const eventError = events.some(
+    (event) =>
+      /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
+      event?.status === 'failed' ||
+      event?.item?.status === 'failed',
+  );
+  const ok = status === 0 && !eventError && customAgentVerified;
+  const total = (key) => sumUsage(events, key);
+  return {
+    ok,
+    exitCode: status,
+    stdout: stdout || '',
+    stderr: '',
+    transcript: stdout || '',
+    parsed: events,
+    modelId: CODEX_MODEL_ID,
+    apiError,
+    spawnError: Boolean(spawnErr),
+    timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
+    customAgentVerified,
+    failureKind: ok ? null : apiError ? 'api' : spawnErr ? 'host' : 'model',
+    telemetry: {
+      total_cost_usd: callStarted ? 0 : null,
+      duration_ms: durationMs,
+      input_tokens: total('input_tokens'),
+      output_tokens: total('output_tokens'),
+      cache_read_input_tokens: total('cached_input_tokens'),
+      cache_creation_input_tokens: null,
+    },
+    cost_evidence: callStarted
+      ? { kind: 'subscription', source: 'codex_chatgpt' }
+      : knownPreCallFailure
+        ? { kind: 'known_zero', source: `spawn_error:${spawnErr.code}` }
+        : { kind: 'call_not_started', source: 'unknown_spawn_failure' },
+    error:
+      spawnErr?.message ||
+      (apiError
+        ? text.trim() || `Codex API failure (exit ${status})`
+        : !customAgentVerified
+          ? `Codex did not evidence spawn_agent for ${CODEX_CUSTOM_ROLE}`
+          : eventError || status !== 0
+            ? text.trim() || `codex exit ${status}`
+            : null),
+  };
+}
+
+export function runCodex({
+  workDir,
+  prompt,
+  arm,
+  stateDir,
+  authPath,
+  homeParentDir,
+  spawnCodex = spawnSync,
+  now = () => performance.now(),
+}) {
+  const isolated = prepareCodexHome({ arm, authPath, parentDir: homeParentDir });
+  const envelope = buildCodexEnvelope(prompt);
+  const args = buildCodexArgs({ workDir, envelope });
+  const started = now();
+  try {
+    const result = spawnCodex('codex', args, {
+      cwd: workDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CODEX_HOME: isolated.homeDir,
+        OFFCUT_STATE_DIR: stateDir,
+      },
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 10 * 60 * 1000,
+    });
+    const parsed = parseCodexJsonl(result.stdout, result.status, result.error, {
+      durationMs: Math.max(0, Math.round(now() - started)),
+    });
+    parsed.stderr = result.stderr || '';
+    parsed.envelope_sha256 = sha256(envelope);
+    parsed.config_sha256 = isolated.config_sha256;
+    parsed.role_sha256 = isolated.role_sha256;
+    parsed.hooks_sha256 = isolated.hooks_sha256;
+    return parsed;
+  } finally {
+    cleanupCodexHome(isolated.homeDir);
+  }
+}
+
 export function runClaude({
   workDir,
   prompt,
@@ -257,6 +502,7 @@ export function runOne(opts) {
     maxBudgetUsd,
     tasksDir,
   } = opts;
+  const host = opts.host ?? 'claude-code';
   const apiRetries = resolveApiRetries(opts);
   if (!taskId || !arm) throw new Error('--task and --arm required');
   if (!LEGACY_ARMS.has(arm) && !JUSTIFY_ARMS.has(arm)) {
@@ -285,7 +531,7 @@ export function runOne(opts) {
     stub: stub || null,
     model_requested: model,
     model_id: null,
-    host: 'claude-code',
+    host,
     host_version: null,
     date: new Date().toISOString().slice(0, 10),
     // Execution order and effort must be auditable from the manifest alone.
@@ -312,6 +558,7 @@ export function runOne(opts) {
     cache_creation_input_tokens: null,
     ...(opts.stage ? { stage: opts.stage } : {}),
     ...(opts.attempt ? { attempt: opts.attempt } : {}),
+    ...(opts.backend ? { backend: opts.backend } : {}),
   };
 
   try {
@@ -346,15 +593,38 @@ export function runOne(opts) {
       task.promptSha256 + '\n',
     );
 
-    const settings = buildHooksSettings();
-    const settingsPath = path.join(runDir, 'settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    let settingsPath = null;
+    if (host !== CODEX_HOST) {
+      const settings = buildHooksSettings();
+      settingsPath = path.join(runDir, 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    }
 
     let agent;
     if (stub) {
       agent = runStub(taskId, stub, workDir);
       record.model_id = `stub:${stub}`;
       record.host_version = 'stub';
+    } else if (host === CODEX_HOST) {
+      record.host_version = opts.hostVersion ?? CODEX_HOST_VERSION;
+      record.billing_kind = 'chatgpt_subscription';
+      record.custom_agent_role = CODEX_CUSTOM_ROLE;
+      agent = runCodex({
+        workDir,
+        prompt: task.prompt,
+        arm,
+        stateDir,
+        authPath: opts.authPath,
+        homeParentDir: opts.homeParentDir,
+        spawnCodex: opts.spawnCodex,
+      });
+      record.model_id = CODEX_MODEL_ID;
+      record.custom_agent_verified = agent.customAgentVerified;
+      record.verified = agent.customAgentVerified;
+      record.envelope_sha256 = agent.envelope_sha256;
+      record.config_sha256 = agent.config_sha256;
+      record.role_sha256 = agent.role_sha256;
+      record.hooks_sha256 = agent.hooks_sha256;
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();
@@ -374,7 +644,10 @@ export function runOne(opts) {
       record.model_id = agent.modelId || model;
     }
 
-    fs.writeFileSync(path.join(runDir, 'transcript.txt'), agent.transcript || '');
+    fs.writeFileSync(
+      path.join(runDir, host === CODEX_HOST ? 'transcript.jsonl' : 'transcript.txt'),
+      agent.transcript || '',
+    );
     if (agent.stdout) fs.writeFileSync(path.join(runDir, 'stdout.json'), agent.stdout);
     if (agent.stderr) fs.writeFileSync(path.join(runDir, 'stderr.txt'), agent.stderr);
 

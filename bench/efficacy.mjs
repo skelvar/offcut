@@ -13,11 +13,25 @@ import {
   captureDiff,
   copyTree,
   initGitRepo,
+  opaqueId,
   readManifest,
   sha256,
   writeMode,
 } from './lib.mjs';
-import { runOne } from './run.mjs';
+import {
+  CODEX_BACKEND_ID,
+  CODEX_CUSTOM_ROLE,
+  CODEX_HOST,
+  CODEX_HOST_VERSION,
+  CODEX_MODEL_ID,
+  CODEX_ROLE_INSTRUCTIONS,
+  buildCodexArgs,
+  buildCodexEnvelope,
+  cleanupCodexHome,
+  prepareCodexHome,
+  runCodex,
+  runOne,
+} from './run.mjs';
 import { hasFiredSignal } from '../hooks/state.js';
 import { POST_SIGNALS, PRE_SIGNALS } from '../hooks/signals.js';
 
@@ -26,11 +40,11 @@ export const EFFICACY_BUDGET_USD = 35;
 export const EFFICACY_TASKS_DIR = path.join(BENCH_ROOT, 'efficacy-tasks');
 export const EFFICACY_MANIFEST_PATH = path.join(BENCH_ROOT, 'efficacy-manifest.jsonl');
 export const EFFICACY_COST_PATH = path.join(BENCH_ROOT, 'efficacy-cost.jsonl');
+export const CODEX_PREFLIGHT_ROOT = path.join(BENCH_ROOT, 'codex-preflight');
+export const CODEX_PREFLIGHT_LEDGER_PATH = path.join(CODEX_PREFLIGHT_ROOT, 'ledger.jsonl');
 export const CLAUDE_CODE_VERSION = '2.1.243';
-export const HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
 
-// offcut: this harness is Claude-only; add another host only after a positive
-// confirmatory result makes cross-host generalization worth measuring.
+export { CODEX_BACKEND_ID, CODEX_CUSTOM_ROLE };
 
 export function discoveryRep3Jobs(taskIds, runs) {
   return taskIds
@@ -425,10 +439,14 @@ export function loadEfficacyTasks(tasksDir = EFFICACY_TASKS_DIR, requireFullCorp
   return tasks;
 }
 
-function loadMeasuredOutcomes(manifestPath = EFFICACY_MANIFEST_PATH) {
+export function loadMeasuredOutcomes(
+  manifestPath,
+  backend,
+) {
   const outcomes = [];
   for (const entry of readManifest(manifestPath)) {
     if (!entry.run_id || !entry.stage) continue;
+    if (backend && entry.backend !== backend) continue;
     const metricsPath = path.join(RUNS_DIR, entry.run_id, 'metrics.json');
     if (!fs.existsSync(metricsPath)) continue;
     const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
@@ -443,15 +461,19 @@ function loadMeasuredOutcomes(manifestPath = EFFICACY_MANIFEST_PATH) {
   return outcomes;
 }
 
-function completedCellKeys(outcomes, stage) {
+function completedCellKeys(outcomes, stage, backend) {
   return new Set(
     outcomes
       .filter(
         (outcome) =>
           outcome.stage === stage &&
+          (!backend || outcome.backend === backend) &&
           !isRetryableFailure(outcome.failure_kind),
       )
-      .map((outcome) => `${outcome.task_id}\0${outcome.arm}\0${outcome.rep}`),
+      .map(
+        (outcome) =>
+          `${backend || ''}\0${outcome.task_id}\0${outcome.arm}\0${outcome.rep}`,
+      ),
   );
 }
 
@@ -489,10 +511,13 @@ function assertDiscoveryComplete(stage, taskIds, outcomes) {
   }
 }
 
-function omitCompleted(jobs, outcomes, stage) {
-  const completed = completedCellKeys(outcomes, stage);
+function omitCompleted(jobs, outcomes, stage, backend) {
+  const completed = completedCellKeys(outcomes, stage, backend);
   return jobs.filter(
-    (job) => !completed.has(`${job.taskId}\0${job.arm}\0${job.rep}`),
+    (job) =>
+      !completed.has(
+        `${backend || ''}\0${job.taskId}\0${job.arm}\0${job.rep}`,
+      ),
   );
 }
 
@@ -527,9 +552,12 @@ export function assertRawGateCommitted({
   }
 }
 
-export function planStage(stage, tasks, outcomes) {
+export function planStage(stage, tasks, outcomes, backend) {
+  const scopedOutcomes = backend
+    ? outcomes.filter((outcome) => outcome.backend === backend)
+    : outcomes;
   const taskIds = tasks.map((task) => task.id);
-  const discoveryOutcomes = outcomes.filter(
+  const discoveryOutcomes = scopedOutcomes.filter(
     (outcome) =>
       outcome.stage == null ||
       outcome.stage === 'discovery12' ||
@@ -540,11 +568,16 @@ export function planStage(stage, tasks, outcomes) {
     for (let rep = 1; rep <= 2; rep++) {
       for (const taskId of taskIds) jobs.push({ taskId, arm: 'off', rep });
     }
-    return omitCompleted(jobs, outcomes, stage);
+    return omitCompleted(jobs, scopedOutcomes, stage, backend);
   }
   if (stage === 'discovery3') {
     assertDiscoveryComplete(stage, taskIds, discoveryOutcomes);
-    return omitCompleted(discoveryRep3Jobs(taskIds, discoveryOutcomes), outcomes, stage);
+    return omitCompleted(
+      discoveryRep3Jobs(taskIds, discoveryOutcomes),
+      scopedOutcomes,
+      stage,
+      backend,
+    );
   }
   assertDiscoveryComplete(stage, taskIds, discoveryOutcomes);
   const summaries = qualifyDiscovery(taskIds, discoveryOutcomes)
@@ -554,11 +587,12 @@ export function planStage(stage, tasks, outcomes) {
     }));
   if (stage === 'confirm') {
     const qualifiers = selectQualifiers(summaries);
-    return omitCompleted(confirmatorySchedule(qualifiers, 8), outcomes, stage);
-  }
-  if (stage === 'haiku') {
-    const selected = selectQualifiers(summaries, 3);
-    return omitCompleted(confirmatorySchedule(selected, 3), outcomes, stage);
+    return omitCompleted(
+      confirmatorySchedule(qualifiers, 8),
+      scopedOutcomes,
+      stage,
+      backend,
+    );
   }
   throw new Error(`bad efficacy stage: ${stage}`);
 }
@@ -599,6 +633,197 @@ function assertClaudeVersion() {
   }
 }
 
+export function assertCodexVersion(spawnHost = spawnSync) {
+  const result = spawnHost('codex', ['--version'], { encoding: 'utf8' });
+  const version = (result.stdout || result.stderr || '').trim();
+  if (
+    result.status !== 0 ||
+    !new RegExp(`^codex-cli ${CODEX_HOST_VERSION.replace(/\./g, '\\.')}(?:\\s|$)`).test(
+      version,
+    )
+  ) {
+    throw new Error(`Codex CLI ${CODEX_HOST_VERSION} required; found ${version || 'unavailable'}`);
+  }
+  return version;
+}
+
+function validatePreparedCodexHome(homeDir, arm) {
+  const entries = fs.readdirSync(homeDir).sort();
+  if (
+    JSON.stringify(entries) !==
+    JSON.stringify(['agents', 'auth.json', 'config.toml', 'hooks.json'])
+  ) {
+    throw new Error(`unexpected isolated CODEX_HOME entries: ${entries.join(', ')}`);
+  }
+  const config = fs.readFileSync(path.join(homeDir, 'config.toml'), 'utf8');
+  const role = fs.readFileSync(
+    path.join(homeDir, 'agents', `${CODEX_CUSTOM_ROLE}.toml`),
+    'utf8',
+  );
+  const hooks = JSON.parse(fs.readFileSync(path.join(homeDir, 'hooks.json'), 'utf8'));
+  if (
+    !config.includes(`model = "${CODEX_MODEL_ID}"`) ||
+    !config.includes('model_reasoning_effort = "low"') ||
+    !config.includes('multi_agent = true') ||
+    !config.includes('hooks = true')
+  ) {
+    throw new Error('isolated Codex config does not match the frozen contract');
+  }
+  if (
+    !role.includes(`name = "${CODEX_CUSTOM_ROLE}"`) ||
+    !role.includes(`model = "${CODEX_MODEL_ID}"`) ||
+    !role.includes('model_reasoning_effort = "low"') ||
+    !role.includes('sandbox_mode = "workspace-write"') ||
+    !role.includes(CODEX_ROLE_INSTRUCTIONS)
+  ) {
+    throw new Error('isolated Codex custom role does not match the frozen contract');
+  }
+  if (/\b(?:minimal|simple|cheap|dependenc|abstract)/i.test(CODEX_ROLE_INSTRUCTIONS)) {
+    throw new Error('Codex custom role contains prohibited treatment framing');
+  }
+  if (arm === 'off' && Object.keys(hooks.hooks || {}).length !== 0) {
+    throw new Error('off arm Codex hooks must be empty');
+  }
+  if (arm === 'full') {
+    for (const event of ['PreToolUse', 'PostToolUse']) {
+      if (!hooks.hooks?.[event]?.[0]?.matcher?.includes('apply_patch')) {
+        throw new Error(`full arm ${event} must match apply_patch`);
+      }
+    }
+  }
+}
+
+export function codexPreflight({
+  authPath = path.join(os.homedir(), '.codex', 'auth.json'),
+  tempRoot = os.tmpdir(),
+  spawnHost = spawnSync,
+} = {}) {
+  const version = assertCodexVersion(spawnHost);
+  if (!fs.existsSync(authPath)) throw new Error('Codex auth file missing');
+  const prepared = [];
+  try {
+    for (const arm of ['off', 'full']) {
+      const isolated = prepareCodexHome({ arm, authPath, parentDir: tempRoot });
+      prepared.push(isolated.homeDir);
+      validatePreparedCodexHome(isolated.homeDir, arm);
+    }
+    const envelope = buildCodexEnvelope('Preflight ticket bytes.\n');
+    const args = buildCodexArgs({ workDir: tempRoot, envelope });
+    const expectedPrefix = [
+      'exec',
+      '--json',
+      '--ephemeral',
+      '-s',
+      'workspace-write',
+      '-a',
+      'never',
+      '--dangerously-bypass-hook-trust',
+      '-C',
+      tempRoot,
+    ];
+    if (
+      JSON.stringify(args.slice(0, expectedPrefix.length)) !==
+      JSON.stringify(expectedPrefix) ||
+      args.includes('--dangerously-bypass-approvals-and-sandbox') ||
+      args.includes('--max-budget-usd')
+    ) {
+      throw new Error('Codex CLI arguments do not match the frozen contract');
+    }
+    return {
+      ok: true,
+      host: CODEX_HOST,
+      host_version: version,
+      backend: CODEX_BACKEND_ID,
+      model: CODEX_MODEL_ID,
+      custom_agent_role: CODEX_CUSTOM_ROLE,
+    };
+  } finally {
+    for (const homeDir of prepared) cleanupCodexHome(homeDir);
+  }
+}
+
+export function codexLivePreflight({
+  execute,
+  authPath = path.join(os.homedir(), '.codex', 'auth.json'),
+  evidenceRoot = CODEX_PREFLIGHT_ROOT,
+  ledgerPath = CODEX_PREFLIGHT_LEDGER_PATH,
+  spawnCodex = spawnSync,
+} = {}) {
+  if (!execute) throw new Error('Codex live preflight requires explicit --execute');
+  const prior = readCostLedger(ledgerPath);
+  if (
+    prior.some(
+      (entry) =>
+        entry.backend === CODEX_BACKEND_ID &&
+        entry.preflight_success === true &&
+        entry.custom_agent_verified === true,
+    )
+  ) {
+    throw new Error('successful Codex live preflight already exists');
+  }
+  const preflightId = opaqueId();
+  const evidenceDir = path.join(evidenceRoot, preflightId);
+  const workParent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-codex-live-preflight-'));
+  const workDir = path.join(workParent, 'repo');
+  const stateDir = path.join(workParent, 'state');
+  let agent;
+  try {
+    fs.mkdirSync(workDir);
+    fs.mkdirSync(evidenceDir, { recursive: true });
+    fs.writeFileSync(path.join(workDir, 'README.md'), 'Temporary Codex role preflight.\n');
+    initGitRepo(workDir);
+    writeMode(stateDir, 'off');
+    agent = runCodex({
+      workDir,
+      prompt: 'Inspect the repository and report the single word READY. Do not modify files.',
+      arm: 'off',
+      stateDir,
+      authPath,
+      spawnCodex,
+    });
+    fs.writeFileSync(
+      path.join(evidenceDir, 'transcript.jsonl'),
+      agent.transcript || '',
+      'utf8',
+    );
+    const evidence = {
+      ok: agent.ok,
+      preflight_id: preflightId,
+      backend: CODEX_BACKEND_ID,
+      host: CODEX_HOST,
+      host_version: CODEX_HOST_VERSION,
+      model: CODEX_MODEL_ID,
+      custom_agent_role: CODEX_CUSTOM_ROLE,
+      custom_agent_verified: agent.customAgentVerified,
+      verified: agent.customAgentVerified,
+      preflight_success: agent.ok,
+      billing_kind: agent.cost_evidence?.kind === 'subscription'
+        ? 'chatgpt_subscription'
+        : null,
+      total_cost_usd: agent.telemetry?.total_cost_usd ?? null,
+      duration_ms: agent.telemetry?.duration_ms ?? null,
+      input_tokens: agent.telemetry?.input_tokens ?? null,
+      output_tokens: agent.telemetry?.output_tokens ?? null,
+      cache_read_input_tokens: agent.telemetry?.cache_read_input_tokens ?? null,
+      cost_evidence: agent.cost_evidence,
+      envelope_sha256: agent.envelope_sha256,
+      config_sha256: agent.config_sha256,
+      role_sha256: agent.role_sha256,
+      hooks_sha256: agent.hooks_sha256,
+      failure_kind: agent.ok ? null : agent.failureKind,
+    };
+    fs.writeFileSync(
+      path.join(evidenceDir, 'evidence.json'),
+      `${JSON.stringify(evidence, null, 2)}\n`,
+      'utf8',
+    );
+    appendCostAttempt(ledgerPath, evidence);
+    return evidence;
+  } finally {
+    fs.rmSync(workParent, { recursive: true, force: true });
+  }
+}
+
 function assertPaidInputsCommitted() {
   const result = spawnSync('git', ['status', '--porcelain'], {
     cwd: path.dirname(BENCH_ROOT),
@@ -609,7 +834,15 @@ function assertPaidInputsCommitted() {
   }
 }
 
-function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledgerPath) {
+function appendAttemptLedger(
+  job,
+  stage,
+  attempt,
+  runResult,
+  failureKind,
+  ledgerPath,
+  backend,
+) {
   const cost = runResult?.record?.total_cost_usd;
   const costEvidence = runResult?.record?.cost_evidence ?? null;
   const knownPreCallZero =
@@ -634,6 +867,26 @@ function appendAttemptLedger(job, stage, attempt, runResult, failureKind, ledger
     output_tokens: runResult?.record?.output_tokens ?? null,
     cache_read_input_tokens: runResult?.record?.cache_read_input_tokens ?? null,
     cache_creation_input_tokens: runResult?.record?.cache_creation_input_tokens ?? null,
+    ...(backend
+      ? {
+          backend,
+          host: runResult?.record?.host ?? CODEX_HOST,
+          host_version: runResult?.record?.host_version ?? CODEX_HOST_VERSION,
+          model: runResult?.record?.model_id ?? CODEX_MODEL_ID,
+          custom_agent_role:
+            runResult?.record?.custom_agent_role ?? CODEX_CUSTOM_ROLE,
+          custom_agent_verified:
+            runResult?.record?.custom_agent_verified === true,
+          verified:
+            runResult?.record?.verified === true ||
+            runResult?.record?.custom_agent_verified === true,
+          billing_kind: runResult?.record?.billing_kind ?? null,
+          envelope_sha256: runResult?.record?.envelope_sha256 ?? null,
+          config_sha256: runResult?.record?.config_sha256 ?? null,
+          role_sha256: runResult?.record?.role_sha256 ?? null,
+          hooks_sha256: runResult?.record?.hooks_sha256 ?? null,
+        }
+      : {}),
   };
   appendCostAttempt(ledgerPath, entry);
   return entry;
@@ -648,6 +901,8 @@ export function executeJobs(
   const manifestPath = options.manifestPath ?? EFFICACY_MANIFEST_PATH;
   const ledgerPath = options.ledgerPath ?? EFFICACY_COST_PATH;
   const model = options.model ?? MODEL_ID;
+  const backend = options.backend ?? null;
+  const isCodex = backend === CODEX_BACKEND_ID;
   const runOneFn = options.runOneFn ?? runOne;
   const measureRunFn = options.measureRunFn ?? measurePaidRun;
   for (const job of jobs) {
@@ -655,12 +910,16 @@ export function executeJobs(
     if (!task) throw new Error(`unknown efficacy task: ${job.taskId}`);
     while (true) {
       const ledger = readCostLedger(ledgerPath);
-      if (hasCostTelemetryAnomaly(ledger)) {
+      const backendLedger = backend
+        ? ledger.filter((entry) => entry.backend === backend)
+        : ledger;
+      if (hasCostTelemetryAnomaly(backendLedger)) {
         throw new Error('cost telemetry anomaly previously recorded; scheduling stopped');
       }
       const cellAttempts = ledger.filter(
         (entry) =>
           entry.stage === stage &&
+          (!backend || entry.backend === backend) &&
           entry.task_id === job.taskId &&
           entry.arm === job.arm &&
           entry.rep === job.rep,
@@ -669,24 +928,33 @@ export function executeJobs(
         throw new Error(`${job.taskId}: infrastructure retries exhausted`);
       }
       const attempt = cellAttempts.length + 1;
-      const allowance = budgetAllowance(ledger);
-      if (allowance == null) throw new Error('efficacy budget guard stopped execution');
+      const allowance = isCodex ? null : budgetAllowance(ledger);
+      if (!isCodex && allowance == null) {
+        throw new Error('efficacy budget guard stopped execution');
+      }
       let runResult = null;
       let failureKind = null;
       let ledgerEntry = null;
       try {
-        runResult = runOneFn({
+        const runOptions = {
           task: job.taskId,
           arm: job.arm,
           rep: job.rep,
-          model,
+          model: isCodex ? CODEX_MODEL_ID : model,
           tasksDir: path.dirname(task.dir),
           manifestPath,
-          maxBudgetUsd: allowance,
           stage,
           attempt,
           apiRetries: 0,
-        });
+          ...(backend
+            ? {
+                backend,
+                host: CODEX_HOST,
+                hostVersion: CODEX_HOST_VERSION,
+              }
+            : { maxBudgetUsd: allowance }),
+        };
+        runResult = runOneFn(runOptions);
         failureKind = runResult.record.failure_kind;
         const cost = runResult.record.total_cost_usd;
         if (Number.isFinite(cost) && cost >= 0 && !isRetryableFailure(failureKind)) {
@@ -703,14 +971,17 @@ export function executeJobs(
           runResult,
           failureKind,
           ledgerPath,
+          backend,
         );
       }
       if (ledgerEntry.telemetry_anomaly) {
         throw new Error('cost telemetry anomaly; preserved attempt and stopped scheduling');
       }
       const after = readCostLedger(ledgerPath);
-      const spent = after.reduce((sum, row) => sum + row.total_cost_usd, 0);
-      if (spent > EFFICACY_BUDGET_USD) {
+      const spent = after
+        .filter((row) => !backend || row.backend === backend)
+        .reduce((sum, row) => sum + row.total_cost_usd, 0);
+      if (!isCodex && spent > EFFICACY_BUDGET_USD) {
         throw new Error('telemetry exceeded the efficacy budget ceiling; preserved attempt and stopped');
       }
       if (!isRetryableFailure(failureKind)) break;
@@ -723,6 +994,8 @@ function parseArgs(argv) {
     selftest: false,
     printPlan: false,
     execute: false,
+    codexPreflight: false,
+    codexLivePreflight: false,
     stage: null,
     tasksDir: EFFICACY_TASKS_DIR,
   };
@@ -731,6 +1004,8 @@ function parseArgs(argv) {
     if (arg === '--selftest') options.selftest = true;
     else if (arg === '--print-plan') options.printPlan = true;
     else if (arg === '--execute') options.execute = true;
+    else if (arg === '--codex-preflight') options.codexPreflight = true;
+    else if (arg === '--codex-live-preflight') options.codexLivePreflight = true;
     else if (arg === '--stage') options.stage = argv[++index];
     else if (arg === '--tasks-dir') options.tasksDir = path.resolve(argv[++index]);
     else if (arg === '--help') options.help = true;
@@ -743,8 +1018,22 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     console.log(
-      'Usage: node bench/efficacy.mjs --selftest | --print-plan [--stage NAME] | --stage discovery12|discovery3|confirm|haiku --execute',
+      'Usage: node bench/efficacy.mjs --selftest | --codex-preflight | --codex-live-preflight --execute | --print-plan [--stage NAME] | --stage discovery12|discovery3|confirm --execute',
     );
+    return;
+  }
+  if (options.codexLivePreflight && !options.execute) {
+    console.error('Codex live preflight requires explicit --execute');
+    process.exitCode = 2;
+    return;
+  }
+  if (options.codexPreflight) {
+    console.log(JSON.stringify(codexPreflight(), null, 2));
+    return;
+  }
+  if (options.codexLivePreflight) {
+    codexPreflight();
+    console.log(JSON.stringify(codexLivePreflight({ execute: true }), null, 2));
     return;
   }
   if (options.stage && !options.execute && !options.printPlan) {
@@ -752,41 +1041,38 @@ function main() {
     process.exitCode = 2;
     return;
   }
+  if (options.stage && !['discovery12', 'discovery3', 'confirm'].includes(options.stage)) {
+    throw new Error(`bad efficacy stage: ${options.stage}; Haiku replication is retired`);
+  }
   const tasks = loadEfficacyTasks(options.tasksDir, !options.printPlan);
   if (options.selftest) {
     console.log(JSON.stringify(tasks.map((task) => selftestTask(task.dir)), null, 2));
     return;
   }
-  const outcomes = loadMeasuredOutcomes();
+  const outcomes = loadMeasuredOutcomes(EFFICACY_MANIFEST_PATH, CODEX_BACKEND_ID);
   const stages = options.stage
     ? [options.stage]
-    : ['discovery12', 'discovery3', 'confirm', 'haiku'];
+    : ['discovery12', 'discovery3', 'confirm'];
   const plans = {};
   for (const stage of stages) {
     if (options.printPlan && outcomes.length === 0 && stage !== 'discovery12') {
       plans[stage] = [];
       continue;
     }
-    if (outcomes.length && (stage === 'confirm' || stage === 'haiku')) {
+    if (outcomes.length && stage === 'confirm') {
       assertRawGateCommitted();
     }
-    if (outcomes.length && stage === 'haiku') {
-      const analysisPath = path.join(BENCH_ROOT, 'efficacy-analysis.json');
-      const positive =
-        fs.existsSync(analysisPath) &&
-        JSON.parse(fs.readFileSync(analysisPath, 'utf8')).positive_claim === true;
-      if (!positive) throw new Error('Haiku stage requires a positive confirmatory result');
-    }
-    plans[stage] = planStage(stage, tasks, outcomes);
+    plans[stage] = planStage(stage, tasks, outcomes, CODEX_BACKEND_ID);
   }
   if (options.printPlan) {
     console.log(JSON.stringify(plans, null, 2));
     return;
   }
   assertPaidInputsCommitted();
-  assertClaudeVersion();
+  codexPreflight();
   executeJobs(plans[options.stage], tasks, options.stage, {
-    model: options.stage === 'haiku' ? HAIKU_MODEL_ID : MODEL_ID,
+    backend: CODEX_BACKEND_ID,
+    model: CODEX_MODEL_ID,
   });
 }
 

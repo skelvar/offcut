@@ -100,8 +100,8 @@ const HOOK_EVENTS = {
   SessionEnd: { script: 'hooks/session-end.js' },
   UserPromptSubmit: { script: 'hooks/prompt.js' },
   SubagentStart: { script: 'hooks/subagent.js' },
-  PreToolUse: { script: 'hooks/pre-write.js', matcher: 'Write|Edit' },
-  PostToolUse: { script: 'hooks/post-write.js', matcher: 'Write|Edit' },
+  PreToolUse: { script: 'hooks/pre-write.js', matcher: 'Write|Edit|apply_patch' },
+  PostToolUse: { script: 'hooks/post-write.js', matcher: 'Write|Edit|apply_patch' },
 };
 
 export function sha256(text) {
