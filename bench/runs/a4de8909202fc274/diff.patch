@@ -1,0 +1,114 @@
+diff --git a/src/normalize-event.js b/src/normalize-event.js
+new file mode 100644
+index 0000000..eb9eedd
+--- /dev/null
++++ b/src/normalize-event.js
+@@ -0,0 +1,108 @@
++const EVENT_TYPES = {
++  'invoice.paid': {
++    id: 'invoiceId',
++    occurredAt: 'paidAt',
++    actor: 'customer',
++    kind: 'invoice-paid',
++    label: 'Invoice paid',
++  },
++  'invoice.failed': {
++    id: 'invoiceId',
++    occurredAt: 'failedAt',
++    actor: 'customer',
++    kind: 'invoice-failed',
++    label: 'Invoice failed',
++  },
++  'user.created': {
++    id: 'userId',
++    occurredAt: 'createdAt',
++    actor: 'email',
++    kind: 'user-created',
++    label: 'User created',
++  },
++  'user.disabled': {
++    id: 'userId',
++    occurredAt: 'disabledAt',
++    actor: 'email',
++    kind: 'user-disabled',
++    label: 'User disabled',
++  },
++  'deploy.started': {
++    id: 'deploymentId',
++    occurredAt: 'startedAt',
++    actor: 'initiator',
++    kind: 'deploy-started',
++    label: 'Deployment started',
++  },
++  'deploy.succeeded': {
++    id: 'deploymentId',
++    occurredAt: 'finishedAt',
++    actor: 'initiator',
++    kind: 'deploy-succeeded',
++    label: 'Deployment succeeded',
++  },
++  'deploy.failed': {
++    id: 'deploymentId',
++    occurredAt: 'finishedAt',
++    actor: 'initiator',
++    kind: 'deploy-failed',
++    label: 'Deployment failed',
++  },
++  'alert.opened': {
++    id: 'alertId',
++    occurredAt: 'openedAt',
++    actor: 'service',
++    kind: 'alert-opened',
++    label: 'Alert opened',
++  },
++  'alert.closed': {
++    id: 'alertId',
++    occurredAt: 'closedAt',
++    actor: 'service',
++    kind: 'alert-closed',
++    label: 'Alert closed',
++  },
++  'access.granted': {
++    id: 'grantId',
++    occurredAt: 'grantedAt',
++    actor: 'actor',
++    kind: 'access-granted',
++    label: 'Access granted',
++  },
++};
++
++function isNonEmptyText(value) {
++  return typeof value === 'string' && value.length > 0;
++}
++
++export function normalizeEvent(event) {
++  if (event === null || typeof event !== 'object') {
++    throw new TypeError('Event must be an object');
++  }
++
++  const mapping = EVENT_TYPES[event.type];
++  if (mapping === undefined) {
++    throw new TypeError(`Unknown event type: ${String(event.type)}`);
++  }
++
++  const { data } = event;
++  if (data === null || typeof data !== 'object') {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  const id = data[mapping.id];
++  const occurredAt = data[mapping.occurredAt];
++  const actor = data[mapping.actor];
++
++  if (![id, occurredAt, actor].every(isNonEmptyText)) {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  return {
++    id,
++    kind: mapping.kind,
++    occurredAt,
++    actor,
++    summary: `${mapping.label}: ${id}`,
++  };
++}

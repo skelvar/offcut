@@ -1,0 +1,114 @@
+diff --git a/src/normalize-event.js b/src/normalize-event.js
+new file mode 100644
+index 0000000..f45ee63
+--- /dev/null
++++ b/src/normalize-event.js
+@@ -0,0 +1,108 @@
++const EVENT_TYPES = {
++  'invoice.paid': {
++    id: 'invoiceId',
++    occurredAt: 'paidAt',
++    actor: 'customer',
++    kind: 'invoice-paid',
++    summary: 'Invoice paid',
++  },
++  'invoice.failed': {
++    id: 'invoiceId',
++    occurredAt: 'failedAt',
++    actor: 'customer',
++    kind: 'invoice-failed',
++    summary: 'Invoice failed',
++  },
++  'user.created': {
++    id: 'userId',
++    occurredAt: 'createdAt',
++    actor: 'email',
++    kind: 'user-created',
++    summary: 'User created',
++  },
++  'user.disabled': {
++    id: 'userId',
++    occurredAt: 'disabledAt',
++    actor: 'email',
++    kind: 'user-disabled',
++    summary: 'User disabled',
++  },
++  'deploy.started': {
++    id: 'deploymentId',
++    occurredAt: 'startedAt',
++    actor: 'initiator',
++    kind: 'deploy-started',
++    summary: 'Deployment started',
++  },
++  'deploy.succeeded': {
++    id: 'deploymentId',
++    occurredAt: 'finishedAt',
++    actor: 'initiator',
++    kind: 'deploy-succeeded',
++    summary: 'Deployment succeeded',
++  },
++  'deploy.failed': {
++    id: 'deploymentId',
++    occurredAt: 'finishedAt',
++    actor: 'initiator',
++    kind: 'deploy-failed',
++    summary: 'Deployment failed',
++  },
++  'alert.opened': {
++    id: 'alertId',
++    occurredAt: 'openedAt',
++    actor: 'service',
++    kind: 'alert-opened',
++    summary: 'Alert opened',
++  },
++  'alert.closed': {
++    id: 'alertId',
++    occurredAt: 'closedAt',
++    actor: 'service',
++    kind: 'alert-closed',
++    summary: 'Alert closed',
++  },
++  'access.granted': {
++    id: 'grantId',
++    occurredAt: 'grantedAt',
++    actor: 'actor',
++    kind: 'access-granted',
++    summary: 'Access granted',
++  },
++};
++
++function isMissing(value) {
++  return value === undefined || value === null || value === '';
++}
++
++export function normalizeEvent(event) {
++  if (event === null || typeof event !== 'object' || Array.isArray(event)) {
++    throw new TypeError('Event must be an object');
++  }
++
++  const definition = EVENT_TYPES[event.type];
++  if (definition === undefined) {
++    throw new TypeError(`Unknown event type: ${String(event.type)}`);
++  }
++
++  const { data } = event;
++  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  const id = data[definition.id];
++  const occurredAt = data[definition.occurredAt];
++  const actor = data[definition.actor];
++
++  if (isMissing(id) || isMissing(occurredAt) || isMissing(actor)) {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  return {
++    id,
++    kind: definition.kind,
++    occurredAt,
++    actor,
++    summary: `${definition.summary}: ${id}`,
++  };
++}

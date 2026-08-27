@@ -1,0 +1,1 @@
+The internal API client needs query text for GET requests. Export buildQuery(params) from src/query.js. Keep property iteration order, omit null and undefined values, repeat a key for each array item, and encode keys and values with URL encoding. Return an empty string when nothing remains; otherwise prefix the result with "?".

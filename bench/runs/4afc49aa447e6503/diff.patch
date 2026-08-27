@@ -1,0 +1,49 @@
+diff --git a/src/normalize-event.js b/src/normalize-event.js
+new file mode 100644
+index 0000000..cb65438
+--- /dev/null
++++ b/src/normalize-event.js
+@@ -0,0 +1,43 @@
++const EVENT_TYPES = {
++  'invoice.paid': ['invoiceId', 'paidAt', 'customer', 'invoice-paid', 'Invoice paid'],
++  'invoice.failed': ['invoiceId', 'failedAt', 'customer', 'invoice-failed', 'Invoice failed'],
++  'user.created': ['userId', 'createdAt', 'email', 'user-created', 'User created'],
++  'user.disabled': ['userId', 'disabledAt', 'email', 'user-disabled', 'User disabled'],
++  'deploy.started': ['deploymentId', 'startedAt', 'initiator', 'deploy-started', 'Deployment started'],
++  'deploy.succeeded': ['deploymentId', 'finishedAt', 'initiator', 'deploy-succeeded', 'Deployment succeeded'],
++  'deploy.failed': ['deploymentId', 'finishedAt', 'initiator', 'deploy-failed', 'Deployment failed'],
++  'alert.opened': ['alertId', 'openedAt', 'service', 'alert-opened', 'Alert opened'],
++  'alert.closed': ['alertId', 'closedAt', 'service', 'alert-closed', 'Alert closed'],
++  'access.granted': ['grantId', 'grantedAt', 'actor', 'access-granted', 'Access granted'],
++};
++
++export function normalizeEvent(event) {
++  if (event === null || typeof event !== 'object') {
++    throw new TypeError('Event must be an object');
++  }
++
++  const definition = EVENT_TYPES[event.type];
++  if (!definition) {
++    throw new TypeError(`Unknown event type: ${String(event.type)}`);
++  }
++
++  const data = event.data;
++  if (data === null || typeof data !== 'object') {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  const [idField, timestampField, actorField, kind, summaryLabel] = definition;
++  const requiredFields = [idField, timestampField, actorField];
++  if (requiredFields.some((field) => data[field] === undefined || data[field] === null)) {
++    throw new TypeError(`Incomplete event: ${event.type}`);
++  }
++
++  const id = data[idField];
++  return {
++    id,
++    kind,
++    occurredAt: data[timestampField],
++    actor: data[actorField],
++    summary: `${summaryLabel}: ${id}`,
++  };
++}

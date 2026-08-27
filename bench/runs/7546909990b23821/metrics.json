@@ -1,0 +1,47 @@
+{
+  "run_id": "7546909990b23821",
+  "task_passed": true,
+  "accept_exit": 0,
+  "accept_error": null,
+  "files_created": 1,
+  "files_created_paths": [
+    "src/normalize-event.js"
+  ],
+  "dependencies_added": 0,
+  "exported_unused": 0,
+  "abstraction_layers": 0,
+  "config_keys_added": 0,
+  "lines_added": 45,
+  "lines_removed": 0,
+  "diff_sha256": "16425fa8f99424a220c5d15c1ff139da33f698e719f23067741beba270086d08",
+  "signals_in_diff": [],
+  "signals_in_diff_count": 0,
+  "signals_fired": [],
+  "signals_fired_count": 0,
+  "flagged_survived": [],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": null,
+  "total_cost_usd": 0,
+  "duration_ms": 89081,
+  "input_tokens": 120771,
+  "output_tokens": 2504,
+  "cache_read_input_tokens": 97792,
+  "cache_creation_input_tokens": 0,
+  "reasoning_output_tokens": 341,
+  "target_present": false,
+  "primary_success": false,
+  "target_measurement": {
+    "target_present": false,
+    "seen": {
+      "inputs": [
+        "accept.json",
+        "diff.patch",
+        "work"
+      ],
+      "evidence": {
+        "category": "large-first-write",
+        "detected": false
+      }
+    }
+  }
+}
