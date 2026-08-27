@@ -424,11 +424,20 @@ function canonicalCodexOrchestrationTool(toolName) {
 const CODEX_HOOK_TRUST_WARNING =
   '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
 
+export function isExpectedCodexCliWarning(message) {
+  const text = String(message || '').trim();
+  return (
+    text === CODEX_HOOK_TRUST_WARNING ||
+    /^clamping SessionEnd hook timeout to \d+s in /i.test(text) ||
+    /^WARNING: proceeding, even though we could not create PATH aliases:/i.test(text)
+  );
+}
+
 export function classifyCodexEventFailures(events) {
-  const isHookTrustWarning = (event) =>
+  const isExpectedCliWarningEvent = (event) =>
     event?.type === 'item.completed' &&
     event?.item?.type === 'error' &&
-    event?.item?.message === CODEX_HOOK_TRUST_WARNING;
+    isExpectedCodexCliWarning(event?.item?.message);
   const collaborationEvent = events.some(
     (event) =>
       event?.item?.type === 'collab_tool_call' ||
@@ -448,7 +457,7 @@ export function classifyCodexEventFailures(events) {
   });
   const recoverableEventSet = new Set(recoverableEvents);
   const unrecoverable = events.some((event) => {
-    if (isHookTrustWarning(event) || recoverableEventSet.has(event)) return false;
+    if (isExpectedCliWarningEvent(event) || recoverableEventSet.has(event)) return false;
     return (
       /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
       event?.item?.type === 'error' ||
@@ -458,7 +467,7 @@ export function classifyCodexEventFailures(events) {
     );
   });
   return {
-    warningCount: events.filter(isHookTrustWarning).length,
+    warningCount: events.filter(isExpectedCliWarningEvent).length,
     unrecoverable,
     recoverableToolFailures: recoverableEvents.map((event) => ({
       item_id: typeof event.item.id === 'string' ? event.item.id : null,
@@ -651,9 +660,18 @@ export function parseCodexJsonl(
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 2_048);
+  const apiErrorCorpus = [
+    ...String(stderr || '')
+      .split(/\r?\n/)
+      .filter((line) => line.trim() && !isExpectedCodexCliWarning(line)),
+    spawnErr?.message || '',
+    ...eventMessages.filter((message) => !isExpectedCodexCliWarning(message)),
+  ]
+    .filter(Boolean)
+    .join('\n');
   const apiError =
     /(?:rate limit|too many requests|quota|authentication|unauthorized|forbidden|api key|subscription|\b429\b|\b5\d\d\b)/i.test(
-      text,
+      apiErrorCorpus,
     );
   const preCallSpawnCodes = new Set(['ENOENT', 'EACCES']);
   const knownPreCallFailure =

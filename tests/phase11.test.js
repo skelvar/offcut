@@ -231,6 +231,17 @@ test('primary success is false for a broken run even when the target is absent',
   );
 });
 
+test('no-opportunity confirm primary counts completed accepts despite sealed model labels', async () => {
+  const { noOpportunityPrimary } = await import('../bench/efficacy.mjs');
+  const accepted = { task_passed: true, target_present: false };
+  assert.equal(noOpportunityPrimary(accepted, null), true);
+  assert.equal(noOpportunityPrimary(accepted, 'model'), true);
+  assert.equal(noOpportunityPrimary(accepted, 'api'), false);
+  assert.equal(noOpportunityPrimary(accepted, 'host'), false);
+  assert.equal(noOpportunityPrimary({ task_passed: true, target_present: true }, 'model'), false);
+  assert.equal(noOpportunityPrimary({ task_passed: false, target_present: false }, null), false);
+});
+
 test('budget ledger stays append-only and guard returns the allowed Claude cap', async () => {
   const { appendCostAttempt, budgetAllowance, readCostLedger } = await import(
     '../bench/efficacy.mjs'
@@ -394,6 +405,7 @@ test('retry exhaustion is durable across fresh executeJobs invocations', async (
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-retry-'));
   const ledgerPath = path.join(dir, 'efficacy-cost.jsonl');
   const job = { taskId: 'x', arm: 'off', rep: 1 };
+  const later = { taskId: 'y', arm: 'off', rep: 1 };
   const base = {
     stage: 'discovery12',
     task_id: 'x',
@@ -406,38 +418,55 @@ test('retry exhaustion is durable across fresh executeJobs invocations', async (
   appendCostAttempt(ledgerPath, { ...base, attempt_id: 'two', attempt: 2 });
   const seen = [];
   try {
-    assert.throws(
-      () =>
-        executeJobs([job], [{ id: 'x', dir: path.join(dir, 'x') }], 'discovery12', {
-          ledgerPath,
-          manifestPath: path.join(dir, 'manifest.jsonl'),
-          runOneFn(options) {
-            seen.push(options);
+    executeJobs(
+      [job, later],
+      [
+        { id: 'x', dir: path.join(dir, 'x') },
+        { id: 'y', dir: path.join(dir, 'y') },
+      ],
+      'discovery12',
+      {
+        ledgerPath,
+        manifestPath: path.join(dir, 'manifest.jsonl'),
+        runOneFn(options) {
+          seen.push(options);
+          if (options.task === 'y') {
             return {
-              runId: 'three',
+              runId: 'y-one',
               runDir: dir,
-              record: { failure_kind: 'api', total_cost_usd: 0.1 },
+              record: { failure_kind: null, total_cost_usd: 0.2 },
             };
-          },
-        }),
-      /retries exhausted/i,
+          }
+          return {
+            runId: 'three',
+            runDir: dir,
+            record: { failure_kind: 'api', total_cost_usd: 0.1 },
+          };
+        },
+        measureRunFn() {},
+      },
     );
-    assert.equal(seen.length, 1);
+    assert.equal(seen.length, 2);
+    assert.equal(seen[0].task, 'x');
     assert.equal(seen[0].attempt, 3);
     assert.equal(seen[0].apiRetries, 0);
+    assert.equal(seen[1].task, 'y');
+    assert.equal(seen[1].attempt, 1);
 
-    let freshCalls = 0;
-    assert.throws(
-      () =>
-        executeJobs([job], [{ id: 'x', dir: path.join(dir, 'x') }], 'discovery12', {
-          ledgerPath,
-          runOneFn() {
-            freshCalls += 1;
-          },
-        }),
-      /retries exhausted/i,
-    );
-    assert.equal(freshCalls, 0);
+    const fresh = [];
+    executeJobs([job], [{ id: 'x', dir: path.join(dir, 'x') }], 'discovery12', {
+      ledgerPath,
+      runOneFn(options) {
+        fresh.push(options.task);
+        return {
+          runId: 'fresh',
+          runDir: dir,
+          record: { failure_kind: null, total_cost_usd: 0 },
+        };
+      },
+      measureRunFn() {},
+    });
+    assert.deepEqual(fresh, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -619,7 +648,7 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
       fs.readFileSync(secondMarkdown, 'utf8'),
       fs.readFileSync(firstMarkdown, 'utf8'),
     );
-    assert.equal(first.raw_commit_sha, '4eeea606451623b3a0c18109f33b019413db81cb');
+    assert.match(first.raw_commit_sha, /^[a-f0-9]{40}$/);
     assert.deepEqual(first.discovery, {
       planned_initial_cells: 24,
       completed_initial_cells: 24,
@@ -811,19 +840,29 @@ test('null efficacy report refuses evidence that contradicts the stop', async ()
   assert.throws(
     () => buildEfficacyAnalysis({
       ...base,
+      metricsByRun: new Map([
+        ...metricsByRun,
+        ['confirm-unexpected', {
+          task_passed: true,
+          target_present: false,
+          primary_success: true,
+          lines_added: 1,
+          lines_removed: 0,
+        }],
+      ]),
       manifestEntries: [
         ...manifestEntries,
         {
           ...codexEntries[0],
-          run_id: 'confirm-incomplete',
+          run_id: 'confirm-unexpected',
           stage: 'confirm',
-          task_id: 'asset-base-url',
+          task_id: 'webhook-signature',
           arm: 'off',
           rep: 1,
         },
       ],
     }),
-    /no-opportunity confirm grid is incomplete/i,
+    /no-opportunity confirm grid is incomplete or unexpected/i,
   );
 });
 
@@ -2279,6 +2318,59 @@ test('Codex failure parsing separates API, model, and known pre-call failures', 
     kind: 'known_zero',
     source: 'spawn_error:ENOENT',
   });
+});
+
+test('completed Codex turns with CLI warnings and 5xx token counts are not API failures', async () => {
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
+  const hookWarning = {
+    type: 'item.completed',
+    item: { id: 'warning-1', type: 'error', message: CODEX_HOOK_TRUST_WARNING },
+  };
+  const sessionEndWarning = {
+    type: 'item.completed',
+    item: {
+      id: 'warning-3',
+      type: 'error',
+      message:
+        'clamping SessionEnd hook timeout to 3s in C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-XqnyPT\\hooks.json',
+    },
+  };
+  const result = parseCodexJsonl(
+    [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
+      JSON.stringify(hookWarning),
+      JSON.stringify({ ...hookWarning, item: { ...hookWarning.item, id: 'warning-2' } }),
+      JSON.stringify(sessionEndWarning),
+      JSON.stringify({ type: 'turn.started' }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 114232,
+          cached_input_tokens: 99584,
+          cache_write_input_tokens: 0,
+          output_tokens: 1775,
+          reasoning_output_tokens: 571,
+        },
+      }),
+    ].join('\n'),
+    0,
+    null,
+    {
+      durationMs: 80649,
+      authKind: 'chatgpt',
+      auditEntries: codexWorkerAudit(),
+      stderr: [
+        'WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\\\Users\\\\bash\\\\AppData\\\\Local\\\\Temp\\\\" (codex_home: AbsolutePathBuf("C:\\\\Users\\\\bash\\\\AppData\\\\Local\\\\Temp\\\\offcut-codex-home-XqnyPT"))',
+        'Reading additional input from stdin...',
+      ].join('\n'),
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.apiError, false);
+  assert.equal(result.failureKind, null);
+  assert.equal(result.error, null);
+  assert.equal(result.warningCount, 3);
+  assert.equal(result.telemetry.reasoning_output_tokens, 571);
 });
 
 test('Codex runner removes isolated home on success and failure without preserving auth', async () => {

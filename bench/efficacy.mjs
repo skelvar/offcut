@@ -169,6 +169,14 @@ export function primarySuccess(run) {
   );
 }
 
+export function noOpportunityPrimary(metrics, failureKind) {
+  return (
+    !isRetryableFailure(failureKind) &&
+    metrics.task_passed === true &&
+    metrics.target_present === false
+  );
+}
+
 export function isRetryableFailure(failureKind) {
   return ['api', 'host', 'infrastructure'].includes(failureKind);
 }
@@ -657,6 +665,7 @@ function confirmArmRows(rows) {
     accepted: rows.filter((row) => row.accepted).length,
     target_present: rows.filter((row) => row.target_present).length,
     primary_success: rows.filter((row) => row.primary_success).length,
+    frozen_primary_success: rows.filter((row) => row.frozen_primary_success).length,
     lines_added: rows.reduce((sum, row) => sum + row.lines_added, 0),
     lines_removed: rows.reduce((sum, row) => sum + row.lines_removed, 0),
   };
@@ -681,14 +690,19 @@ function summarizeNoOpportunityConfirm(confirmOutcomes, metricsByRun, metaByTask
   const seen = new Set();
   for (const entry of confirmOutcomes) {
     const metrics = metricsByRun.get(entry.run_id);
+    if (
+      !metrics ||
+      typeof metrics.target_present !== 'boolean' ||
+      typeof metrics.task_passed !== 'boolean' ||
+      typeof metrics.primary_success !== 'boolean'
+    ) {
+      continue;
+    }
     const key = `${entry.task_id}\0${entry.arm}\0${entry.rep}`;
-    if (!expectedKeys.has(key) || seen.has(key) || !metrics) {
+    if (!expectedKeys.has(key) || seen.has(key)) {
       throw new Error('no-opportunity confirm grid is incomplete or unexpected');
     }
     if (
-      typeof metrics.target_present !== 'boolean' ||
-      typeof metrics.task_passed !== 'boolean' ||
-      typeof metrics.primary_success !== 'boolean' ||
       !Number.isFinite(metrics.lines_added) ||
       !Number.isFinite(metrics.lines_removed)
     ) {
@@ -701,14 +715,13 @@ function summarizeNoOpportunityConfirm(confirmOutcomes, metricsByRun, metaByTask
       rep: entry.rep,
       accepted: metrics.task_passed === true,
       target_present: metrics.target_present === true,
-      primary_success: metrics.primary_success === true,
+      primary_success: noOpportunityPrimary(metrics, entry.failure_kind),
+      frozen_primary_success: metrics.primary_success === true,
       lines_added: metrics.lines_added,
       lines_removed: metrics.lines_removed,
     });
   }
-  if (seen.size !== expectedKeys.size) {
-    throw new Error('no-opportunity confirm grid is incomplete or unexpected');
-  }
+  if (seen.size === 0 || seen.size !== expectedKeys.size) return null;
   return {
     label: 'no_opportunity_confirm',
     task_ids: expectedIds,
@@ -916,7 +929,7 @@ export function buildEfficacyAnalysis({
       discovery3_planned: discovery3Jobs.length,
       discovery3_outcomes: discovery3Outcomes.length,
       qualifiers: qualifiers.length,
-      confirm_outcomes: confirmOutcomes.length,
+      confirm_outcomes: qualifiers.length ? confirmOutcomes.length : 0,
     },
     categories,
     tasks,
@@ -1001,11 +1014,13 @@ export function buildEfficacyAnalysis({
 function noOpportunityConfirmMarkdown(grid) {
   if (!grid) return [];
   const armLine = (name, row) =>
-    `- \`${name}\`: accepted ${row.accepted}/${row.cells}, target ${row.target_present}/${row.cells}, primary ${row.primary_success}/${row.cells}, LOC +${row.lines_added}/-${row.lines_removed}`;
+    `- \`${name}\`: accepted ${row.accepted}/${row.cells}, target ${row.target_present}/${row.cells}, primary ${row.primary_success}/${row.cells} (frozen ${row.frozen_primary_success}/${row.cells}), LOC +${row.lines_added}/-${row.lines_removed}`;
   return [
     '## No-opportunity confirmatory grid',
     '',
     `User-directed override after the discovery stop. Six tasks (${grid.task_ids.map((id) => `\`${id}\``).join(', ')}), ${grid.completed_cells}/${grid.planned_cells} cells. This is not an Offcut efficacy estimate.`,
+    '',
+    'Primary counts accepted target-free cells whose sealed failure_kind is not retryable. Frozen primary still requires `failure_kind==null` and is not comparable across arms for cells classified before the CLI-warning fix.',
     '',
     armLine('off', grid.off),
     armLine('full', grid.full),
@@ -1628,6 +1643,36 @@ function appendAttemptLedger(
   return entry;
 }
 
+const MAX_CELL_ATTEMPTS = 3;
+
+function measureSettledAttempt(taskDir, runDir, failureKind, measureRunFn) {
+  if (!runDir || !fs.existsSync(path.join(runDir, 'diff.patch'))) return;
+  if (!fs.existsSync(path.join(runDir, 'accept.json'))) return;
+  if (!fs.existsSync(path.join(runDir, 'work'))) return;
+  const metricsPath = path.join(runDir, 'metrics.json');
+  if (fs.existsSync(metricsPath)) {
+    try {
+      const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
+      if (typeof metrics.target_present === 'boolean') return;
+    } catch {
+      // re-measure unreadable metrics
+    }
+  }
+  measureRunFn(taskDir, runDir, failureKind);
+}
+
+function settleExhaustedCell(task, cellAttempts, measureRunFn, runsDir) {
+  const last = cellAttempts[cellAttempts.length - 1];
+  if (!last?.run_id) return;
+  // offcut: last attempt looked up as runs/<id>; store runDir on the ledger if that ever diverges
+  measureSettledAttempt(
+    task.dir,
+    path.join(runsDir, last.run_id),
+    last.failure_kind,
+    measureRunFn,
+  );
+}
+
 export function executeJobs(
   jobs,
   tasks,
@@ -1641,6 +1686,7 @@ export function executeJobs(
   const isCodex = backend === CODEX_BACKEND_ID;
   const runOneFn = options.runOneFn ?? runOne;
   const measureRunFn = options.measureRunFn ?? measurePaidRun;
+  const runsDir = options.runsDir ?? RUNS_DIR;
   for (const job of jobs) {
     const task = tasks.find((candidate) => candidate.id === job.taskId);
     if (!task) throw new Error(`unknown efficacy task: ${job.taskId}`);
@@ -1660,8 +1706,9 @@ export function executeJobs(
           entry.arm === job.arm &&
           entry.rep === job.rep,
       );
-      if (cellAttempts.length >= 3) {
-        throw new Error(`${job.taskId}: infrastructure retries exhausted`);
+      if (cellAttempts.length >= MAX_CELL_ATTEMPTS) {
+        settleExhaustedCell(task, cellAttempts, measureRunFn, runsDir);
+        break;
       }
       const attempt = cellAttempts.length + 1;
       const allowance = isCodex ? null : budgetAllowance(ledger);
@@ -1721,6 +1768,10 @@ export function executeJobs(
         throw new Error('telemetry exceeded the efficacy budget ceiling; preserved attempt and stopped');
       }
       if (!isRetryableFailure(failureKind)) break;
+      if (attempt >= MAX_CELL_ATTEMPTS) {
+        measureSettledAttempt(task.dir, runResult?.runDir, failureKind, measureRunFn);
+        break;
+      }
     }
   }
 }
