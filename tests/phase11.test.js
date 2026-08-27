@@ -879,6 +879,7 @@ test('event normalizer documents every accepted mapping and output convention', 
   assert.match(readme, /exactly `\{ id, kind, occurredAt, actor, summary \}`/);
   assert.match(readme, /`occurredAt` preserves the source timestamp text/);
   assert.match(readme, /`summary` is `<summary label>: <id>`/);
+  assert.match(readme, /must not modify the input event or its `data` object/);
 });
 
 test('dependency target stubs use their optional package with a fallback', async () => {

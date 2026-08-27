@@ -22,3 +22,4 @@ their normalized values are:
 
 The result is exactly `{ id, kind, occurredAt, actor, summary }`.
 `occurredAt` preserves the source timestamp text, and `summary` is `<summary label>: <id>`.
+Normalization must not modify the input event or its `data` object.
