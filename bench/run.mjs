@@ -439,24 +439,60 @@ function canonicalCodexOrchestrationTool(toolName) {
 const CODEX_HOOK_TRUST_WARNING =
   '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
 
-export function codexUserAssetsIsolated(text, isolatedHomeDir = null) {
-  const normalize = (value) =>
+function normalizedEvidencePath(value, caseInsensitive) {
+  const normalized =
     String(value || '')
       .replace(/\\+/g, '/')
-      .replace(/\/+/g, '/')
-      .toLowerCase();
-  const normalized = normalize(text);
-  const isolatedRoot = normalize(isolatedHomeDir).replace(/\/$/, '');
-  // offcut: scan path markers in text; use structured provenance if Codex emits it.
-  for (const match of normalized.matchAll(/\.(?:agents|codex)\/skills/g)) {
-    const rootIndex = isolatedRoot
-      ? normalized.lastIndexOf(isolatedRoot, match.index)
-      : -1;
-    const between =
-      rootIndex >= 0
-        ? normalized.slice(rootIndex + isolatedRoot.length, match.index)
-        : '';
-    if (rootIndex < 0 || !/^\/[^"'`\r\n<>|:=,;]*$/.test(between)) return false;
+      .replace(/\/+/g, '/');
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
+}
+
+export function codexUserHomeFromAuthPath(authPath) {
+  const normalized = normalizedEvidencePath(authPath, false).replace(/\/$/, '');
+  const windows = /^[a-z]:\//i.test(normalized);
+  if (!windows && !normalized.startsWith('/')) return null;
+  const fileSeparator = normalized.lastIndexOf('/');
+  if (fileSeparator <= 0) return null;
+  const authParent = normalized.slice(0, fileSeparator);
+  const parentSeparator = authParent.lastIndexOf('/');
+  if (parentSeparator < 0) return null;
+  const parentName = authParent.slice(parentSeparator + 1);
+  if ((windows ? parentName.toLowerCase() : parentName) !== '.codex') {
+    return null;
+  }
+  return authParent.slice(0, parentSeparator) || '/';
+}
+
+export function codexUserAssetsIsolated(text, options) {
+  const { userHome, workDir, isolatedHomeDir } = options || {};
+  const windows = /^[a-z]:[\\/]/i.test(String(userHome || ''));
+  const normalizedHome = normalizedEvidencePath(userHome, windows).replace(
+    /\/$/,
+    '',
+  );
+  if (!normalizedHome) return true;
+  const normalized = normalizedEvidencePath(text, windows);
+  const allowedRoots = [workDir, isolatedHomeDir]
+    .map((root) =>
+      normalizedEvidencePath(root, windows).replace(/\/$/, ''),
+    )
+    .filter(Boolean);
+  for (const suffix of ['/.agents/skills', '/.codex/skills']) {
+    const target = `${normalizedHome}${suffix}`;
+    let index = normalized.indexOf(target);
+    while (index >= 0) {
+      const before = normalized[index - 1];
+      const after = normalized[index + target.length];
+      const boundedBefore = index === 0 || /[\s"'`(<>=]/.test(before);
+      const boundedAfter = after === undefined || /[\/\s"'`),.;:<>}]/.test(after);
+      const allowed = allowedRoots.some(
+        (root) =>
+          normalized.startsWith(root, index) &&
+          /^(?:$|\/)/.test(normalized.slice(index + root.length)),
+      );
+      if (boundedBefore && boundedAfter && !allowed) return false;
+      index = normalized.indexOf(target, index + target.length);
+    }
   }
   return true;
 }
@@ -579,6 +615,8 @@ export function parseCodexJsonl(
     authKind = null,
     auditEntries = [],
     stderr = '',
+    userHome = null,
+    workDir = null,
     isolatedHomeDir = null,
   } = {},
 ) {
@@ -658,7 +696,11 @@ export function parseCodexJsonl(
   const usage = aggregateCodexUsage(events);
   const modelId = observedCodexModel(events);
   const subscriptionVerified = authKind === 'chatgpt';
-  const userAssetsIsolated = codexUserAssetsIsolated(text, isolatedHomeDir);
+  const userAssetsIsolated = codexUserAssetsIsolated(text, {
+    userHome,
+    workDir,
+    isolatedHomeDir,
+  });
   const ok =
     status === 0 &&
     !eventError &&
@@ -876,6 +918,8 @@ export function runCodex({
       authKind: 'chatgpt',
       auditEntries: readCodexAudit(resolvedAuditPath),
       stderr: result.stderr || '',
+      userHome: codexUserHomeFromAuthPath(authPath),
+      workDir,
       isolatedHomeDir: isolated.homeDir,
     });
     return attachHashes(parsed);

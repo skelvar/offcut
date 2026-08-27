@@ -48,9 +48,10 @@ parent-owned workspace permission. The isolated config also sets
 `[skills] include_instructions = false`; custom roles remain discoverable
 separately. The fifth live preflight showed that HOME isolation alone still
 allowed an attempted read of a global `.agents/skills` path, so every run now
-fails closed if transcript or stderr mentions external `.agents/skills` or
-user `.codex/skills`. Paths under the temporary isolated home are permitted,
-and records expose `user_assets_isolated`.
+fails closed if transcript or stderr references the absolute
+`<original-user-home>/.agents/skills` or `.codex/skills` trees. Relative prose
+and paths under the work directory or temporary isolated home are permitted,
+and records expose `user_assets_isolated` without persisting path values.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,

@@ -1682,21 +1682,32 @@ test('Codex measured lifecycle audit is authoritative when collaboration JSONL o
 });
 
 test('Codex rejects external user skill paths but permits isolated role paths', async () => {
-  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const {
+    CODEX_CUSTOM_ROLE,
+    codexUserHomeFromAuthPath,
+    parseCodexJsonl,
+  } = await import('../bench/run.mjs');
+  const userHome = 'C:\\Users\\bash';
+  const workDir = 'C:\\Temp\\repo';
   const isolatedHomeDir = 'C:\\Temp\\offcut codex-home-clean';
   const stdout = [
     { type: 'thread.started', thread_id: 'parent-thread-1' },
     { type: 'turn.started' },
     CODEX_USAGE_EVENT,
   ].map(JSON.stringify).join('\n');
-  const parse = (stderr, transcript = stdout) =>
-    parseCodexJsonl(transcript, 0, null, {
+  const parse = (stderr, options) => {
+    const { transcript = stdout, ...overrides } = options || {};
+    return parseCodexJsonl(transcript, 0, null, {
       durationMs: 10,
       authKind: 'chatgpt',
       auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
       stderr,
+      userHome,
+      workDir,
       isolatedHomeDir,
+      ...overrides,
     });
+  };
 
   const contaminated = parse(
     "Get-Content -Raw 'C:\\Users\\bash\\.agents\\skills\\using-superpowers\\SKILL.md'",
@@ -1706,32 +1717,50 @@ test('Codex rejects external user skill paths but permits isolated role paths', 
   assert.equal(contaminated.failureKind, 'model');
   assert.match(contaminated.error, /external user agent or skill assets/i);
 
-  const transcriptContaminated = parse(
+  const posixContaminated = parse(
     '',
-    [
-      { type: 'thread.started', thread_id: 'parent-thread-1' },
-      { type: 'turn.started' },
-      {
-        type: 'item.completed',
-        item: {
-          type: 'agent_message',
-          text: 'Loaded /Users/example/.codex/skills/global/SKILL.md',
+    {
+      transcript: [
+        { type: 'thread.started', thread_id: 'parent-thread-1' },
+        { type: 'turn.started' },
+        {
+          type: 'item.completed',
+          item: {
+            type: 'agent_message',
+            text: 'Loaded /Users/example/.codex/skills/global/SKILL.md',
+          },
         },
-      },
-      CODEX_USAGE_EVENT,
-    ].map(JSON.stringify).join('\n'),
+        CODEX_USAGE_EVENT,
+      ].map(JSON.stringify).join('\n'),
+      userHome: '/Users/example',
+    },
   );
-  assert.equal(transcriptContaminated.ok, false);
-  assert.equal(transcriptContaminated.userAssetsIsolated, false);
+  assert.equal(posixContaminated.ok, false);
+  assert.equal(posixContaminated.userAssetsIsolated, false);
 
-  const clean = parse(
+  for (const cleanText of [
+    '.agents/skills may exist relative to a repository',
+    'The phrase agents skills is documentation, not a path.',
+    `${workDir}\\.agents\\skills\\repository\\SKILL.md`,
     [
       `${isolatedHomeDir}\\agents\\ticket-worker.toml`,
       `${isolatedHomeDir}\\.agents\\skills\\local\\SKILL.md`,
     ].join('\n'),
+  ]) {
+    const clean = parse(cleanText);
+    assert.equal(clean.ok, true, cleanText);
+    assert.equal(clean.userAssetsIsolated, true, cleanText);
+  }
+
+  assert.equal(
+    codexUserHomeFromAuthPath('C:\\Users\\bash\\.codex\\auth.json'),
+    'C:/Users/bash',
   );
-  assert.equal(clean.ok, true);
-  assert.equal(clean.userAssetsIsolated, true);
+  assert.equal(
+    codexUserHomeFromAuthPath('/home/example/.codex/auth.json'),
+    '/home/example',
+  );
+  assert.equal(codexUserHomeFromAuthPath('relative/.codex/auth.json'), null);
 });
 
 test('Codex audit enforces lifecycle and parent ownership independently of collab details', async () => {
@@ -2603,9 +2632,11 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
 test('Codex live preflight requires the exact worker proof file and diff', async () => {
   const { CODEX_CUSTOM_ROLE, codexLivePreflight } = await import('../bench/efficacy.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-proof-'));
-  const authPath = path.join(root, 'auth.json');
+  const userHome = path.join(root, 'user-home');
+  const authPath = path.join(userHome, '.codex', 'auth.json');
   const evidenceRoot = path.join(root, 'evidence');
   const ledgerPath = path.join(root, 'ledger.jsonl');
+  fs.mkdirSync(path.dirname(authPath), { recursive: true });
   fs.writeFileSync(authPath, '{"secret":"never-proof-artifact"}');
   const run = (mode) =>
     codexLivePreflight({
@@ -2642,7 +2673,7 @@ test('Codex live preflight requires the exact worker proof file and diff', async
           ].join('\n'),
           stderr:
             mode === 'contaminated'
-              ? "Get-Content -Raw 'C:\\Users\\bash\\.agents\\skills\\using-superpowers\\SKILL.md'"
+              ? `Get-Content -Raw '${path.join(userHome, '.agents', 'skills', 'using-superpowers', 'SKILL.md')}'`
               : '',
           error: null,
         };
