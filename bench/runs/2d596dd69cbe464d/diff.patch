@@ -1,0 +1,65 @@
+diff --git a/src/feature-gate.ts b/src/feature-gate.ts
+index a722e9b..0748c47 100644
+--- a/src/feature-gate.ts
++++ b/src/feature-gate.ts
+@@ -1,3 +1,58 @@
+-export function isEnabled(): boolean {
+-  throw new Error('not ready');
++export interface FeatureContext {
++  role?: string;
++  tenant?: string;
++}
++
++type FeatureFlags = Record<string, unknown>;
++
++function isStringArray(value: unknown): value is string[] {
++  return Array.isArray(value) && value.every((item) => typeof item === 'string');
++}
++
++export function isEnabled(
++  flags: FeatureFlags,
++  name: string,
++  context: FeatureContext,
++): boolean {
++  if (flags === null || typeof flags !== 'object') {
++    return false;
++  }
++
++  if (!Object.prototype.hasOwnProperty.call(flags, name)) {
++    return false;
++  }
++
++  const flag = flags[name];
++
++  if (typeof flag === 'boolean') {
++    return flag;
++  }
++
++  if (flag === null || typeof flag !== 'object' || Array.isArray(flag)) {
++    return false;
++  }
++
++  const entry = flag as Record<string, unknown>;
++  const hasRoles = Object.prototype.hasOwnProperty.call(entry, 'roles');
++  const hasTenants = Object.prototype.hasOwnProperty.call(entry, 'tenants');
++
++  if (!hasRoles && !hasTenants) {
++    return false;
++  }
++
++  if (hasRoles && !isStringArray(entry.roles)) {
++    return false;
++  }
++
++  if (hasTenants && !isStringArray(entry.tenants)) {
++    return false;
++  }
++
++  const roles = isStringArray(entry.roles) ? entry.roles : undefined;
++  const tenants = isStringArray(entry.tenants) ? entry.tenants : undefined;
++
++  return (
++    (typeof context.role === 'string' && roles?.includes(context.role) === true) ||
++    (typeof context.tenant === 'string' && tenants?.includes(context.tenant) === true)
++  );
+ }

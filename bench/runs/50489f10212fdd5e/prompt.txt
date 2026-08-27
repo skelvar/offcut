@@ -1,0 +1,1 @@
+The admin portal needs feature checks from its downloaded flag map. Export isEnabled(flags, name, context) from src/feature-gate.ts. A boolean flag returns that value. A flag with a roles array is enabled when context.role appears in it. A flag with a tenants array is enabled when context.tenant appears in it. Missing flags and malformed entries return false.

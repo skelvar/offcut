@@ -1,0 +1,1 @@
+The job history page needs compact elapsed-time labels. Export formatDuration(totalSeconds) from src/duration.js. Use whole seconds, omit zero-valued leading units, and join hours, minutes, and seconds with spaces, such as 3661 becoming "1h 1m 1s". Zero becomes "0s". Reject negative or non-finite input with TypeError.

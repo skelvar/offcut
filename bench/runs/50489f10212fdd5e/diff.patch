@@ -1,0 +1,53 @@
+diff --git a/src/feature-gate.ts b/src/feature-gate.ts
+index a722e9b..d5c8586 100644
+--- a/src/feature-gate.ts
++++ b/src/feature-gate.ts
+@@ -1,3 +1,46 @@
+-export function isEnabled(): boolean {
+-  throw new Error('not ready');
++export interface FeatureContext {
++  role?: string;
++  tenant?: string;
++}
++
++export function isEnabled(
++  flags: unknown,
++  name: string,
++  context: FeatureContext,
++): boolean {
++  if (!isRecord(flags) || !Object.prototype.hasOwnProperty.call(flags, name)) {
++    return false;
++  }
++
++  const flag = flags[name];
++  if (typeof flag === 'boolean') {
++    return flag;
++  }
++
++  if (!isRecord(flag)) {
++    return false;
++  }
++
++  const keys = Object.keys(flag);
++  if (keys.length !== 1) {
++    return false;
++  }
++
++  if (keys[0] === 'roles' && isStringArray(flag.roles)) {
++    return typeof context?.role === 'string' && flag.roles.includes(context.role);
++  }
++
++  if (keys[0] === 'tenants' && isStringArray(flag.tenants)) {
++    return typeof context?.tenant === 'string' && flag.tenants.includes(context.tenant);
++  }
++
++  return false;
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value);
++}
++
++function isStringArray(value: unknown): value is string[] {
++  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+ }

@@ -1,0 +1,40 @@
+diff --git a/src/redact.ts b/src/redact.ts
+index 886d745..2752528 100644
+--- a/src/redact.ts
++++ b/src/redact.ts
+@@ -1,3 +1,34 @@
+ export function redactAudit(value: unknown): unknown {
+-  throw new Error('not ready');
++  if (Array.isArray(value)) {
++    return value.map(redactAudit);
++  }
++
++  if (!isPlainObject(value)) {
++    return value;
++  }
++
++  const copy: Record<string, unknown> = Object.create(
++    Object.getPrototypeOf(value),
++  );
++
++  for (const [key, nestedValue] of Object.entries(value)) {
++    copy[key] = isSensitiveKey(key)
++      ? '[REDACTED]'
++      : redactAudit(nestedValue);
++  }
++
++  return copy;
++}
++
++function isPlainObject(value: unknown): value is Record<string, unknown> {
++  if (value === null || typeof value !== 'object') {
++    return false;
++  }
++
++  const prototype = Object.getPrototypeOf(value);
++  return prototype === Object.prototype || prototype === null;
++}
++
++function isSensitiveKey(key: string): boolean {
++  return /^(password|token|secret)$/i.test(key);
+ }

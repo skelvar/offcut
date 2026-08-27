@@ -1,0 +1,41 @@
+diff --git a/src/route.ts b/src/route.ts
+index ce5b4a8..6206649 100644
+--- a/src/route.ts
++++ b/src/route.ts
+@@ -1,3 +1,34 @@
+-export function matchRoute(): unknown {
+-  throw new Error('not ready');
++export function matchRoute(
++  pattern: string,
++  pathname: string,
++): Record<string, string> | null {
++  const patternSegments = pattern.split('/');
++  const pathSegments = pathname.split('/');
++
++  if (patternSegments.length !== pathSegments.length) {
++    return null;
++  }
++
++  const parameters: Record<string, string> = {};
++
++  for (let index = 0; index < patternSegments.length; index += 1) {
++    const patternSegment = patternSegments[index];
++    const pathSegment = pathSegments[index];
++
++    if (patternSegment.startsWith(':')) {
++      if (pathSegment.length === 0) {
++        return null;
++      }
++
++      try {
++        parameters[patternSegment.slice(1)] = decodeURIComponent(pathSegment);
++      } catch {
++        return null;
++      }
++    } else if (patternSegment !== pathSegment) {
++      return null;
++    }
++  }
++
++  return parameters;
+ }

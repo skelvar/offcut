@@ -1,0 +1,45 @@
+{
+  "run_id": "c251a59dbd82ea51",
+  "task_passed": true,
+  "accept_exit": 0,
+  "accept_error": null,
+  "files_created": 0,
+  "files_created_paths": [],
+  "dependencies_added": 0,
+  "exported_unused": 0,
+  "abstraction_layers": 0,
+  "config_keys_added": 0,
+  "lines_added": 37,
+  "lines_removed": 2,
+  "diff_sha256": "f743b87a3e1f9ab1c6a3fbfb4974b7de255ddcc2f4e4884869c15bbb99b3a8bd",
+  "signals_in_diff": [],
+  "signals_in_diff_count": 0,
+  "signals_fired": [],
+  "signals_fired_count": 0,
+  "flagged_survived": [],
+  "flagged_cleared": [],
+  "flagged_pattern_survived": null,
+  "total_cost_usd": 0,
+  "duration_ms": 60082,
+  "input_tokens": 92348,
+  "output_tokens": 1351,
+  "cache_read_input_tokens": 66304,
+  "cache_creation_input_tokens": 0,
+  "reasoning_output_tokens": 251,
+  "target_present": false,
+  "primary_success": false,
+  "target_measurement": {
+    "target_present": false,
+    "seen": {
+      "inputs": [
+        "accept.json",
+        "diff.patch",
+        "work"
+      ],
+      "evidence": {
+        "category": "speculative-abstraction",
+        "detected": false
+      }
+    }
+  }
+}

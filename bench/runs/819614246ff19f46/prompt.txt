@@ -1,0 +1,1 @@
+Audit events must be scrubbed before storage. Export redactAudit(value) from src/redact.ts. Return a deep copy of arrays and plain objects, replacing values for keys named password, token, or secret, case-insensitively, with "[REDACTED]". Preserve other primitive values and do not mutate the supplied value.
