@@ -27,10 +27,12 @@ import {
   CODEX_ROLE_INSTRUCTIONS,
   buildCodexArgs,
   buildCodexEnvelope,
+  buildIsolatedCodexEnv,
   cleanupCodexHome,
   prepareCodexHome,
   runCodex,
   runOne,
+  verifyCodexChatGptLogin,
 } from './run.mjs';
 import { hasFiredSignal } from '../hooks/state.js';
 import { POST_SIGNALS, PRE_SIGNALS } from '../hooks/signals.js';
@@ -678,11 +680,35 @@ function validatePreparedCodexHome(homeDir, arm) {
   ) {
     throw new Error('isolated Codex custom role does not match the frozen contract');
   }
-  if (/\b(?:minimal|simple|cheap|dependenc|abstract)/i.test(CODEX_ROLE_INSTRUCTIONS)) {
+  if (
+    /\b(?:offcut|efficacy|experiment|treatment|control|baseline|minimal|simple|cheap|dependenc|abstract)\b/i.test(
+      role,
+    )
+  ) {
     throw new Error('Codex custom role contains prohibited treatment framing');
   }
-  if (arm === 'off' && Object.keys(hooks.hooks || {}).length !== 0) {
-    throw new Error('off arm Codex hooks must be empty');
+  const auditEvents = ['SubagentStart', 'SubagentStop', 'PreToolUse', 'PostToolUse'];
+  for (const event of auditEvents) {
+    const audit = hooks.hooks?.[event]?.find((group) =>
+      group.hooks?.some((hook) =>
+        String(hook.command || '').includes('codex-agent-audit.mjs'),
+      ),
+    );
+    if (!audit) throw new Error(`${arm} arm missing ${event} agent audit hook`);
+    if (
+      (event === 'PreToolUse' || event === 'PostToolUse') &&
+      !audit.matcher?.includes('apply_patch')
+    ) {
+      throw new Error(`${arm} arm ${event} audit must match apply_patch`);
+    }
+  }
+  if (
+    arm === 'off' &&
+    (Object.keys(hooks.hooks || {}).sort().join(',') !==
+      [...auditEvents].sort().join(',') ||
+      auditEvents.some((event) => hooks.hooks[event].length !== 1))
+  ) {
+    throw new Error('off arm Codex hooks must contain only agent audit hooks');
   }
   if (arm === 'full') {
     for (const event of ['PreToolUse', 'PostToolUse']) {
@@ -706,6 +732,21 @@ export function codexPreflight({
       const isolated = prepareCodexHome({ arm, authPath, parentDir: tempRoot });
       prepared.push(isolated.homeDir);
       validatePreparedCodexHome(isolated.homeDir, arm);
+      const env = buildIsolatedCodexEnv({
+        homeDir: isolated.homeDir,
+        stateDir: path.join(isolated.homeDir, 'state'),
+        auditPath: path.join(isolated.homeDir, 'agent-audit.jsonl'),
+      });
+      if (
+        !verifyCodexChatGptLogin(spawnHost, {
+          cwd: tempRoot,
+          encoding: 'utf8',
+          env,
+          maxBuffer: 1024 * 1024,
+        }).ok
+      ) {
+        throw new Error('Codex ChatGPT authentication required');
+      }
     }
     const envelope = buildCodexEnvelope('Preflight ticket bytes.\n');
     const args = buildCodexArgs({ workDir: tempRoot, envelope });
@@ -734,8 +775,9 @@ export function codexPreflight({
       host: CODEX_HOST,
       host_version: version,
       backend: CODEX_BACKEND_ID,
-      model: CODEX_MODEL_ID,
+      model_requested: CODEX_MODEL_ID,
       custom_agent_role: CODEX_CUSTOM_ROLE,
+      auth_kind: 'chatgpt',
     };
   } finally {
     for (const homeDir of prepared) cleanupCodexHome(homeDir);
@@ -779,6 +821,7 @@ export function codexLivePreflight({
       arm: 'off',
       stateDir,
       authPath,
+      auditPath: path.join(evidenceDir, 'agent-audit.jsonl'),
       spawnCodex,
     });
     fs.writeFileSync(
@@ -792,7 +835,10 @@ export function codexLivePreflight({
       backend: CODEX_BACKEND_ID,
       host: CODEX_HOST,
       host_version: CODEX_HOST_VERSION,
-      model: CODEX_MODEL_ID,
+      model_requested: CODEX_MODEL_ID,
+      model_id: agent.modelId,
+      model_observation: agent.modelObservation,
+      auth_kind: agent.authKind,
       custom_agent_role: CODEX_CUSTOM_ROLE,
       custom_agent_verified: agent.customAgentVerified,
       verified: agent.customAgentVerified,
@@ -872,7 +918,11 @@ function appendAttemptLedger(
           backend,
           host: runResult?.record?.host ?? CODEX_HOST,
           host_version: runResult?.record?.host_version ?? CODEX_HOST_VERSION,
-          model: runResult?.record?.model_id ?? CODEX_MODEL_ID,
+          model_requested:
+            runResult?.record?.model_requested ?? CODEX_MODEL_ID,
+          model_id: runResult?.record?.model_id ?? null,
+          model_observation:
+            runResult?.record?.model_observation ?? 'requested_not_reported',
           custom_agent_role:
             runResult?.record?.custom_agent_role ?? CODEX_CUSTOM_ROLE,
           custom_agent_verified:
@@ -881,6 +931,7 @@ function appendAttemptLedger(
             runResult?.record?.verified === true ||
             runResult?.record?.custom_agent_verified === true,
           billing_kind: runResult?.record?.billing_kind ?? null,
+          auth_kind: runResult?.record?.auth_kind ?? null,
           envelope_sha256: runResult?.record?.envelope_sha256 ?? null,
           config_sha256: runResult?.record?.config_sha256 ?? null,
           role_sha256: runResult?.record?.role_sha256 ?? null,

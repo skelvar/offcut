@@ -29,6 +29,7 @@ import {
   writeMode,
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
+import { hookCommand } from '../tools/install.mjs';
 
 const LEGACY_ARMS = new Set(['off', 'full']);
 const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
@@ -40,7 +41,7 @@ export const CODEX_BACKEND_ID = 'codex-custom-v1';
 export const CODEX_HOST = 'codex-cli';
 export const CODEX_HOST_VERSION = '0.149.1';
 export const CODEX_MODEL_ID = 'gpt-5.6-sol';
-export const CODEX_CUSTOM_ROLE = 'offcut-efficacy-worker';
+export const CODEX_CUSTOM_ROLE = 'ticket-worker';
 export const CODEX_ROLE_INSTRUCTIONS =
   'Implement the delegated maintenance ticket in the current repository. Inspect the files, make the changes required by the ticket, and run relevant checks. Do not commit or edit .codex. Return a concise summary.';
 
@@ -265,6 +266,34 @@ function codexRoleText() {
   ].join('\n');
 }
 
+function auditHookGroup(matcher) {
+  return {
+    ...(matcher ? { matcher } : {}),
+    hooks: [
+      {
+        type: 'command',
+        command: hookCommand(path.join(BENCH_ROOT, 'codex-agent-audit.mjs').replace(/\\/g, '/')),
+        timeout: 5,
+        statusMessage: 'agent-audit',
+      },
+    ],
+  };
+}
+
+export function buildCodexHooksSettings(arm) {
+  const settings = arm === 'full' ? buildHooksSettings() : { hooks: {} };
+  const auditEvents = {
+    SubagentStart: auditHookGroup(),
+    SubagentStop: auditHookGroup(),
+    PreToolUse: auditHookGroup('Write|Edit|apply_patch'),
+    PostToolUse: auditHookGroup('Write|Edit|apply_patch'),
+  };
+  for (const [event, group] of Object.entries(auditEvents)) {
+    settings.hooks[event] = [...(settings.hooks[event] || []), group];
+  }
+  return settings;
+}
+
 export function prepareCodexHome({
   arm,
   authPath = path.join(os.homedir(), '.codex', 'auth.json'),
@@ -280,7 +309,7 @@ export function prepareCodexHome({
     fs.copyFileSync(authPath, path.join(homeDir, 'auth.json'));
     const config = codexConfigText();
     const role = codexRoleText();
-    const hooks = arm === 'full' ? buildHooksSettings() : { hooks: {} };
+    const hooks = buildCodexHooksSettings(arm);
     fs.writeFileSync(path.join(homeDir, 'config.toml'), config, 'utf8');
     fs.writeFileSync(
       path.join(agentsDir, `${CODEX_CUSTOM_ROLE}.toml`),
@@ -295,45 +324,131 @@ export function prepareCodexHome({
       hooks_sha256: sha256(`${JSON.stringify(hooks, null, 2)}\n`),
     };
   } catch (error) {
-    fs.rmSync(homeDir, { recursive: true, force: true });
+    cleanupCodexHome(homeDir);
     throw error;
   }
 }
 
-export function cleanupCodexHome(homeDir) {
-  if (homeDir) fs.rmSync(homeDir, { recursive: true, force: true });
+export function cleanupCodexHome(homeDir, fsImpl = fs) {
+  if (!homeDir) return;
+  const options = {
+    recursive: true,
+    force: true,
+    maxRetries: 4,
+    retryDelay: 100,
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      fsImpl.rmSync(homeDir, options);
+    } catch {
+      if (attempt === 2) {
+        throw new Error('temporary CODEX_HOME cleanup failed');
+      }
+      continue;
+    }
+    if (!fsImpl.existsSync(homeDir)) return;
+  }
+  throw new Error('temporary CODEX_HOME cleanup failed');
 }
 
-function sumUsage(events, key) {
-  return events
-    .filter((event) => event?.type === 'turn.completed')
-    .reduce((sum, event) => {
-      const value = event?.usage?.[key];
-      return sum + (Number.isFinite(value) ? value : 0);
-    }, 0);
+function hasGenericAgentSpawn(events) {
+  return events.some(
+    (event) =>
+      event?.type === 'item.completed' &&
+      /collab/i.test(String(event?.item?.type || '')) &&
+      (event?.item?.tool === 'spawn_agent' || event?.item?.name === 'spawn_agent'),
+  );
 }
 
-function hasExactRoleSpawn(events) {
-  return events.some((event) => {
-    const eventText = JSON.stringify(event);
-    const eventKind = [
-      event?.type,
-      event?.name,
-      event?.tool,
-      event?.action,
-      event?.item?.type,
-      event?.item?.name,
-      event?.item?.tool,
-      event?.item?.action,
-    ].filter(Boolean).join(' ');
-    return (
-      /spawn_agent|collaboration/i.test(eventKind) &&
-      eventText.includes(`"${CODEX_CUSTOM_ROLE}"`)
+function aggregateCodexUsage(events) {
+  const turns = events.filter((event) => event?.type === 'turn.completed');
+  const keys = ['input_tokens', 'cached_input_tokens', 'output_tokens'];
+  const valid =
+    turns.length > 0 &&
+    turns.every(
+      (event) =>
+        event?.usage &&
+        keys.every(
+          (key) =>
+            Number.isFinite(event.usage[key]) &&
+            event.usage[key] >= 0,
+        ),
     );
-  });
+  if (!valid) return null;
+  return Object.fromEntries(
+    keys.map((key) => [
+      key,
+      turns.reduce((sum, event) => sum + event.usage[key], 0),
+    ]),
+  );
 }
 
-export function parseCodexJsonl(stdout, status, spawnErr, { durationMs = null } = {}) {
+function observedCodexModel(events) {
+  for (const event of events) {
+    for (const value of [
+      event?.model,
+      event?.model_id,
+      event?.item?.model,
+      event?.response?.model,
+    ]) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return null;
+}
+
+export function verifyCodexAgentAudit(entries) {
+  const starts = entries.filter(
+    (entry) =>
+      entry?.hook_event_name === 'SubagentStart' &&
+      entry?.agent_type === CODEX_CUSTOM_ROLE &&
+      typeof entry?.agent_id === 'string' &&
+      entry.agent_id,
+  );
+  if (starts.length !== 1) return { ok: false, workerAgentId: null };
+  const workerAgentId = starts[0].agent_id;
+  const stops = entries.filter(
+    (entry) =>
+      entry?.hook_event_name === 'SubagentStop' &&
+      entry?.agent_id === workerAgentId &&
+      entry?.agent_type === CODEX_CUSTOM_ROLE,
+  );
+  if (stops.length !== 1) return { ok: false, workerAgentId };
+  const stop = stops[0];
+  if (
+    stop.success === false ||
+    /(?:fail|error|cancel)/i.test(String(stop.stop_reason || ''))
+  ) {
+    return { ok: false, workerAgentId };
+  }
+  const writeEvents = entries.filter(
+    (entry) =>
+      (entry?.hook_event_name === 'PreToolUse' ||
+        entry?.hook_event_name === 'PostToolUse') &&
+      ['Write', 'Edit', 'apply_patch'].includes(entry?.tool_name),
+  );
+  if (
+    writeEvents.some(
+      (entry) =>
+        entry.agent_id !== workerAgentId ||
+        entry.agent_type !== CODEX_CUSTOM_ROLE,
+    )
+  ) {
+    return { ok: false, workerAgentId };
+  }
+  return { ok: true, workerAgentId };
+}
+
+export function parseCodexJsonl(
+  stdout,
+  status,
+  spawnErr,
+  {
+    durationMs,
+    authKind = null,
+    auditEntries = [],
+  } = {},
+) {
   const events = [];
   for (const line of String(stdout || '').split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -358,15 +473,25 @@ export function parseCodexJsonl(stdout, status, spawnErr, { durationMs = null } 
     preCallSpawnCodes.has(spawnErr?.code) &&
     !String(stdout || '').trim();
   const callStarted = status != null;
-  const customAgentVerified = hasExactRoleSpawn(events);
+  const genericSpawnVerified = hasGenericAgentSpawn(events);
+  const attribution = verifyCodexAgentAudit(auditEntries);
+  const customAgentVerified = genericSpawnVerified && attribution.ok;
   const eventError = events.some(
     (event) =>
       /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
+      event?.item?.type === 'error' ||
       event?.status === 'failed' ||
       event?.item?.status === 'failed',
   );
-  const ok = status === 0 && !eventError && customAgentVerified;
-  const total = (key) => sumUsage(events, key);
+  const usage = aggregateCodexUsage(events);
+  const modelId = observedCodexModel(events);
+  const subscriptionVerified = authKind === 'chatgpt';
+  const ok =
+    status === 0 &&
+    !eventError &&
+    customAgentVerified &&
+    usage !== null &&
+    subscriptionVerified;
   return {
     ok,
     exitCode: status,
@@ -374,21 +499,25 @@ export function parseCodexJsonl(stdout, status, spawnErr, { durationMs = null } 
     stderr: '',
     transcript: stdout || '',
     parsed: events,
-    modelId: CODEX_MODEL_ID,
+    modelId,
+    modelObservation: modelId ? 'reported_by_codex' : 'requested_not_reported',
+    authKind: subscriptionVerified ? 'chatgpt' : null,
     apiError,
     spawnError: Boolean(spawnErr),
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
     customAgentVerified,
+    genericSpawnVerified,
+    workerAgentId: attribution.workerAgentId,
     failureKind: ok ? null : apiError ? 'api' : spawnErr ? 'host' : 'model',
     telemetry: {
-      total_cost_usd: callStarted ? 0 : null,
+      total_cost_usd: callStarted && subscriptionVerified ? 0 : null,
       duration_ms: durationMs,
-      input_tokens: total('input_tokens'),
-      output_tokens: total('output_tokens'),
-      cache_read_input_tokens: total('cached_input_tokens'),
+      input_tokens: usage?.input_tokens ?? null,
+      output_tokens: usage?.output_tokens ?? null,
+      cache_read_input_tokens: usage?.cached_input_tokens ?? null,
       cache_creation_input_tokens: null,
     },
-    cost_evidence: callStarted
+    cost_evidence: callStarted && subscriptionVerified
       ? { kind: 'subscription', source: 'codex_chatgpt' }
       : knownPreCallFailure
         ? { kind: 'known_zero', source: `spawn_error:${spawnErr.code}` }
@@ -397,12 +526,64 @@ export function parseCodexJsonl(stdout, status, spawnErr, { durationMs = null } 
       spawnErr?.message ||
       (apiError
         ? text.trim() || `Codex API failure (exit ${status})`
+        : !subscriptionVerified && callStarted
+          ? 'Codex ChatGPT authentication was not verified'
+          : usage === null && callStarted
+            ? 'Codex turn usage missing or malformed'
         : !customAgentVerified
-          ? `Codex did not evidence spawn_agent for ${CODEX_CUSTOM_ROLE}`
+          ? `Codex did not prove completed ${CODEX_CUSTOM_ROLE} ownership`
           : eventError || status !== 0
             ? text.trim() || `codex exit ${status}`
             : null),
   };
+}
+
+const PROVIDER_OVERRIDE_ENV =
+  /(?:API_KEY|BASE_URL|API_BASE|PROVIDER|ENDPOINT)$/i;
+
+export function buildIsolatedCodexEnv({
+  homeDir,
+  stateDir,
+  auditPath,
+  envSource = process.env,
+}) {
+  const env = { ...envSource };
+  for (const key of Object.keys(env)) {
+    if (PROVIDER_OVERRIDE_ENV.test(key)) delete env[key];
+  }
+  env.CODEX_HOME = homeDir;
+  env.OFFCUT_STATE_DIR = stateDir;
+  env.OFFCUT_AGENT_AUDIT_PATH = auditPath;
+  return env;
+}
+
+export function verifyCodexChatGptLogin(spawnCodex, options) {
+  const result = spawnCodex('codex', ['login', 'status'], {
+    ...options,
+    timeout: 30_000,
+  });
+  const statusLines = `${result.stdout || ''}\n${result.stderr || ''}`
+    .split(/\r?\n/)
+    .map((line) => line.trim());
+  return {
+    ok:
+      result.status === 0 &&
+      statusLines.includes('Logged in using ChatGPT'),
+    spawnError: result.error || null,
+  };
+}
+
+function readCodexAudit(auditPath) {
+  if (!fs.existsSync(auditPath)) return [];
+  try {
+    return fs
+      .readFileSync(auditPath, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
 }
 
 export function runCodex({
@@ -412,34 +593,81 @@ export function runCodex({
   stateDir,
   authPath,
   homeParentDir,
+  auditPath,
   spawnCodex = spawnSync,
   now = () => performance.now(),
+  envSource = process.env,
 }) {
   const isolated = prepareCodexHome({ arm, authPath, parentDir: homeParentDir });
   const envelope = buildCodexEnvelope(prompt);
   const args = buildCodexArgs({ workDir, envelope });
-  const started = now();
+  const resolvedAuditPath =
+    auditPath || path.join(isolated.homeDir, 'agent-audit.jsonl');
+  const env = buildIsolatedCodexEnv({
+    homeDir: isolated.homeDir,
+    stateDir,
+    auditPath: resolvedAuditPath,
+    envSource,
+  });
+  const commonOptions = {
+    cwd: workDir,
+    encoding: 'utf8',
+    env,
+    maxBuffer: 32 * 1024 * 1024,
+  };
+  const attachHashes = (result) => Object.assign(result, {
+    envelope_sha256: sha256(envelope),
+    config_sha256: isolated.config_sha256,
+    role_sha256: isolated.role_sha256,
+    hooks_sha256: isolated.hooks_sha256,
+  });
   try {
+    const login = verifyCodexChatGptLogin(spawnCodex, commonOptions);
+    if (!login.ok) {
+      return attachHashes({
+        ok: false,
+        exitCode: login.spawnError ? null : 1,
+        stdout: '',
+        stderr: '',
+        transcript: '',
+        parsed: [],
+        modelId: null,
+        modelObservation: 'requested_not_reported',
+        authKind: null,
+        apiError: !login.spawnError,
+        spawnError: Boolean(login.spawnError),
+        timedOut: false,
+        customAgentVerified: false,
+        genericSpawnVerified: false,
+        workerAgentId: null,
+        failureKind: login.spawnError ? 'host' : 'api',
+        telemetry: {
+          total_cost_usd: null,
+          duration_ms: null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_read_input_tokens: null,
+          cache_creation_input_tokens: null,
+        },
+        cost_evidence: {
+          kind: 'known_zero',
+          source: 'login_status_pre_call',
+        },
+        error: 'Codex ChatGPT authentication required',
+      });
+    }
+    const started = now();
     const result = spawnCodex('codex', args, {
-      cwd: workDir,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        CODEX_HOME: isolated.homeDir,
-        OFFCUT_STATE_DIR: stateDir,
-      },
-      maxBuffer: 32 * 1024 * 1024,
+      ...commonOptions,
       timeout: 10 * 60 * 1000,
     });
     const parsed = parseCodexJsonl(result.stdout, result.status, result.error, {
       durationMs: Math.max(0, Math.round(now() - started)),
+      authKind: 'chatgpt',
+      auditEntries: readCodexAudit(resolvedAuditPath),
     });
     parsed.stderr = result.stderr || '';
-    parsed.envelope_sha256 = sha256(envelope);
-    parsed.config_sha256 = isolated.config_sha256;
-    parsed.role_sha256 = isolated.role_sha256;
-    parsed.hooks_sha256 = isolated.hooks_sha256;
-    return parsed;
+    return attachHashes(parsed);
   } finally {
     cleanupCodexHome(isolated.homeDir);
   }
@@ -607,7 +835,6 @@ export function runOne(opts) {
       record.host_version = 'stub';
     } else if (host === CODEX_HOST) {
       record.host_version = opts.hostVersion ?? CODEX_HOST_VERSION;
-      record.billing_kind = 'chatgpt_subscription';
       record.custom_agent_role = CODEX_CUSTOM_ROLE;
       agent = runCodex({
         workDir,
@@ -616,9 +843,16 @@ export function runOne(opts) {
         stateDir,
         authPath: opts.authPath,
         homeParentDir: opts.homeParentDir,
+        auditPath: path.join(runDir, 'agent-audit.jsonl'),
         spawnCodex: opts.spawnCodex,
       });
-      record.model_id = CODEX_MODEL_ID;
+      record.model_id = agent.modelId;
+      record.model_observation = agent.modelObservation;
+      record.auth_kind = agent.authKind;
+      record.billing_kind =
+        agent.cost_evidence?.kind === 'subscription'
+          ? 'chatgpt_subscription'
+          : null;
       record.custom_agent_verified = agent.customAgentVerified;
       record.verified = agent.customAgentVerified;
       record.envelope_sha256 = agent.envelope_sha256;

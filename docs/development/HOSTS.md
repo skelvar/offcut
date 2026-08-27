@@ -515,22 +515,37 @@ subscription failures with zero input/output tokens and zero reported cost.
 They remain historical rows and do not consume Codex retries.
 
 The efficacy runner now creates a fresh isolated `CODEX_HOME` per attempt,
-copies only `auth.json`, and generates minimal config, the
-`offcut-efficacy-worker` role, and arm-specific hooks. The `off` arm has empty
-hooks; `full` uses the shipped settings with `apply_patch` matching. Temporary
-homes are deleted on every exit and are excluded from evidence.
+copies only `auth.json`, and generates minimal config, the neutral
+`ticket-worker` role, and arm-specific hooks. Before exec, an isolated
+`codex login status` must report exactly `Logged in using ChatGPT`; API-key and
+provider/base-URL environment overrides are removed. A copied auth file alone
+does not establish subscription billing.
+
+Both arms carry identical silent attribution hooks for subagent start/stop and
+write pre/post events. The `off` arm has only those audit hooks; `full` adds the
+shipped settings with `apply_patch` matching. The audit records allowlisted
+lifecycle identifiers only, emits no context, and proves one `ticket-worker`
+start and matching stop. Every audited write must belong to that worker.
+Temporary homes are removed with Windows retries, verified absent on every
+exit, and excluded from evidence.
 
 Headless execution is pinned to `gpt-5.6-sol`, low reasoning effort,
 workspace-write sandboxing, no approvals, ephemeral JSONL output, and
 `--dangerously-bypass-hook-trust`. The last flag bypasses hook trust only; the
-sandbox is not bypassed. Successful outcomes require an event-level
-`spawn_agent`/collaboration record naming the exact custom role.
+sandbox is not bypassed. Codex 0.149.1 collaboration JSONL does not expose the
+custom role. It proves only a generic spawn; silent lifecycle audit records
+prove the exact worker identity, completion, and write ownership.
 
 ChatGPT subscription runs expose no per-call USD telemetry. Started processes
 therefore record zero incremental API cost with explicit subscription evidence,
 while preserving tokens and wall duration. This is not a claim that membership
 is free. Phase 11 conclusions are scoped to this Codex custom-agent backend and
 cannot be generalized across hosts.
+
+Missing or malformed `turn.completed` usage is a model failure with null token
+fields, not invented zeros. The requested model is pinned to `gpt-5.6-sol`;
+`model_id` remains null with `requested_not_reported` unless Codex itself emits
+an observed model identifier.
 
 ## Before the native adapter: AGENTS.md delivered on Cursor (2026-08-27)
 

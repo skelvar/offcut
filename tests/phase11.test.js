@@ -1116,6 +1116,68 @@ test('--print-plan works without fixtures or model execution', () => {
   ]);
 });
 
+const CODEX_USAGE_EVENT = {
+  type: 'turn.completed',
+  usage: { input_tokens: 10, cached_input_tokens: 4, output_tokens: 3 },
+};
+
+function codexCollabSpawnEvent() {
+  return {
+    type: 'item.completed',
+    item: {
+      id: 'collab-1',
+      type: 'collab_tool_call',
+      tool: 'spawn_agent',
+      status: 'completed',
+      sender_thread_id: 'parent-1',
+      receiver_thread_ids: ['worker-thread-1'],
+    },
+  };
+}
+
+function codexWorkerAudit(role = 'ticket-worker') {
+  return [
+    {
+      hook_event_name: 'SubagentStart',
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      agent_id: 'worker-1',
+      agent_type: role,
+    },
+    {
+      hook_event_name: 'PreToolUse',
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      agent_id: 'worker-1',
+      agent_type: role,
+      tool_name: 'apply_patch',
+      tool_use_id: 'write-1',
+    },
+    {
+      hook_event_name: 'PostToolUse',
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      agent_id: 'worker-1',
+      agent_type: role,
+      tool_name: 'apply_patch',
+      tool_use_id: 'write-1',
+      success: true,
+    },
+    {
+      hook_event_name: 'SubagentStop',
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      agent_id: 'worker-1',
+      agent_type: role,
+      success: true,
+    },
+  ];
+}
+
+function appendCodexAudit(file, entries = codexWorkerAudit()) {
+  fs.appendFileSync(file, `${entries.map(JSON.stringify).join('\n')}\n`);
+}
+
 test('Codex args pin the isolated custom-agent execution contract', async () => {
   const { buildCodexArgs } = await import('../bench/run.mjs');
   const args = buildCodexArgs({
@@ -1169,18 +1231,30 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
       path.join(off.homeDir, 'agents', `${CODEX_CUSTOM_ROLE}.toml`),
       'utf8',
     );
+    assert.equal(CODEX_CUSTOM_ROLE, 'ticket-worker');
+    assert.equal(
+      fs.existsSync(path.join(off.homeDir, 'agents', 'offcut-efficacy-worker.toml')),
+      false,
+    );
     assert.match(role, new RegExp(`name\\s*=\\s*"${CODEX_CUSTOM_ROLE}"`));
     assert.match(role, /model_reasoning_effort\s*=\s*"low"/);
     assert.match(role, /sandbox_mode\s*=\s*"workspace-write"/);
     assert.match(role, new RegExp(CODEX_ROLE_INSTRUCTIONS.split(' ')[0]));
     assert.match(role, /description = "Executes one delegated maintenance ticket"/);
     assert.doesNotMatch(
-      CODEX_ROLE_INSTRUCTIONS,
-      /\b(?:minimal|simple|cheap|dependenc|abstract)/i,
+      role,
+      /\b(?:offcut|efficacy|experiment|treatment|control|baseline|minimal|simple|cheap|dependenc|abstract)\b/i,
     );
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(off.homeDir, 'hooks.json'))), {
-      hooks: {},
-    });
+    const offHooks = JSON.parse(fs.readFileSync(path.join(off.homeDir, 'hooks.json')));
+    for (const event of ['SubagentStart', 'SubagentStop', 'PreToolUse', 'PostToolUse']) {
+      const audit = offHooks.hooks[event].find((group) =>
+        group.hooks?.some((hook) => hook.command.includes('codex-agent-audit.mjs')));
+      assert.ok(audit, `off arm ${event} audit hook`);
+      if (event === 'PreToolUse' || event === 'PostToolUse') {
+        assert.match(audit.matcher, /Write\|Edit\|apply_patch/);
+      }
+      assert.equal(audit.hooks[0].command.includes('OFFCUT'), false);
+    }
     cleanupCodexHome(off.homeDir);
     assert.equal(fs.existsSync(off.homeDir), false);
 
@@ -1188,7 +1262,14 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
     const fullHooks = JSON.parse(fs.readFileSync(path.join(full.homeDir, 'hooks.json')));
     assert.match(fullHooks.hooks.PreToolUse[0].matcher, /apply_patch/);
     assert.match(fullHooks.hooks.PostToolUse[0].matcher, /apply_patch/);
-    assert.notDeepEqual(fullHooks, { hooks: {} });
+    for (const event of ['SubagentStart', 'SubagentStop', 'PreToolUse', 'PostToolUse']) {
+      const offAudit = offHooks.hooks[event].find((group) =>
+        group.hooks?.some((hook) => hook.command.includes('codex-agent-audit.mjs')));
+      const fullAudit = fullHooks.hooks[event].find((group) =>
+        group.hooks?.some((hook) => hook.command.includes('codex-agent-audit.mjs')));
+      assert.deepEqual(fullAudit, offAudit, `${event} audit instrumentation differs by arm`);
+    }
+    assert.equal(fullHooks.hooks.PreToolUse.length > offHooks.hooks.PreToolUse.length, true);
     cleanupCodexHome(full.homeDir);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -1205,26 +1286,74 @@ test('Codex envelope is arm-neutral, delegates verbatim ticket, and is hashable'
   assert.match(first, /spawn_agent/);
   assert.match(first, /wait/i);
   assert.equal(first.includes(ticket), true);
-  assert.doesNotMatch(first, /\b(?:treatment|control arm)\b/i);
+  assert.doesNotMatch(
+    first,
+    /\b(?:offcut|efficacy|experiment|treatment|control|baseline)\b/i,
+  );
 });
 
-test('Codex JSONL aggregates completed-turn usage and requires exact role spawn proof', async () => {
+test('Codex agent audit records only silent nonsecret lifecycle attribution', () => {
+  const script = fileURLToPath(new URL('../bench/codex-agent-audit.mjs', import.meta.url));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-agent-audit-'));
+  const auditPath = path.join(root, 'audit.jsonl');
+  try {
+    const payload = {
+      hook_event_name: 'PreToolUse',
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      agent_id: 'worker-1',
+      agent_type: 'ticket-worker',
+      tool_name: 'apply_patch',
+      tool_use_id: 'write-1',
+      success: true,
+      stop_reason: 'done',
+      tool_input: { command: 'SECRET_SOURCE_BYTES' },
+      transcript_path: 'SECRET_TRANSCRIPT_PATH',
+      last_assistant_message: 'SECRET_MODEL_OUTPUT',
+    };
+    const result = spawnSync(process.execPath, [script], {
+      input: JSON.stringify(payload),
+      encoding: 'utf8',
+      env: { ...process.env, OFFCUT_AGENT_AUDIT_PATH: auditPath },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.deepEqual(
+      fs.readFileSync(auditPath, 'utf8').trim().split(/\r?\n/).map(JSON.parse),
+      [{
+        hook_event_name: 'PreToolUse',
+        session_id: 'session-1',
+        turn_id: 'turn-1',
+        agent_id: 'worker-1',
+        agent_type: 'ticket-worker',
+        tool_name: 'apply_patch',
+        tool_use_id: 'write-1',
+        success: true,
+        stop_reason: 'done',
+      }],
+    );
+    assert.equal(fs.readFileSync(auditPath, 'utf8').includes('SECRET_'), false);
+
+    const malformed = spawnSync(process.execPath, [script], {
+      input: '{"tool_input":{"secret":"DO_NOT_PRINT"}',
+      encoding: 'utf8',
+      env: { ...process.env, OFFCUT_AGENT_AUDIT_PATH: auditPath },
+    });
+    assert.notEqual(malformed.status, 0);
+    assert.equal(malformed.stdout, '');
+    assert.doesNotMatch(malformed.stderr, /DO_NOT_PRINT|tool_input/i);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex JSONL uses generic collab proof while lifecycle audit proves exact worker', async () => {
   const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
-  const spawn = {
-    type: 'item.completed',
-    item: {
-      type: 'collaboration',
-      tool: 'spawn_agent',
-      agent_type: CODEX_CUSTOM_ROLE,
-    },
-  };
+  const spawn = codexCollabSpawnEvent();
   const result = parseCodexJsonl(
     [
       JSON.stringify(spawn),
-      JSON.stringify({
-        type: 'turn.completed',
-        usage: { input_tokens: 10, cached_input_tokens: 4, output_tokens: 3 },
-      }),
+      JSON.stringify(CODEX_USAGE_EVENT),
       JSON.stringify({
         type: 'turn.completed',
         usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 5 },
@@ -1232,10 +1361,17 @@ test('Codex JSONL aggregates completed-turn usage and requires exact role spawn 
     ].join('\n'),
     0,
     null,
-    { durationMs: 99 },
+    {
+      durationMs: 99,
+      authKind: 'chatgpt',
+      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+    },
   );
   assert.equal(result.ok, true);
   assert.equal(result.customAgentVerified, true);
+  assert.equal(result.workerAgentId, 'worker-1');
+  assert.equal(result.modelId, null);
+  assert.equal(result.modelObservation, 'requested_not_reported');
   assert.deepEqual(result.telemetry, {
     total_cost_usd: 0,
     duration_ms: 99,
@@ -1249,6 +1385,16 @@ test('Codex JSONL aggregates completed-turn usage and requires exact role spawn 
     source: 'codex_chatgpt',
   });
 
+  const genericSpawnWithoutAudit = parseCodexJsonl(
+    [JSON.stringify(spawn), JSON.stringify(CODEX_USAGE_EVENT)].join('\n'),
+    0,
+    null,
+    { durationMs: 1, authKind: 'chatgpt', auditEntries: [] },
+  );
+  assert.equal(genericSpawnWithoutAudit.ok, false);
+  assert.equal(genericSpawnWithoutAudit.customAgentVerified, false);
+  assert.equal(genericSpawnWithoutAudit.failureKind, 'model');
+
   const markerOnly = parseCodexJsonl(
     JSON.stringify({
       type: 'item.completed',
@@ -1256,7 +1402,11 @@ test('Codex JSONL aggregates completed-turn usage and requires exact role spawn 
     }),
     0,
     null,
-    { durationMs: 1 },
+    {
+      durationMs: 1,
+      authKind: 'chatgpt',
+      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+    },
   );
   assert.equal(markerOnly.ok, false);
   assert.equal(markerOnly.customAgentVerified, false);
@@ -1269,11 +1419,93 @@ test('Codex JSONL aggregates completed-turn usage and requires exact role spawn 
     ].join('\n'),
     0,
     null,
-    { durationMs: 2 },
+    {
+      durationMs: 2,
+      authKind: 'chatgpt',
+      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+    },
   );
   assert.equal(workerFailed.customAgentVerified, true);
   assert.equal(workerFailed.ok, false);
   assert.equal(workerFailed.failureKind, 'model');
+});
+
+test('Codex lifecycle attribution rejects parent writes, failed workers, and absent stops', async () => {
+  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const stdout = [
+    JSON.stringify(codexCollabSpawnEvent()),
+    JSON.stringify(CODEX_USAGE_EVENT),
+  ].join('\n');
+  const parse = (auditEntries) =>
+    parseCodexJsonl(stdout, 0, null, {
+      durationMs: 1,
+      authKind: 'chatgpt',
+      auditEntries,
+    });
+
+  const parentWrite = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  parentWrite.splice(-1, 0, {
+    hook_event_name: 'PreToolUse',
+    agent_id: 'parent-1',
+    agent_type: 'default',
+    tool_name: 'apply_patch',
+    tool_use_id: 'parent-write',
+  });
+  assert.equal(parse(parentWrite).ok, false);
+
+  const failed = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  failed.at(-1).success = false;
+  assert.equal(parse(failed).ok, false);
+
+  const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).slice(0, -1);
+  assert.equal(parse(absentStop).ok, false);
+});
+
+test('Codex missing usage and item-level errors are model failures without invented tokens', async () => {
+  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const baseOptions = {
+    durationMs: 3,
+    authKind: 'chatgpt',
+    auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+  };
+  const missingUsage = parseCodexJsonl(
+    [
+      JSON.stringify(codexCollabSpawnEvent()),
+      JSON.stringify({ type: 'turn.completed' }),
+    ].join('\n'),
+    0,
+    null,
+    baseOptions,
+  );
+  assert.equal(missingUsage.ok, false);
+  assert.deepEqual(missingUsage.telemetry, {
+    total_cost_usd: 0,
+    duration_ms: 3,
+    input_tokens: null,
+    output_tokens: null,
+    cache_read_input_tokens: null,
+    cache_creation_input_tokens: null,
+  });
+  assert.deepEqual(missingUsage.cost_evidence, {
+    kind: 'subscription',
+    source: 'codex_chatgpt',
+  });
+
+  const itemError = parseCodexJsonl(
+    [
+      JSON.stringify(codexCollabSpawnEvent()),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'error-1', type: 'error', message: 'model rerouted' },
+      }),
+      JSON.stringify(CODEX_USAGE_EVENT),
+    ].join('\n'),
+    0,
+    null,
+    baseOptions,
+  );
+  assert.equal(itemError.ok, false);
+  assert.equal(itemError.failureKind, 'model');
 });
 
 test('Codex failure parsing separates API, model, and known pre-call failures', async () => {
@@ -1282,13 +1514,13 @@ test('Codex failure parsing separates API, model, and known pre-call failures', 
     JSON.stringify({ type: 'error', message: 'rate limit exceeded (429)' }),
     1,
     null,
-    { durationMs: 4 },
+    { durationMs: 4, authKind: 'chatgpt', auditEntries: [] },
   );
   const model = parseCodexJsonl(
     JSON.stringify({ type: 'error', message: 'worker could not finish ticket' }),
     1,
     null,
-    { durationMs: 5 },
+    { durationMs: 5, authKind: 'chatgpt', auditEntries: [] },
   );
   const preCall = parseCodexJsonl(
     '',
@@ -1312,21 +1544,23 @@ test('Codex runner removes isolated home on success and failure without preservi
   const authPath = path.join(root, 'auth-source.json');
   fs.writeFileSync(authPath, '{"secret":"opaque"}');
   const homes = [];
-  const fake = (_command, _args, options) => {
+  let execCalls = 0;
+  const fake = (_command, args, options) => {
     homes.push(options.env.CODEX_HOME);
+    for (const key of ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY']) {
+      assert.equal(options.env[key], undefined);
+    }
+    if (args[0] === 'login') {
+      return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+    }
+    execCalls += 1;
+    appendCodexAudit(options.env.OFFCUT_AGENT_AUDIT_PATH);
     return {
-      status: homes.length === 1 ? 0 : 1,
-      stdout: homes.length === 1
+      status: execCalls === 1 ? 0 : 1,
+      stdout: execCalls === 1
         ? [
-            JSON.stringify({
-              type: 'item.completed',
-              item: {
-                type: 'collaboration',
-                tool: 'spawn_agent',
-                agent_type: CODEX_CUSTOM_ROLE,
-              },
-            }),
-            JSON.stringify({ type: 'turn.completed', usage: {} }),
+            JSON.stringify(codexCollabSpawnEvent()),
+            JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n')
         : JSON.stringify({ type: 'error', message: 'worker failed' }),
       stderr: '',
@@ -1342,8 +1576,16 @@ test('Codex runner removes isolated home on success and failure without preservi
       authPath,
       homeParentDir: root,
       spawnCodex: fake,
+      auditPath: path.join(root, 'success-audit.jsonl'),
+      envSource: {
+        ...process.env,
+        OPENAI_API_KEY: 'must-strip',
+        OPENAI_BASE_URL: 'https://must-strip.invalid',
+        CODEX_API_KEY: 'must-strip',
+      },
     });
     assert.equal(success.ok, true);
+    assert.equal(success.authKind, 'chatgpt');
     const failed = runCodex({
       workDir: root,
       prompt: 'ticket',
@@ -1352,14 +1594,192 @@ test('Codex runner removes isolated home on success and failure without preservi
       authPath,
       homeParentDir: root,
       spawnCodex: fake,
+      auditPath: path.join(root, 'failure-audit.jsonl'),
+      envSource: {
+        ...process.env,
+        OPENAI_API_KEY: 'must-strip',
+        OPENAI_BASE_URL: 'https://must-strip.invalid',
+        CODEX_API_KEY: 'must-strip',
+      },
     });
     assert.equal(failed.ok, false);
-    assert.equal(homes.length, 2);
+    assert.equal(execCalls, 2);
+    assert.equal(homes.length, 4);
     assert.equal(homes.every((home) => !fs.existsSync(home)), true);
     assert.equal(JSON.stringify({ success, failed }).includes('opaque'), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('Codex run record distinguishes requested from observed model', async () => {
+  const {
+    CODEX_BACKEND_ID,
+    CODEX_CUSTOM_ROLE,
+    CODEX_HOST,
+    CODEX_MODEL_ID,
+    runOne,
+  } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-model-honesty-'));
+  const authPath = path.join(root, 'auth.json');
+  const manifestPath = path.join(root, 'manifest.jsonl');
+  fs.writeFileSync(authPath, '{"fake":"credential"}');
+  let result;
+  let preCall;
+  try {
+    result = runOne({
+      task: 'config-fallback',
+      arm: 'off',
+      rep: 1,
+      model: CODEX_MODEL_ID,
+      keepWork: false,
+      manifestPath,
+      backend: CODEX_BACKEND_ID,
+      host: CODEX_HOST,
+      authPath,
+      homeParentDir: root,
+      spawnCodex(_command, args, options) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        appendCodexAudit(options.env.OFFCUT_AGENT_AUDIT_PATH, [
+          codexWorkerAudit(CODEX_CUSTOM_ROLE)[0],
+          codexWorkerAudit(CODEX_CUSTOM_ROLE).at(-1),
+        ]);
+        return {
+          status: 0,
+          stdout: [
+            JSON.stringify(codexCollabSpawnEvent()),
+            JSON.stringify(CODEX_USAGE_EVENT),
+          ].join('\n'),
+          stderr: '',
+          error: null,
+        };
+      },
+    });
+    assert.equal(result.record.model_requested, CODEX_MODEL_ID);
+    assert.equal(result.record.model_id, null);
+    assert.equal(result.record.model_observation, 'requested_not_reported');
+    assert.equal(result.record.auth_kind, 'chatgpt');
+    const sealed = fs.readFileSync(manifestPath, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+    assert.equal(sealed[0].model_id, null);
+    assert.equal(sealed[0].model_observation, 'requested_not_reported');
+
+    preCall = runOne({
+      task: 'config-fallback',
+      arm: 'off',
+      rep: 2,
+      model: CODEX_MODEL_ID,
+      keepWork: false,
+      manifestPath,
+      backend: CODEX_BACKEND_ID,
+      host: CODEX_HOST,
+      authPath,
+      homeParentDir: root,
+      spawnCodex(_command, args) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        return {
+          status: null,
+          stdout: '',
+          stderr: '',
+          error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }),
+        };
+      },
+    });
+    assert.equal(preCall.record.auth_kind, 'chatgpt');
+    assert.equal(preCall.record.billing_kind, null);
+    assert.equal(preCall.record.total_cost_usd, null);
+    assert.equal(preCall.record.cost_evidence.kind, 'known_zero');
+  } finally {
+    if (result?.runDir) fs.rmSync(result.runDir, { recursive: true, force: true });
+    if (preCall?.runDir) fs.rmSync(preCall.runDir, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex refuses exec before a verified ChatGPT login status', async () => {
+  const { runCodex, verifyCodexChatGptLogin } = await import('../bench/run.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-codex-auth-gate-'));
+  const authPath = path.join(root, 'auth.json');
+  fs.writeFileSync(authPath, '{"fake":"auth-json-is-not-proof"}');
+  let execCalls = 0;
+  try {
+    assert.equal(
+      verifyCodexChatGptLogin(
+        () => ({
+          status: 0,
+          stdout: '',
+          stderr: 'nonsecret warning\nLogged in using ChatGPT\n',
+          error: null,
+        }),
+        {},
+      ).ok,
+      true,
+    );
+    const result = runCodex({
+      workDir: root,
+      prompt: 'ticket',
+      arm: 'off',
+      stateDir: path.join(root, 'state'),
+      authPath,
+      homeParentDir: root,
+      auditPath: path.join(root, 'audit.jsonl'),
+      spawnCodex(_command, args) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using an API key\n', stderr: '', error: null };
+        }
+        execCalls += 1;
+        return { status: 0, stdout: '', stderr: '', error: null };
+      },
+    });
+    assert.equal(execCalls, 0);
+    assert.equal(result.ok, false);
+    assert.equal(result.authKind, null);
+    assert.equal(result.telemetry.total_cost_usd, null);
+    assert.equal(result.cost_evidence.kind, 'known_zero');
+    assert.doesNotMatch(JSON.stringify(result), /auth-json-is-not-proof|API key/i);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex home cleanup retries locks and rejects persistent residue', async () => {
+  const { cleanupCodexHome } = await import('../bench/run.mjs');
+  let lockedCalls = 0;
+  const lockedFs = {
+    rmSync(_target, options) {
+      lockedCalls += 1;
+      assert.equal(options.recursive, true);
+      assert.equal(options.force, true);
+      assert.equal(options.maxRetries > 0, true);
+      assert.equal(options.retryDelay > 0, true);
+      if (lockedCalls === 1) {
+        throw Object.assign(new Error('locked SECRET_AUTH_BYTES'), { code: 'EPERM' });
+      }
+    },
+    existsSync() {
+      return lockedCalls < 2;
+    },
+  };
+  assert.doesNotThrow(() => cleanupCodexHome('opaque-home', lockedFs));
+  assert.equal(lockedCalls, 2);
+
+  const residueFs = {
+    rmSync() {},
+    existsSync() {
+      return true;
+    },
+  };
+  assert.throws(
+    () => cleanupCodexHome('opaque-home', residueFs),
+    (error) => {
+      assert.match(error.message, /temporary CODEX_HOME cleanup failed/i);
+      assert.doesNotMatch(error.message, /opaque-home|SECRET_AUTH_BYTES/);
+      return true;
+    },
+  );
 });
 
 test('backend scoping ignores legacy Claude attempts and outcomes', async () => {
@@ -1422,6 +1842,10 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
               custom_agent_verified: true,
               verified: true,
               billing_kind: 'chatgpt_subscription',
+              auth_kind: 'chatgpt',
+              model_requested: 'gpt-5.6-sol',
+              model_id: null,
+              model_observation: 'requested_not_reported',
               envelope_sha256: 'envelope-hash',
               config_sha256: 'config-hash',
               role_sha256: 'role-hash',
@@ -1438,6 +1862,10 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
     assert.equal(codex.length, 1);
     assert.equal(codex[0].attempt, 1);
     assert.equal(codex[0].billing_kind, 'chatgpt_subscription');
+    assert.equal(codex[0].auth_kind, 'chatgpt');
+    assert.equal(codex[0].model_requested, 'gpt-5.6-sol');
+    assert.equal(codex[0].model_id, null);
+    assert.equal(codex[0].model_observation, 'requested_not_reported');
     assert.equal(codex[0].verified, true);
     assert.equal(codex[0].envelope_sha256, 'envelope-hash');
     assert.equal(codex[0].config_sha256, 'config-hash');
@@ -1471,19 +1899,27 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
   const authPath = path.join(root, 'auth.json');
   fs.writeFileSync(authPath, '{"secret":"not-output"}');
   let execCalls = 0;
-  const homes = [];
+  let loginStatusCalls = 0;
   try {
     const result = codexPreflight({
       authPath,
       tempRoot: root,
       spawnHost(command, args, options) {
         if (args[0] === '--version') return { status: 0, stdout: 'codex-cli 0.149.1\n', stderr: '' };
+        if (args[0] === 'login' && args[1] === 'status') {
+          loginStatusCalls += 1;
+          assert.equal(fs.existsSync(path.join(options.env.CODEX_HOME, 'auth.json')), true);
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '' };
+        }
         execCalls += 1;
-        homes.push(options?.env?.CODEX_HOME);
         return { status: 1, stdout: '', stderr: 'must not execute' };
       },
     });
     assert.equal(result.ok, true);
+    assert.equal(result.auth_kind, 'chatgpt');
+    assert.equal(result.model_requested, 'gpt-5.6-sol');
+    assert.equal(result.model_id, undefined);
+    assert.equal(loginStatusCalls, 2);
     assert.equal(execCalls, 0);
     assert.equal(JSON.stringify(result).includes('not-output'), false);
     assert.equal(
@@ -1497,6 +1933,18 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
         stderr: '',
       })),
       /Codex CLI 0\.149\.1 required/i,
+    );
+    assert.throws(
+      () => codexPreflight({
+        authPath,
+        tempRoot: root,
+        spawnHost(_command, args) {
+          return args[0] === '--version'
+            ? { status: 0, stdout: 'codex-cli 0.149.1\n', stderr: '' }
+            : { status: 0, stdout: 'Logged in using an API key\n', stderr: '' };
+        },
+      }),
+      /ChatGPT authentication required/i,
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -1520,21 +1968,24 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
       authPath,
       evidenceRoot,
       ledgerPath,
-      spawnCodex(_command, _args, options) {
-        calls += 1;
+      spawnCodex(_command, args, options) {
         assert.equal(fs.existsSync(path.join(options.env.CODEX_HOME, 'auth.json')), true);
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        calls += 1;
+        appendCodexAudit(options.env.OFFCUT_AGENT_AUDIT_PATH, [
+          codexWorkerAudit(CODEX_CUSTOM_ROLE)[0],
+          codexWorkerAudit(CODEX_CUSTOM_ROLE).at(-1),
+        ]);
         return {
           status: 0,
           stdout: [
+            JSON.stringify(codexCollabSpawnEvent()),
             JSON.stringify({
-              type: 'item.completed',
-              item: {
-                type: 'collaboration',
-                tool: 'spawn_agent',
-                agent_type: CODEX_CUSTOM_ROLE,
-              },
+              type: 'turn.completed',
+              usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 },
             }),
-            JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }),
           ].join('\n'),
           stderr: '',
           error: null,
@@ -1543,6 +1994,10 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     });
     assert.equal(first.ok, true);
     assert.equal(first.custom_agent_verified, true);
+    assert.equal(first.auth_kind, 'chatgpt');
+    assert.equal(first.model_requested, 'gpt-5.6-sol');
+    assert.equal(first.model_id, null);
+    assert.equal(first.model_observation, 'requested_not_reported');
     assert.equal(calls, 1);
     const evidenceFiles = fs.readdirSync(path.join(evidenceRoot, first.preflight_id));
     assert.equal(evidenceFiles.includes('transcript.jsonl'), true);

@@ -24,25 +24,52 @@ The active execution contract is now:
 - Host: Codex CLI `0.149.1` exactly
 - Model: `gpt-5.6-sol`
 - Reasoning effort: `low`
-- Custom role: `offcut-efficacy-worker`
+- Custom role: `ticket-worker`
 - Billing: ChatGPT subscription, recorded as zero incremental API billing with
   `billing_kind: "chatgpt_subscription"` and subscription cost evidence; this
   does not claim that ChatGPT membership is free
 
 Each call uses a new isolated `CODEX_HOME` containing only a byte-for-byte copy
 of the authenticated user's `auth.json`, minimal config, the named role, and
-arm-specific `hooks.json`. The temporary home is always deleted and is never a
-run artifact. The `off` arm has no hooks. The `full` arm uses the shipped hook
-settings, including the `apply_patch` matcher. Both arms use the same
-top-level delegation envelope and neutral role instructions. Their envelope,
-config, role, and hook hashes are recorded.
+arm-specific `hooks.json`. Before exec, `codex login status` runs inside that
+home with API-key and provider/base-URL overrides removed and must report the
+exact ChatGPT authentication status. A copied `auth.json` is not proof by
+itself. Only after this gate may a started process receive subscription billing
+evidence. Artifacts record only `auth_kind: "chatgpt"`.
 
-An outcome is valid only when Codex JSONL contains a collaboration or
-`spawn_agent` event naming the exact custom role. A final-message claim is not
-proof. Missing role proof is a model failure. Tokens are aggregated from
-`turn.completed` events, duration is wall time, and raw JSONL is preserved.
-Authentication, API, and rate-limit failures remain distinct from model/tool
-failures and known pre-call spawn failures.
+Both arms include the same silent lifecycle audit hook on `SubagentStart`,
+`SubagentStop`, `PreToolUse`, and `PostToolUse`; write matchers include
+`Write|Edit|apply_patch`. It appends only nonsecret agent/event attribution to
+the per-run audit JSONL and emits no model context. The `off` arm contains only
+these audit hooks. The `full` arm contains the identical audit hooks plus the
+shipped Offcut hooks.
+
+The temporary home is removed with Windows retries after every path, verified
+absent, and never retained as an artifact. Cleanup residue fails loudly without
+printing paths or authentication bytes. Both arms use the same top-level
+delegation envelope and neutral `ticket-worker` role instructions. Neither
+model-visible input contains study or arm framing. Envelope, config, role, and
+hook hashes are recorded.
+
+Codex 0.149.1's exec JSONL `CollabToolCallItem` does not expose `agent_type`.
+JSONL therefore proves only that a generic `spawn_agent` call occurred and
+provides transcript and usage. Exact role attribution comes from one audited
+`SubagentStart` with `agent_type: "ticket-worker"` and a matching
+`SubagentStop` for the same `agent_id` and type. Every audited write-like
+Pre/Post event must belong to that worker; a parent, default, or other-agent
+write is a model failure. A missing/failed stop is also a model failure.
+
+Tokens are aggregated from valid `turn.completed` usage. Missing or malformed
+usage makes the run non-successful and leaves token fields null; it is never
+coerced to zero. Duration is wall time and raw JSONL is preserved. Error items,
+failed turns, authentication, API, and rate-limit failures remain distinct
+from model/tool failures and known pre-call spawn failures.
+
+The CLI and config pin the requested model to `gpt-5.6-sol`, but Codex 0.149.1
+does not necessarily report the observed model in exec JSONL. Records therefore
+store `model_requested: "gpt-5.6-sol"` and set `model_id` only when Codex emits
+one; otherwise `model_id` is null with
+`model_observation: "requested_not_reported"`.
 
 Attempt keys and outcome loading are backend-scoped. The three legacy Claude
 rows therefore neither complete nor exhaust any Codex cell. The same 12 tasks,
@@ -56,8 +83,9 @@ runs, eligible rep 3 runs, and at most 96 confirmatory runs.
 
 The no-model `--codex-preflight` checks the frozen local contract. The separate
 `--codex-live-preflight --execute` makes one trivial isolated custom-role call,
-requires event-level role proof, and records opaque evidence outside efficacy
-outcomes. A successful live preflight cannot be repeated.
+requires generic JSONL spawn proof plus audited worker start/stop attribution,
+and records opaque evidence outside efficacy outcomes. A successful live
+preflight cannot be repeated.
 
 ## Frozen environment and ceiling
 
