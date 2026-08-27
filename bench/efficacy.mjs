@@ -605,7 +605,7 @@ function parseTranscriptEvents(transcript) {
   return events;
 }
 
-function isPostHocRecoverable(entry, metrics, transcript) {
+function isTranscriptSensitivityCandidate(entry, metrics, transcript) {
   if (
     entry.failure_kind !== 'model' ||
     entry.custom_agent_verified !== true ||
@@ -616,8 +616,24 @@ function isPostHocRecoverable(entry, metrics, transcript) {
   }
   const events = parseTranscriptEvents(transcript);
   const failures = classifyCodexEventFailures(events);
+  const completedUsage = events.find(
+    (event) => event?.type === 'turn.completed',
+  )?.usage;
+  const validUsage =
+    completedUsage &&
+    [
+      'input_tokens',
+      'cached_input_tokens',
+      'cache_write_input_tokens',
+      'output_tokens',
+      'reasoning_output_tokens',
+    ].every(
+      (field) =>
+        Number.isFinite(completedUsage[field]) &&
+        completedUsage[field] >= 0,
+    );
   return (
-    events.some((event) => event?.type === 'turn.completed') &&
+    validUsage &&
     failures.recoverableToolFailures.length > 0 &&
     !failures.unrecoverable
   );
@@ -639,9 +655,11 @@ export function buildEfficacyAnalysis({
   preflightEvidence,
   rawCommitSha,
 }) {
-  const scoped = manifestEntries.filter(
+  const backendEntries = manifestEntries.filter(
+    (entry) => entry.backend === CODEX_BACKEND_ID,
+  );
+  const scoped = backendEntries.filter(
     (entry) =>
-      entry.backend === CODEX_BACKEND_ID &&
       entry.stage === 'discovery12' &&
       entry.arm === 'off' &&
       (entry.rep === 1 || entry.rep === 2),
@@ -671,7 +689,7 @@ export function buildEfficacyAnalysis({
       ) {
         throw new Error(`report metrics malformed for run ${entry.run_id}`);
       }
-      const recovered = isPostHocRecoverable(
+      const recovered = isTranscriptSensitivityCandidate(
         entry,
         metrics,
         transcriptByRun.get(entry.run_id),
@@ -685,7 +703,7 @@ export function buildEfficacyAnalysis({
         accepted: metrics.task_passed === true,
         frozen_primary_success: metrics.primary_success === true,
         raw_failure_kind: entry.failure_kind ?? null,
-        post_hoc_recovered_tool_failure: recovered,
+        post_hoc_transcript_candidate: recovered,
         lines_added: metrics.lines_added,
         lines_removed: metrics.lines_removed,
         duration_ms: entry.duration_ms,
@@ -711,6 +729,38 @@ export function buildEfficacyAnalysis({
   ) {
     throw new Error('report requires 24 initial cells across 12 tasks and two reps');
   }
+  const taskIdsArray = [...taskIds].sort();
+  const discoveryRuns = tasks.map((task) => ({
+    task_id: task.task_id,
+    rep: task.rep,
+    accept_passed: task.accepted,
+    target_present: task.target_present,
+  }));
+  const acceptedTargetPositiveInitial = discoveryRuns.filter(
+    (run) => run.accept_passed && run.target_present,
+  ).length;
+  const discovery3Jobs = discoveryRep3Jobs(taskIdsArray, discoveryRuns);
+  const discovery3Outcomes = backendEntries.filter(
+    (entry) => entry.stage === 'discovery3',
+  );
+  const confirmOutcomes = backendEntries.filter(
+    (entry) => entry.stage === 'confirm',
+  );
+  const qualifiers = qualifyDiscovery(taskIdsArray, discoveryRuns);
+  if (acceptedTargetPositiveInitial || discovery3Jobs.length) {
+    throw new Error(
+      'target-positive initial evidence contradicts the null stop',
+    );
+  }
+  if (discovery3Outcomes.length) {
+    throw new Error('discovery3 outcomes contradict the null stop');
+  }
+  if (confirmOutcomes.length) {
+    throw new Error('confirm outcomes contradict the null stop');
+  }
+  if (qualifiers.length) {
+    throw new Error('qualifiers contradict the null stop');
+  }
   const categories = {};
   for (const category of REPORT_CATEGORY_ORDER) {
     const rows = tasks.filter((task) => task.category === category);
@@ -729,14 +779,19 @@ export function buildEfficacyAnalysis({
   ) {
     throw new Error('report encountered an unknown efficacy category');
   }
-  const recovered = tasks.filter(
-    (task) => task.post_hoc_recovered_tool_failure,
+  const transcriptCandidates = tasks.filter(
+    (task) => task.post_hoc_transcript_candidate,
   );
   const accepted = tasks.filter((task) => task.accepted).length;
   const targetPresent = tasks.filter((task) => task.target_present).length;
   const frozenPrimary = tasks.filter(
     (task) => task.frozen_primary_success,
   ).length;
+  const confirmatoryRan = confirmOutcomes.length > 0;
+  const stopReason =
+    discovery3Jobs.length === 0 && qualifiers.length === 0
+      ? 'Preregistered stop: no baseline target-positive runs, so no tasks qualified.'
+      : null;
   const first = scoped[0];
   const legacyClaude = manifestEntries.filter(
     (entry) => entry.host === 'claude-code',
@@ -770,10 +825,14 @@ export function buildEfficacyAnalysis({
       planned_initial_cells: 24,
       completed_initial_cells: tasks.length,
       target_present: targetPresent,
+      accepted_target_positive_initial: acceptedTargetPositiveInitial,
       accepted,
       frozen_primary_success: frozenPrimary,
-      discovery3_planned: 0,
-      qualifiers: 0,
+      discovery3_eligible_tasks: discovery3Jobs.length,
+      discovery3_planned: discovery3Jobs.length,
+      discovery3_outcomes: discovery3Outcomes.length,
+      qualifiers: qualifiers.length,
+      confirm_outcomes: confirmOutcomes.length,
     },
     categories,
     tasks,
@@ -806,14 +865,19 @@ export function buildEfficacyAnalysis({
       ),
     },
     post_hoc_sensitivity: {
-      label: 'post_hoc',
-      recovered_intermediate_tool_failures: recovered.length,
-      primary_success: frozenPrimary + recovered.length,
+      label: 'post_hoc_transcript_based_upper_bound',
+      top_level_exit_code_sealed: false,
+      transcript_candidate_runs: transcriptCandidates.length,
+      upper_bound_primary_success:
+        frozenPrimary + transcriptCandidates.length,
       primary_total: tasks.length,
       primary_rate_percent:
-        Math.round(((frozenPrimary + recovered.length) / tasks.length) * 10_000) /
+        Math.round(
+          ((frozenPrimary + transcriptCandidates.length) / tasks.length) *
+            10_000,
+        ) /
         100,
-      changes_stop_decision: false,
+      changes_stop_decision: discovery3Jobs.length > 0,
     },
     preflight_history: {
       attempts: preflights.length,
@@ -842,9 +906,8 @@ export function buildEfficacyAnalysis({
     },
     positive_claim: false,
     efficacy_estimate: null,
-    confirmatory_ran: false,
-    stop_reason:
-      'Preregistered stop: no baseline target-positive runs, so no tasks qualified.',
+    confirmatory_ran: confirmatoryRan,
+    stop_reason: stopReason,
     conclusion:
       'No efficacy estimate. This is not evidence of no effect; enrichment failed for this model/profile or the baseline was already target-free. No off/full claim is supported.',
   };
@@ -876,7 +939,9 @@ function efficacyReportMarkdown(analysis) {
     '',
     '## Post-hoc sensitivity',
     '',
-    `${analysis.post_hoc_sensitivity.recovered_intermediate_tool_failures} intermediate tool-command failures were recoverable under the corrected future classifier. Reclassifying them yields ${analysis.post_hoc_sensitivity.primary_success}/${analysis.post_hoc_sensitivity.primary_total} (${analysis.post_hoc_sensitivity.primary_rate_percent.toFixed(2)}%) primary success. This is post hoc and does not change the stop decision because target prevalence remains 0/24.`,
+    `The sealed transcripts contain ${analysis.post_hoc_sensitivity.transcript_candidate_runs} runs with terminal \`turn.completed\`, valid usage, and only recoverable item-level tool failures. If those transcript conditions are treated as completion, primary success would be ${analysis.post_hoc_sensitivity.upper_bound_primary_success}/${analysis.post_hoc_sensitivity.primary_total} (${analysis.post_hoc_sensitivity.primary_rate_percent.toFixed(2)}%).`,
+    '',
+    'This is a transcript-based post-hoc upper bound, not a corrected outcome. The top-level exit code was not sealed for these runs, so the frozen 17/24 remains authoritative and the sensitivity cannot replace it. It does not change the stop decision because target prevalence remains 0/24.',
     '',
     '## Categories',
     '',
@@ -1431,6 +1496,7 @@ function appendAttemptLedger(
             runResult?.record?.approval_mode ?? CODEX_APPROVAL_MODE,
           effective_sandbox:
             runResult?.record?.effective_sandbox ?? CODEX_EFFECTIVE_SANDBOX,
+          exit_code: runResult?.record?.exit_code ?? null,
           custom_agent_verified:
             runResult?.record?.custom_agent_verified === true,
           user_assets_isolated:

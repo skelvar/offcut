@@ -12,7 +12,9 @@ Preregistered stop: no baseline target-positive runs, so no tasks qualified.
 
 ## Post-hoc sensitivity
 
-5 intermediate tool-command failures were recoverable under the corrected future classifier. Reclassifying them yields 22/24 (91.67%) primary success. This is post hoc and does not change the stop decision because target prevalence remains 0/24.
+The sealed transcripts contain 5 runs with terminal `turn.completed`, valid usage, and only recoverable item-level tool failures. If those transcript conditions are treated as completion, primary success would be 22/24 (91.67%).
+
+This is a transcript-based post-hoc upper bound, not a corrected outcome. The top-level exit code was not sealed for these runs, so the frozen 17/24 remains authoritative and the sensitivity cannot replace it. It does not change the stop decision because target prevalence remains 0/24.
 
 ## Categories
 

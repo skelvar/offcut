@@ -1120,6 +1120,7 @@ export function runOne(opts) {
       record.hooks_sha256 = agent.hooks_sha256;
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;
+      record.exit_code = agent.exitCode ?? null;
       record.warning_count = agent.warningCount;
       record.user_assets_isolated = agent.userAssetsIsolated;
       record.recoverable_tool_failures =

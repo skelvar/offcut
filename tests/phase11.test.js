@@ -593,15 +593,20 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
       planned_initial_cells: 24,
       completed_initial_cells: 24,
       target_present: 0,
+      accepted_target_positive_initial: 0,
       accepted: 22,
       frozen_primary_success: 17,
+      discovery3_eligible_tasks: 0,
       discovery3_planned: 0,
+      discovery3_outcomes: 0,
       qualifiers: 0,
+      confirm_outcomes: 0,
     });
     assert.deepEqual(first.post_hoc_sensitivity, {
-      label: 'post_hoc',
-      recovered_intermediate_tool_failures: 5,
-      primary_success: 22,
+      label: 'post_hoc_transcript_based_upper_bound',
+      top_level_exit_code_sealed: false,
+      transcript_candidate_runs: 5,
+      upper_bound_primary_success: 22,
       primary_total: 24,
       primary_rate_percent: 91.67,
       changes_stop_decision: false,
@@ -668,6 +673,10 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
       fs.readFileSync(firstMarkdown, 'utf8'),
       /No efficacy estimate.*not evidence of no effect/is,
     );
+    assert.match(
+      fs.readFileSync(firstMarkdown, 'utf8'),
+      /transcript-based post-hoc upper bound[\s\S]*top-level exit code was not sealed/i,
+    );
 
     assert.throws(
       () => buildEfficacyAnalysis({
@@ -700,6 +709,74 @@ test('efficacy report recomputes the sealed null result deterministically', asyn
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('null efficacy report refuses evidence that contradicts the stop', async () => {
+  const { buildEfficacyAnalysis } = await import('../bench/efficacy.mjs');
+  const manifestEntries = fs
+    .readFileSync(path.resolve('bench/efficacy-manifest.jsonl'), 'utf8')
+    .trim()
+    .split(/\r?\n/)
+    .map(JSON.parse);
+  const codexEntries = manifestEntries.filter(
+    (entry) => entry.backend === 'codex-profile-v1',
+  );
+  const metricsByRun = new Map();
+  const transcriptByRun = new Map();
+  for (const entry of codexEntries) {
+    const runDir = path.resolve('bench/runs', entry.run_id);
+    metricsByRun.set(
+      entry.run_id,
+      JSON.parse(fs.readFileSync(path.join(runDir, 'metrics.json'), 'utf8')),
+    );
+    transcriptByRun.set(
+      entry.run_id,
+      fs.readFileSync(path.join(runDir, 'transcript.jsonl'), 'utf8'),
+    );
+  }
+  const tasksRoot = path.resolve('bench/efficacy-tasks');
+  const taskMetas = fs.readdirSync(tasksRoot).map((taskId) =>
+    JSON.parse(fs.readFileSync(path.join(tasksRoot, taskId, 'meta.json'), 'utf8')),
+  );
+  const base = {
+    manifestEntries,
+    metricsByRun,
+    taskMetas,
+    transcriptByRun,
+    preflightEvidence: [],
+    rawCommitSha: 'raw',
+  };
+  const firstRun = codexEntries[0].run_id;
+  const targetPositiveMetrics = new Map(metricsByRun);
+  targetPositiveMetrics.set(firstRun, {
+    ...targetPositiveMetrics.get(firstRun),
+    task_passed: true,
+    target_present: true,
+  });
+  assert.throws(
+    () => buildEfficacyAnalysis({
+      ...base,
+      metricsByRun: targetPositiveMetrics,
+    }),
+    /target-positive.*null stop/i,
+  );
+  for (const stage of ['discovery3', 'confirm']) {
+    assert.throws(
+      () => buildEfficacyAnalysis({
+        ...base,
+        manifestEntries: [
+          ...manifestEntries,
+          {
+            ...codexEntries[0],
+            run_id: `${stage}-contradiction`,
+            stage,
+            rep: stage === 'discovery3' ? 3 : 1,
+          },
+        ],
+      }),
+      new RegExp(`${stage}.*null stop`, 'i'),
+    );
   }
 });
 
@@ -2301,12 +2378,14 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(Object.hasOwn(result.record, 'role_sha256'), false);
     assert.equal(Object.hasOwn(result.record, 'envelope_sha256'), false);
     assert.equal(result.record.auth_kind, 'chatgpt');
+    assert.equal(result.record.exit_code, 0);
     assert.equal(result.record.user_assets_isolated, true);
     assert.equal(result.record.cache_creation_input_tokens, 2);
     assert.equal(result.record.reasoning_output_tokens, 1);
     const sealed = fs.readFileSync(manifestPath, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
     assert.equal(sealed[0].model_id, null);
     assert.equal(sealed[0].model_observation, 'requested_not_reported');
+    assert.equal(sealed[0].exit_code, 0);
     assert.equal(sealed[0].user_assets_isolated, true);
 
     preCall = runOne({
@@ -2336,6 +2415,7 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(preCall.record.billing_kind, null);
     assert.equal(preCall.record.total_cost_usd, null);
     assert.equal(preCall.record.cost_evidence.kind, 'known_zero');
+    assert.equal(preCall.record.exit_code, null);
   } finally {
     if (result?.runDir) fs.rmSync(result.runDir, { recursive: true, force: true });
     if (preCall?.runDir) fs.rmSync(preCall.runDir, { recursive: true, force: true });
@@ -2376,6 +2456,7 @@ test('Codex failed run artifact retains CLI stderr separately from transcript', 
       },
     });
     assert.equal(result.record.failure_kind, 'host');
+    assert.equal(result.record.exit_code, 2);
     assert.equal(result.record.total_cost_usd, 0);
     assert.equal(result.record.billing_kind, null);
     assert.deepEqual(result.record.cost_evidence, {
@@ -2557,6 +2638,7 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
               config_sha256: 'config-hash',
               profile_config_sha256: 'profile-config-hash',
               hooks_sha256: 'hooks-hash',
+              exit_code: 0,
               total_cost_usd: 0,
               cache_creation_input_tokens: 6,
               reasoning_output_tokens: 9,
@@ -2587,6 +2669,7 @@ test('backend scoping ignores legacy Claude and custom-subagent attempts', async
     assert.equal(codex[0].profile_config_sha256, 'profile-config-hash');
     assert.equal(Object.hasOwn(codex[0], 'role_sha256'), false);
     assert.equal(codex[0].hooks_sha256, 'hooks-hash');
+    assert.equal(codex[0].exit_code, 0);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

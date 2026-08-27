@@ -171,24 +171,28 @@ Target prevalence was 0/24, so no rep-3 run was eligible, no task qualified,
 and the preregistered rule stopped the study before confirmation.
 
 Post-seal review found a classifier defect: Codex reports failed intermediate
-`command_execution`, `file_change`, or tool items even when it recovers and
-successfully completes the turn. The five affected discovery runs all had a
-zero process exit, `turn.completed`, valid usage, verified named-profile
-attribution, accepted code, and no top-level failed turn or unrecoverable error.
-The raw manifest, metrics, run records, transcripts, and ledger remain
-immutable.
+`command_execution`, `file_change`, or tool items even when the transcript
+later reaches `turn.completed`. The five affected discovery transcripts have
+terminal `turn.completed`, valid usage, verified named-profile attribution,
+accepted code, and no failed turn or unrecoverable error item. However, the
+top-level Codex exit code was not persisted in the sealed run records or
+manifest. They therefore cannot be declared fully corrected outcomes. The raw
+manifest, metrics, run records, transcripts, and ledger remain immutable.
 
 The parser is corrected prospectively. It records sanitized
 `recoverable_tool_failures` metadata containing only item ID, item type, status,
 and command exit code when available; command text and arguments are omitted.
-An intermediate failure is recoverable only when the process exits zero, the
-turn completes with valid usage, the named profile is verified, and no
-top-level failure or unrecoverable error exists. A nonzero process exit,
-`turn.failed`, or non-warning error remains fatal.
+Future run records and manifests persist `exit_code`. An intermediate failure
+is recoverable only when that recorded process exit is zero, the turn completes
+with valid usage, the named profile is verified, and no top-level failure or
+unrecoverable error exists. A nonzero process exit, `turn.failed`, or
+non-warning error remains fatal.
 
-A clearly labeled post-hoc sensitivity reclassifies those five runs, yielding
-22/24 (91.67%) primary success. It does not replace the frozen 17/24 outcome and
-cannot change the stop decision because target prevalence remains 0/24.
+A clearly labeled transcript-based post-hoc upper bound asks what would happen
+if those transcript conditions were treated as completion: primary success
+would be 22/24 (91.67%). Because top-level exit status was not sealed, this does
+not replace the authoritative frozen 17/24 outcome. It also cannot change the
+stop decision because target prevalence remains 0/24.
 Accordingly `positive_claim` is false, `efficacy_estimate` is null, and
 `confirmatory_ran` is false. The result is no efficacy estimate—not evidence of
 no effect. Enrichment failed for this model/profile, or the baseline was
