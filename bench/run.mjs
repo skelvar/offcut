@@ -351,18 +351,15 @@ export function cleanupCodexHome(homeDir, fsImpl = fs) {
   throw new Error('temporary CODEX_HOME cleanup failed');
 }
 
-function hasGenericAgentSpawn(events) {
-  return events.some(
-    (event) =>
-      event?.type === 'item.completed' &&
-      /collab/i.test(String(event?.item?.type || '')) &&
-      (event?.item?.tool === 'spawn_agent' || event?.item?.name === 'spawn_agent'),
-  );
-}
-
 function aggregateCodexUsage(events) {
   const turns = events.filter((event) => event?.type === 'turn.completed');
-  const keys = ['input_tokens', 'cached_input_tokens', 'output_tokens'];
+  const keys = [
+    'input_tokens',
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+    'output_tokens',
+    'reasoning_output_tokens',
+  ];
   const valid =
     turns.length > 0 &&
     turns.every(
@@ -397,7 +394,7 @@ function observedCodexModel(events) {
   return null;
 }
 
-export function verifyCodexAgentAudit(entries) {
+export function verifyCodexAgentAudit(entries, events) {
   const starts = entries.filter(
     (entry) =>
       entry?.hook_event_name === 'SubagentStart' &&
@@ -414,13 +411,6 @@ export function verifyCodexAgentAudit(entries) {
       entry?.agent_type === CODEX_CUSTOM_ROLE,
   );
   if (stops.length !== 1) return { ok: false, workerAgentId };
-  const stop = stops[0];
-  if (
-    stop.success === false ||
-    /(?:fail|error|cancel)/i.test(String(stop.stop_reason || ''))
-  ) {
-    return { ok: false, workerAgentId };
-  }
   const writeEvents = entries.filter(
     (entry) =>
       (entry?.hook_event_name === 'PreToolUse' ||
@@ -436,7 +426,43 @@ export function verifyCodexAgentAudit(entries) {
   ) {
     return { ok: false, workerAgentId };
   }
-  return { ok: true, workerAgentId };
+  const collabItems = events
+    .filter(
+      (event) =>
+        event?.type === 'item.completed' &&
+        event?.item?.type === 'collab_tool_call',
+    )
+    .map((event) => event.item);
+  const spawnVerified = collabItems.some(
+    (item) =>
+      item.tool === 'spawn_agent' &&
+      item.status === 'completed' &&
+      Array.isArray(item.receiver_thread_ids) &&
+      item.receiver_thread_ids.includes(workerAgentId),
+  );
+  const failedStates = new Set([
+    'interrupted',
+    'errored',
+    'shutdown',
+    'not_found',
+  ]);
+  const workerFailed = collabItems.some(
+    (item) =>
+      item.status === 'failed' ||
+      failedStates.has(item.agents_states?.[workerAgentId]?.status),
+  );
+  const terminalVerified = collabItems.some(
+    (item) =>
+      item.status === 'completed' &&
+      item.agents_states?.[workerAgentId]?.status === 'completed',
+  );
+  return {
+    ok: spawnVerified && terminalVerified && !workerFailed,
+    workerAgentId,
+    spawnVerified,
+    terminalVerified,
+    workerFailed,
+  };
 }
 
 export function parseCodexJsonl(
@@ -473,15 +499,16 @@ export function parseCodexJsonl(
     preCallSpawnCodes.has(spawnErr?.code) &&
     !String(stdout || '').trim();
   const callStarted = status != null;
-  const genericSpawnVerified = hasGenericAgentSpawn(events);
-  const attribution = verifyCodexAgentAudit(auditEntries);
-  const customAgentVerified = genericSpawnVerified && attribution.ok;
+  const attribution = verifyCodexAgentAudit(auditEntries, events);
+  const genericSpawnVerified = attribution.spawnVerified === true;
+  const customAgentVerified = attribution.ok;
   const eventError = events.some(
     (event) =>
       /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
       event?.item?.type === 'error' ||
       event?.status === 'failed' ||
-      event?.item?.status === 'failed',
+      event?.item?.status === 'failed' ||
+      attribution.workerFailed === true,
   );
   const usage = aggregateCodexUsage(events);
   const modelId = observedCodexModel(events);
@@ -515,7 +542,8 @@ export function parseCodexJsonl(
       input_tokens: usage?.input_tokens ?? null,
       output_tokens: usage?.output_tokens ?? null,
       cache_read_input_tokens: usage?.cached_input_tokens ?? null,
-      cache_creation_input_tokens: null,
+      cache_creation_input_tokens: usage?.cache_write_input_tokens ?? null,
+      reasoning_output_tokens: usage?.reasoning_output_tokens ?? null,
     },
     cost_evidence: callStarted && subscriptionVerified
       ? { kind: 'subscription', source: 'codex_chatgpt' }
@@ -648,6 +676,7 @@ export function runCodex({
           output_tokens: null,
           cache_read_input_tokens: null,
           cache_creation_input_tokens: null,
+          reasoning_output_tokens: null,
         },
         cost_evidence: {
           kind: 'known_zero',
@@ -784,6 +813,7 @@ export function runOne(opts) {
     output_tokens: null,
     cache_read_input_tokens: null,
     cache_creation_input_tokens: null,
+    reasoning_output_tokens: null,
     ...(opts.stage ? { stage: opts.stage } : {}),
     ...(opts.attempt ? { attempt: opts.attempt } : {}),
     ...(opts.backend ? { backend: opts.backend } : {}),

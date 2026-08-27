@@ -53,17 +53,24 @@ hook hashes are recorded.
 
 Codex 0.149.1's exec JSONL `CollabToolCallItem` does not expose `agent_type`.
 JSONL therefore proves only that a generic `spawn_agent` call occurred and
-provides transcript and usage. Exact role attribution comes from one audited
-`SubagentStart` with `agent_type: "ticket-worker"` and a matching
-`SubagentStop` for the same `agent_id` and type. Every audited write-like
-Pre/Post event must belong to that worker; a parent, default, or other-agent
-write is a model failure. A missing/failed stop is also a model failure.
+provides transcript and usage. One audited `SubagentStart` with
+`agent_type: "ticket-worker"` supplies the worker `agent_id`; a completed
+`spawn_agent` collaboration item must include that exact ID in
+`receiver_thread_ids`. A matching `SubagentStop` proves the lifecycle event
+occurred but reports no success field. Terminal success instead requires a
+collaboration item whose `agents_states[agent_id].status` is `completed`.
+Interrupted, errored, shutdown, not-found, or failed collaboration state is a
+model failure. Every audited write-like Pre/Post event must belong to that
+worker; a parent, default, or other-agent write is also a model failure.
 
-Tokens are aggregated from valid `turn.completed` usage. Missing or malformed
-usage makes the run non-successful and leaves token fields null; it is never
-coerced to zero. Duration is wall time and raw JSONL is preserved. Error items,
-failed turns, authentication, API, and rate-limit failures remain distinct
-from model/tool failures and known pre-call spawn failures.
+Tokens are aggregated from valid `turn.completed` usage, including
+`cache_write_input_tokens` as cache-creation tokens and
+`reasoning_output_tokens` separately. All five Codex 0.149.1 usage fields must
+be finite and nonnegative. Missing or malformed usage makes the run
+non-successful and leaves token fields null; it is never coerced to zero.
+Duration is wall time and raw JSONL is preserved. Error items, failed turns,
+authentication, API, and rate-limit failures remain distinct from model/tool
+failures and known pre-call spawn failures.
 
 The CLI and config pin the requested model to `gpt-5.6-sol`, but Codex 0.149.1
 does not necessarily report the observed model in exec JSONL. Records therefore

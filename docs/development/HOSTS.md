@@ -525,7 +525,10 @@ Both arms carry identical silent attribution hooks for subagent start/stop and
 write pre/post events. The `off` arm has only those audit hooks; `full` adds the
 shipped settings with `apply_patch` matching. The audit records allowlisted
 lifecycle identifiers only, emits no context, and proves one `ticket-worker`
-start and matching stop. Every audited write must belong to that worker.
+start and matching stop. The stop is lifecycle evidence, not a success signal.
+Success comes from a correlated collaboration state of `completed`, after the
+completed spawn's `receiver_thread_ids` includes the audited worker ID. Every
+audited write must belong to that worker.
 Temporary homes are removed with Windows retries, verified absent on every
 exit, and excluded from evidence.
 
@@ -543,9 +546,10 @@ is free. Phase 11 conclusions are scoped to this Codex custom-agent backend and
 cannot be generalized across hosts.
 
 Missing or malformed `turn.completed` usage is a model failure with null token
-fields, not invented zeros. The requested model is pinned to `gpt-5.6-sol`;
-`model_id` remains null with `requested_not_reported` unless Codex itself emits
-an observed model identifier.
+fields, not invented zeros. Cache-write and reasoning-output tokens are
+recorded separately from the other three exact Codex usage fields. The
+requested model is pinned to `gpt-5.6-sol`; `model_id` remains null with
+`requested_not_reported` unless Codex itself emits an observed model identifier.
 
 ## Before the native adapter: AGENTS.md delivered on Cursor (2026-08-27)
 

@@ -310,6 +310,7 @@ test('missing or non-finite cost telemetry is an anomaly that stops scheduling',
         output_tokens: null,
         cache_read_input_tokens: null,
         cache_creation_input_tokens: null,
+        reasoning_output_tokens: null,
       },
     ]);
     let laterCalls = 0;
@@ -1118,19 +1119,45 @@ test('--print-plan works without fixtures or model execution', () => {
 
 const CODEX_USAGE_EVENT = {
   type: 'turn.completed',
-  usage: { input_tokens: 10, cached_input_tokens: 4, output_tokens: 3 },
+  usage: {
+    input_tokens: 10,
+    cached_input_tokens: 4,
+    cache_write_input_tokens: 2,
+    output_tokens: 3,
+    reasoning_output_tokens: 1,
+  },
 };
 
-function codexCollabSpawnEvent() {
+function codexCollabSpawnEvent(receiverId = 'worker-1') {
   return {
     type: 'item.completed',
     item: {
-      id: 'collab-1',
       type: 'collab_tool_call',
       tool: 'spawn_agent',
-      status: 'completed',
       sender_thread_id: 'parent-1',
-      receiver_thread_ids: ['worker-thread-1'],
+      receiver_thread_ids: [receiverId],
+      prompt: 'Implement the delegated ticket.',
+      agents_states: {
+        [receiverId]: { status: 'running', message: null },
+      },
+      status: 'completed',
+    },
+  };
+}
+
+function codexCollabTerminalEvent(workerId = 'worker-1', workerStatus = 'completed') {
+  return {
+    type: 'item.completed',
+    item: {
+      type: 'collab_tool_call',
+      tool: 'wait',
+      sender_thread_id: 'parent-1',
+      receiver_thread_ids: [],
+      prompt: '',
+      agents_states: {
+        [workerId]: { status: workerStatus, message: null },
+      },
+      status: 'completed',
     },
   };
 }
@@ -1169,7 +1196,6 @@ function codexWorkerAudit(role = 'ticket-worker') {
       turn_id: 'turn-1',
       agent_id: 'worker-1',
       agent_type: role,
-      success: true,
     },
   ];
 }
@@ -1353,10 +1379,17 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
   const result = parseCodexJsonl(
     [
       JSON.stringify(spawn),
+      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify(CODEX_USAGE_EVENT),
       JSON.stringify({
         type: 'turn.completed',
-        usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 5 },
+        usage: {
+          input_tokens: 7,
+          cached_input_tokens: 2,
+          cache_write_input_tokens: 1,
+          output_tokens: 5,
+          reasoning_output_tokens: 2,
+        },
       }),
     ].join('\n'),
     0,
@@ -1378,7 +1411,8 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
     input_tokens: 17,
     output_tokens: 8,
     cache_read_input_tokens: 6,
-    cache_creation_input_tokens: null,
+    cache_creation_input_tokens: 3,
+    reasoning_output_tokens: 3,
   });
   assert.deepEqual(result.cost_evidence, {
     kind: 'subscription',
@@ -1386,7 +1420,11 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
   });
 
   const genericSpawnWithoutAudit = parseCodexJsonl(
-    [JSON.stringify(spawn), JSON.stringify(CODEX_USAGE_EVENT)].join('\n'),
+    [
+      JSON.stringify(spawn),
+      JSON.stringify(codexCollabTerminalEvent()),
+      JSON.stringify(CODEX_USAGE_EVENT),
+    ].join('\n'),
     0,
     null,
     { durationMs: 1, authKind: 'chatgpt', auditEntries: [] },
@@ -1415,6 +1453,7 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
   const workerFailed = parseCodexJsonl(
     [
       JSON.stringify(spawn),
+      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify({ type: 'turn.failed', error: { message: 'tool failed' } }),
     ].join('\n'),
     0,
@@ -1430,18 +1469,24 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
   assert.equal(workerFailed.failureKind, 'model');
 });
 
-test('Codex lifecycle attribution rejects parent writes, failed workers, and absent stops', async () => {
+test('Codex lifecycle proof correlates spawn, terminal state, stop, and write owner', async () => {
   const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
-  const stdout = [
-    JSON.stringify(codexCollabSpawnEvent()),
-    JSON.stringify(CODEX_USAGE_EVENT),
-  ].join('\n');
-  const parse = (auditEntries) =>
-    parseCodexJsonl(stdout, 0, null, {
+  const workerAudit = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  const parse = (collabEvents, auditEntries) =>
+    parseCodexJsonl(
+      [...collabEvents, CODEX_USAGE_EVENT].map(JSON.stringify).join('\n'),
+      0,
+      null,
+      {
       durationMs: 1,
       authKind: 'chatgpt',
       auditEntries,
-    });
+      },
+    );
+  const successfulCollab = [
+    codexCollabSpawnEvent(),
+    codexCollabTerminalEvent(),
+  ];
 
   const parentWrite = codexWorkerAudit(CODEX_CUSTOM_ROLE);
   parentWrite.splice(-1, 0, {
@@ -1451,14 +1496,35 @@ test('Codex lifecycle attribution rejects parent writes, failed workers, and abs
     tool_name: 'apply_patch',
     tool_use_id: 'parent-write',
   });
-  assert.equal(parse(parentWrite).ok, false);
-
-  const failed = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  failed.at(-1).success = false;
-  assert.equal(parse(failed).ok, false);
+  assert.equal(parse(successfulCollab, parentWrite).ok, false);
 
   const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).slice(0, -1);
-  assert.equal(parse(absentStop).ok, false);
+  assert.equal(parse(successfulCollab, absentStop).ok, false);
+
+  const receiverMismatch = parse([
+    codexCollabSpawnEvent('different-worker'),
+    codexCollabTerminalEvent(),
+  ], workerAudit);
+  assert.equal(receiverMismatch.ok, false);
+  assert.equal(receiverMismatch.customAgentVerified, false);
+
+  const missingTerminalState = parse([codexCollabSpawnEvent()], workerAudit);
+  assert.equal(missingTerminalState.ok, false);
+  assert.equal(missingTerminalState.customAgentVerified, false);
+
+  const erroredTerminalState = parse([
+    codexCollabSpawnEvent(),
+    codexCollabTerminalEvent('worker-1', 'errored'),
+  ], workerAudit);
+  assert.equal(erroredTerminalState.ok, false);
+  assert.equal(erroredTerminalState.failureKind, 'model');
+
+  const failedCollab = codexCollabTerminalEvent();
+  failedCollab.item.status = 'failed';
+  assert.equal(
+    parse([codexCollabSpawnEvent(), failedCollab], workerAudit).ok,
+    false,
+  );
 });
 
 test('Codex missing usage and item-level errors are model failures without invented tokens', async () => {
@@ -1471,7 +1537,16 @@ test('Codex missing usage and item-level errors are model failures without inven
   const missingUsage = parseCodexJsonl(
     [
       JSON.stringify(codexCollabSpawnEvent()),
-      JSON.stringify({ type: 'turn.completed' }),
+      JSON.stringify(codexCollabTerminalEvent()),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 1,
+          cached_input_tokens: 0,
+          output_tokens: 1,
+          reasoning_output_tokens: 0,
+        },
+      }),
     ].join('\n'),
     0,
     null,
@@ -1485,6 +1560,7 @@ test('Codex missing usage and item-level errors are model failures without inven
     output_tokens: null,
     cache_read_input_tokens: null,
     cache_creation_input_tokens: null,
+    reasoning_output_tokens: null,
   });
   assert.deepEqual(missingUsage.cost_evidence, {
     kind: 'subscription',
@@ -1494,6 +1570,7 @@ test('Codex missing usage and item-level errors are model failures without inven
   const itemError = parseCodexJsonl(
     [
       JSON.stringify(codexCollabSpawnEvent()),
+      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify({
         type: 'item.completed',
         item: { id: 'error-1', type: 'error', message: 'model rerouted' },
@@ -1560,6 +1637,7 @@ test('Codex runner removes isolated home on success and failure without preservi
       stdout: execCalls === 1
         ? [
             JSON.stringify(codexCollabSpawnEvent()),
+            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n')
         : JSON.stringify({ type: 'error', message: 'worker failed' }),
@@ -1650,6 +1728,7 @@ test('Codex run record distinguishes requested from observed model', async () =>
           status: 0,
           stdout: [
             JSON.stringify(codexCollabSpawnEvent()),
+            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n'),
           stderr: '',
@@ -1661,6 +1740,8 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(result.record.model_id, null);
     assert.equal(result.record.model_observation, 'requested_not_reported');
     assert.equal(result.record.auth_kind, 'chatgpt');
+    assert.equal(result.record.cache_creation_input_tokens, 2);
+    assert.equal(result.record.reasoning_output_tokens, 1);
     const sealed = fs.readFileSync(manifestPath, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
     assert.equal(sealed[0].model_id, null);
     assert.equal(sealed[0].model_observation, 'requested_not_reported');
@@ -1851,6 +1932,8 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
               role_sha256: 'role-hash',
               hooks_sha256: 'hooks-hash',
               total_cost_usd: 0,
+              cache_creation_input_tokens: 6,
+              reasoning_output_tokens: 9,
             },
           };
         },
@@ -1866,6 +1949,8 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
     assert.equal(codex[0].model_requested, 'gpt-5.6-sol');
     assert.equal(codex[0].model_id, null);
     assert.equal(codex[0].model_observation, 'requested_not_reported');
+    assert.equal(codex[0].cache_creation_input_tokens, 6);
+    assert.equal(codex[0].reasoning_output_tokens, 9);
     assert.equal(codex[0].verified, true);
     assert.equal(codex[0].envelope_sha256, 'envelope-hash');
     assert.equal(codex[0].config_sha256, 'config-hash');
@@ -1982,9 +2067,16 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
           status: 0,
           stdout: [
             JSON.stringify(codexCollabSpawnEvent()),
+            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify({
               type: 'turn.completed',
-              usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 },
+              usage: {
+                input_tokens: 1,
+                cached_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                output_tokens: 1,
+                reasoning_output_tokens: 0,
+              },
             }),
           ].join('\n'),
           stderr: '',
@@ -1998,6 +2090,8 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     assert.equal(first.model_requested, 'gpt-5.6-sol');
     assert.equal(first.model_id, null);
     assert.equal(first.model_observation, 'requested_not_reported');
+    assert.equal(first.cache_creation_input_tokens, 0);
+    assert.equal(first.reasoning_output_tokens, 0);
     assert.equal(calls, 1);
     const evidenceFiles = fs.readdirSync(path.join(evidenceRoot, first.preflight_id));
     assert.equal(evidenceFiles.includes('transcript.jsonl'), true);

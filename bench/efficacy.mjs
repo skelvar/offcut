@@ -851,6 +851,10 @@ export function codexLivePreflight({
       input_tokens: agent.telemetry?.input_tokens ?? null,
       output_tokens: agent.telemetry?.output_tokens ?? null,
       cache_read_input_tokens: agent.telemetry?.cache_read_input_tokens ?? null,
+      cache_creation_input_tokens:
+        agent.telemetry?.cache_creation_input_tokens ?? null,
+      reasoning_output_tokens:
+        agent.telemetry?.reasoning_output_tokens ?? null,
       cost_evidence: agent.cost_evidence,
       envelope_sha256: agent.envelope_sha256,
       config_sha256: agent.config_sha256,
@@ -913,6 +917,7 @@ function appendAttemptLedger(
     output_tokens: runResult?.record?.output_tokens ?? null,
     cache_read_input_tokens: runResult?.record?.cache_read_input_tokens ?? null,
     cache_creation_input_tokens: runResult?.record?.cache_creation_input_tokens ?? null,
+    reasoning_output_tokens: runResult?.record?.reasoning_output_tokens ?? null,
     ...(backend
       ? {
           backend,
