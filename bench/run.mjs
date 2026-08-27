@@ -42,6 +42,7 @@ function parseArgs(argv) {
     stub: null,
     model: MODEL_ID,
     keepWork: false,
+    maxBudgetUsd: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -50,6 +51,7 @@ function parseArgs(argv) {
     else if (a === '--rep') out.rep = Number(argv[++i]);
     else if (a === '--stub') out.stub = argv[++i];
     else if (a === '--model') out.model = argv[++i];
+    else if (a === '--max-budget-usd') out.maxBudgetUsd = Number(argv[++i]);
     else if (a === '--keep-work') out.keepWork = true;
     else if (a === '--help') out.help = true;
   }
@@ -87,11 +89,36 @@ function runStub(taskId, style, workDir) {
   };
 }
 
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function numberFrom(...values) {
+  return values.find((value) => typeof value === 'number' && Number.isFinite(value)) ?? null;
 }
 
-function parseClaudeResult(stdout, status, spawnErr) {
+export function extractClaudeTelemetry(parsed) {
+  const usage = parsed?.usage || {};
+  return {
+    total_cost_usd: numberFrom(parsed?.total_cost_usd, parsed?.totalCostUsd),
+    duration_ms: numberFrom(parsed?.duration_ms, parsed?.durationMs),
+    input_tokens: numberFrom(usage.input_tokens, usage.inputTokens),
+    output_tokens: numberFrom(usage.output_tokens, usage.outputTokens),
+    cache_read_input_tokens: numberFrom(
+      usage.cache_read_input_tokens,
+      usage.cacheReadInputTokens,
+    ),
+    cache_creation_input_tokens: numberFrom(
+      usage.cache_creation_input_tokens,
+      usage.cacheCreationInputTokens,
+    ),
+  };
+}
+
+export function classifyAgentFailure(agent) {
+  if (agent?.ok) return null;
+  if (agent?.apiError) return 'api';
+  if (agent?.spawnError || agent?.timedOut) return 'host';
+  return 'model';
+}
+
+export function parseClaudeResult(stdout, status, spawnErr) {
   let parsed = null;
   let modelId = null;
   try {
@@ -119,6 +146,9 @@ function parseClaudeResult(stdout, status, spawnErr) {
     modelId,
     parsed,
     apiError: Boolean(apiError),
+    spawnError: Boolean(spawnErr),
+    timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
+    telemetry: extractClaudeTelemetry(parsed),
     error:
       spawnErr?.message ||
       (apiError
@@ -129,13 +159,7 @@ function parseClaudeResult(stdout, status, spawnErr) {
   };
 }
 
-function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0, envExtra = {} }) {
-  const env = {
-    ...process.env,
-    OFFCUT_STATE_DIR: stateDir,
-    ...envExtra,
-  };
-  // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
+export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = null }) {
   const args = [
     '-p',
     prompt,
@@ -150,33 +174,55 @@ function runClaude({ workDir, prompt, stateDir, settingsPath, model, retries = 0
     '--settings',
     settingsPath,
   ];
-
-  let last = null;
-  let attempts = 0;
-  for (let i = 0; i <= retries; i++) {
-    attempts = i + 1;
-    const r = spawnSync('claude', args, {
-      encoding: 'utf8',
-      cwd: workDir,
-      env,
-      maxBuffer: 32 * 1024 * 1024,
-      timeout: 3 * 60 * 1000,
-    });
-    last = parseClaudeResult(r.stdout, r.status, r.error);
-    last.stderr = r.stderr || '';
-    if (last.ok || !last.apiError) break;
-    // Fail fast on limits — schedule --resume-failed later. Short retry only.
-    const waitMs = 5_000 * (i + 1);
-    console.error(`claude api_error (attempt ${attempts}): ${last.error}; sleeping ${waitMs}ms`);
-    sleepSync(waitMs);
+  if (typeof maxBudgetUsd === 'number' && Number.isFinite(maxBudgetUsd)) {
+    args.push('--max-budget-usd', String(maxBudgetUsd));
   }
-  last.attempts = attempts;
-  return last;
+  return args;
+}
+
+function runClaude({
+  workDir,
+  prompt,
+  stateDir,
+  settingsPath,
+  model,
+  maxBudgetUsd = null,
+  envExtra = {},
+}) {
+  const env = {
+    ...process.env,
+    OFFCUT_STATE_DIR: stateDir,
+    ...envExtra,
+  };
+  // Low effort + no extended thinking: bench tasks are tiny; speed > polish.
+  const args = buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd });
+
+  const result = spawnSync('claude', args, {
+    encoding: 'utf8',
+    cwd: workDir,
+    env,
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 3 * 60 * 1000,
+  });
+  const parsed = parseClaudeResult(result.stdout, result.status, result.error);
+  parsed.stderr = result.stderr || '';
+  parsed.attempts = 1;
+  return parsed;
 }
 
 
 export function runOne(opts) {
-  const { task: taskId, arm, rep, stub, model, keepWork } = opts;
+  const {
+    task: taskId,
+    arm,
+    rep,
+    stub,
+    model,
+    keepWork,
+    manifestPath,
+    maxBudgetUsd,
+    tasksDir,
+  } = opts;
   if (!taskId || !arm) throw new Error('--task and --arm required');
   if (!LEGACY_ARMS.has(arm) && !JUSTIFY_ARMS.has(arm)) {
     throw new Error(`bad arm: ${arm}`);
@@ -187,7 +233,7 @@ export function runOne(opts) {
   const armCfg = JUSTIFY_ARMS.has(arm) && arm !== 'off' ? justifyArmConfig(arm) : null;
   const modeForState = armCfg ? armCfg.mode : arm === 'off' ? 'off' : arm;
 
-  const task = loadTask(taskId);
+  const task = loadTask(taskId, tasksDir);
   const runId = opaqueId();
   const runDir = path.join(RUNS_DIR, runId);
   fs.mkdirSync(runDir, { recursive: true });
@@ -221,7 +267,16 @@ export function runOne(opts) {
       ? path.relative(BENCH_ROOT, armCfg.rulesetPath).replace(/\\/g, '/')
       : null,
     error: null,
+    failure_kind: null,
     retried: false,
+    total_cost_usd: null,
+    duration_ms: null,
+    input_tokens: null,
+    output_tokens: null,
+    cache_read_input_tokens: null,
+    cache_creation_input_tokens: null,
+    ...(opts.stage ? { stage: opts.stage } : {}),
+    ...(opts.attempt ? { attempt: opts.attempt } : {}),
   };
 
   try {
@@ -277,6 +332,7 @@ export function runOne(opts) {
         stateDir,
         settingsPath,
         model,
+        maxBudgetUsd,
         envExtra,
       });
       record.model_id = agent.modelId || model;
@@ -299,7 +355,9 @@ export function runOne(opts) {
 
     if (!agent.ok && !stub) {
       record.error = agent.error || 'agent failed';
+      record.failure_kind = classifyAgentFailure(agent);
     }
+    Object.assign(record, agent.telemetry || {});
     if (agent.attempts && agent.attempts > 1) {
       record.retried = true;
       record.attempts = agent.attempts;
@@ -317,10 +375,11 @@ export function runOne(opts) {
     const accept = runAccept(task.acceptPath, workDir);
     fs.writeFileSync(path.join(runDir, 'accept.json'), JSON.stringify(accept, null, 2) + '\n');
 
-    const metrics = scoreRun(runDir);
+    const metrics = { ...scoreRun(runDir), ...(agent.telemetry || {}) };
+    fs.writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify(metrics, null, 2) + '\n');
 
     // Sealed manifest entry (arm known here; score already wrote metrics without arm)
-    appendManifest(record);
+    appendManifest(record, manifestPath);
 
     fs.writeFileSync(
       path.join(runDir, 'run.json'),
@@ -351,7 +410,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help || !opts.task || !opts.arm) {
     console.log(`Usage:
-  node bench/run.mjs --task <id> --arm off|full|cheap|justify --rep N [--stub lean|elaborate] [--model ID]
+  node bench/run.mjs --task <id> --arm off|full|cheap|justify --rep N [--stub lean|elaborate] [--model ID] [--max-budget-usd N]
 
 Opaque results land in bench/runs/<id>/. Manifest appends arm mapping to bench/manifest.jsonl.`);
     process.exit(opts.help ? 0 : 2);

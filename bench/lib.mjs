@@ -116,8 +116,8 @@ export function listTaskIds() {
   return TASK_IDS.filter((id) => fs.existsSync(path.join(TASKS_DIR, id, 'meta.json')));
 }
 
-export function loadTask(taskId) {
-  const dir = path.join(TASKS_DIR, taskId);
+export function loadTask(taskId, tasksDir = TASKS_DIR) {
+  const dir = path.join(tasksDir, taskId);
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
   const prompt = fs.readFileSync(path.join(dir, 'prompt.txt'), 'utf8');
   return {
@@ -211,15 +211,15 @@ export function captureDiff(workDir) {
   }
 }
 
-export function appendManifest(entry) {
-  fs.mkdirSync(path.dirname(MANIFEST_PATH), { recursive: true });
-  fs.appendFileSync(MANIFEST_PATH, JSON.stringify(entry) + '\n', 'utf8');
+export function appendManifest(entry, manifestPath = MANIFEST_PATH) {
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.appendFileSync(manifestPath, JSON.stringify(entry) + '\n', 'utf8');
 }
 
-export function readManifest() {
-  if (!fs.existsSync(MANIFEST_PATH)) return [];
+export function readManifest(manifestPath = MANIFEST_PATH) {
+  if (!fs.existsSync(manifestPath)) return [];
   return fs
-    .readFileSync(MANIFEST_PATH, 'utf8')
+    .readFileSync(manifestPath, 'utf8')
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => JSON.parse(line));
