@@ -1,0 +1,4 @@
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\Users\\bash\\AppData\\Local\\Temp\\" (codex_home: AbsolutePathBuf("C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-HNjYiA"))
+Reading additional input from stdin...
+2026-08-27T18:44:06.773133Z ERROR codex_core::tools::router: error=collab spawn failed: no thread with id: 01a04489-3a13-77b1-befe-99590d7c414c
+2026-08-27T18:44:19.287185Z ERROR codex_core::tools::router: error=patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings
