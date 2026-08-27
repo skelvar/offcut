@@ -425,23 +425,6 @@ export function resetSuppression(sessionId) {
 }
 
 /**
- * Delete turn-* and fired-* for one session.
- * @param {string | null | undefined} sessionId
- * @returns {boolean}
- */
-export function pruneSessionFiles(sessionId) {
-  let ok = true;
-  for (const p of [turnPath(sessionId), firedPath(sessionId)]) {
-    try {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch {
-      ok = false;
-    }
-  }
-  return ok;
-}
-
-/**
  * Remove turn-* / fired-* files older than maxAgeMs (orphans from crashed sessions).
  * @param {{ maxAgeMs?: number, now?: number }} [opts]
  * @returns {number} files removed

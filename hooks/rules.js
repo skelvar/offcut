@@ -23,9 +23,6 @@ Mark deliberate shortcuts with an \`offcut:\` comment naming the ceiling and wha
 
 export const REMINDER = `OFFCUT ACTIVE — before you build: does it need to exist? does it already exist here? can the platform or stdlib do it? what is the cheapest thing that works? which boundary owns it?`;
 
-/** Justify-arm compact reminder — same length class as REMINDER; framing only differs. */
-export const JUSTIFY_REMINDER = `OFFCUT ACTIVE — before you build: is this change justified? does it already exist here? can the platform or stdlib do it? is there a better solution? which boundary owns it?`;
-
 /** Framing-neutral session footer so cheap vs justify differs only in the ruleset body. */
 export const SESSION_FOOTER = `Answer the challenge before you build. Prefer the platform and standard library. Leave an \`offcut:\` comment when a deliberate shortcut knowingly cuts a corner.`;
 
