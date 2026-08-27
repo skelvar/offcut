@@ -1165,109 +1165,27 @@ function codexCollabTerminalEvent(workerId = 'worker-1', workerStatus = 'complet
   };
 }
 
-function codexWorkerAudit(role = 'ticket-worker') {
-  return [
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'multi_agent_v1spawn_agent',
-      toolUseId: 'parent-spawn',
-    }),
-    {
-      hook_event_name: 'SubagentStart',
-      session_id: 'session-1',
-      turn_id: 'turn-1',
-      agent_id: 'worker-1',
-      agent_type: role,
-    },
-    {
-      hook_event_name: 'PreToolUse',
-      session_id: 'session-1',
-      turn_id: 'turn-1',
-      agent_id: 'worker-1',
-      agent_type: role,
-      tool_name: 'apply_patch',
-      tool_use_id: 'write-1',
-    },
-    {
-      hook_event_name: 'PostToolUse',
-      session_id: 'session-1',
-      turn_id: 'turn-1',
-      agent_id: 'worker-1',
-      agent_type: role,
-      tool_name: 'apply_patch',
-      tool_use_id: 'write-1',
-      success: true,
-    },
-    {
-      hook_event_name: 'SubagentStop',
-      session_id: 'session-1',
-      turn_id: 'turn-1',
-      agent_id: 'worker-1',
-      agent_type: role,
-    },
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'multi_agent_v1wait_agent',
-      toolUseId: 'parent-wait',
-    }),
-  ];
+function codexWorkerAudit() {
+  return codexToolAuditPair({
+    agentId: undefined,
+    agentType: undefined,
+    toolName: 'apply_patch',
+    toolUseId: 'write-1',
+  });
 }
 
-function codexReadOnlyWorkerAudit(role = 'ticket-worker') {
-  return codexWorkerAudit(role).filter(
-    (entry) => entry.tool_use_id !== 'write-1',
-  );
+function codexReadOnlyWorkerAudit() {
+  return [];
 }
 
-function observedCodexWorkerAudit(role = 'ticket-worker') {
+function observedCodexWorkerAudit() {
   return [
     {
       hook_event_name: 'PreToolUse',
-      tool_name: 'collaborationspawn_agent',
-      tool_use_id: 'spawn-failed-1',
-    },
-    {
-      hook_event_name: 'PreToolUse',
-      tool_name: 'collaborationspawn_agent',
-      tool_use_id: 'spawn-failed-2',
-    },
-    ...codexToolAuditPair({
-      agentId: undefined,
-      agentType: undefined,
-      toolName: 'collaborationspawn_agent',
-      toolUseId: 'spawn-success',
-    }),
-    ...codexToolAuditPair({
-      agentId: undefined,
-      agentType: undefined,
-      toolName: 'collaborationwait_agent',
-      toolUseId: 'wait-success',
-    }),
-    {
-      hook_event_name: 'SubagentStart',
-      agent_id: 'worker-live-1',
-      agent_type: role,
-    },
-    {
-      hook_event_name: 'PreToolUse',
-      agent_id: 'worker-live-1',
-      agent_type: role,
-      tool_name: 'Bash',
-      tool_use_id: 'worker-rejected-1',
-    },
-    {
-      hook_event_name: 'PreToolUse',
-      agent_id: 'worker-live-1',
-      agent_type: role,
-      tool_name: 'Bash',
-      tool_use_id: 'worker-rejected-2',
-    },
-    {
-      hook_event_name: 'SubagentStop',
-      agent_id: 'worker-live-1',
-      agent_type: role,
+      session_id: 'session-1',
+      turn_id: 'turn-1',
+      tool_name: 'apply_patch',
+      tool_use_id: 'rejected-write-1',
     },
   ];
 }
@@ -1290,9 +1208,10 @@ function codexToolAuditPair({ agentId, agentType, toolName, toolUseId }) {
 
 test('Codex args pin the isolated custom-agent execution contract', async () => {
   const { buildCodexArgs } = await import('../bench/run.mjs');
+  const prompt = 'Change the formatter.\nKeep its output stable.\n';
   const args = buildCodexArgs({
     workDir: 'D:\\work',
-    envelope: 'delegate exactly',
+    prompt,
   });
   assert.deepEqual(args, [
     '--sandbox',
@@ -1305,8 +1224,10 @@ test('Codex args pin the isolated custom-agent execution contract', async () => 
     'exec',
     '--json',
     '--ephemeral',
-    'delegate exactly',
+    prompt,
   ]);
+  assert.equal(args.at(-1), prompt);
+  assert.equal(args.some((arg) => /spawn_agent|delegate exactly/i.test(arg)), false);
   assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
   assert.equal(args.includes('-a'), false);
   assert.equal(args.some((arg) => /claude/i.test(arg)), false);
@@ -1325,7 +1246,7 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
   const { buildCodexArgs } = await import('../bench/run.mjs');
   const built = buildCodexArgs({
     workDir: os.tmpdir(),
-    envelope: 'THIS_PROMPT_MUST_NOT_BE_SENT',
+    prompt: 'THIS_PROMPT_MUST_NOT_BE_SENT',
   });
   const execIndex = built.indexOf('exec');
   const parseOnlyArgs = [...built.slice(0, execIndex + 1), '--help'];
@@ -1351,11 +1272,12 @@ test('Codex 0.149.1 parses frozen global options without a model call', async (t
   assert.match(`${parsed.stdout || ''}\n${parsed.stderr || ''}`, /Usage: codex exec/i);
 });
 
-test('Codex isolated home contains only auth, neutral config, role, and arm hooks', async () => {
+test('Codex isolated home defines a neutral top-level profile and arm hooks', async () => {
   const {
-    CODEX_CUSTOM_ROLE,
+    CODEX_CUSTOM_AGENT_KIND,
+    CODEX_CUSTOM_AGENT_NAME,
     CODEX_MODEL_ID,
-    CODEX_ROLE_INSTRUCTIONS,
+    CODEX_PROFILE_INSTRUCTIONS,
     cleanupCodexHome,
     prepareCodexHome,
   } = await import('../bench/run.mjs');
@@ -1366,14 +1288,13 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
   try {
     const off = prepareCodexHome({ arm: 'off', authPath, parentDir: root });
     assert.deepEqual(fs.readdirSync(off.homeDir).sort(), [
-      'agents',
       'auth.json',
       'config.toml',
       'hooks.json',
     ]);
     assert.equal(fs.readFileSync(path.join(off.homeDir, 'auth.json'), 'utf8'), secret);
     const config = fs.readFileSync(path.join(off.homeDir, 'config.toml'), 'utf8');
-    assert.match(config, /multi_agent\s*=\s*true/);
+    assert.match(config, /multi_agent\s*=\s*false/);
     assert.match(config, /hooks\s*=\s*true/);
     assert.match(config, new RegExp(`model\\s*=\\s*"${CODEX_MODEL_ID.replaceAll('.', '\\.')}"`));
     const defaultPermissions =
@@ -1381,22 +1302,14 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
     assert.deepEqual(defaultPermissions, ['default_permissions = ":workspace"']);
     assert.ok(config.indexOf(defaultPermissions[0]) < config.indexOf('['));
     assert.match(config, /\[skills\]\r?\ninclude_instructions = false/);
-    const role = fs.readFileSync(
-      path.join(off.homeDir, 'agents', `${CODEX_CUSTOM_ROLE}.toml`),
-      'utf8',
-    );
-    assert.equal(CODEX_CUSTOM_ROLE, 'ticket-worker');
-    assert.equal(
-      fs.existsSync(path.join(off.homeDir, 'agents', 'offcut-efficacy-worker.toml')),
-      false,
-    );
-    assert.match(role, new RegExp(`name\\s*=\\s*"${CODEX_CUSTOM_ROLE}"`));
-    assert.match(role, /model_reasoning_effort\s*=\s*"low"/);
-    assert.doesNotMatch(role, /sandbox_mode/);
-    assert.match(role, new RegExp(CODEX_ROLE_INSTRUCTIONS.split(' ')[0]));
-    assert.match(role, /description = "Executes one delegated maintenance ticket"/);
+    assert.match(config, new RegExp(CODEX_PROFILE_INSTRUCTIONS.split(' ')[0]));
+    assert.match(config, /^developer_instructions = /m);
+    assert.equal(CODEX_CUSTOM_AGENT_NAME, 'ticket-worker');
+    assert.equal(CODEX_CUSTOM_AGENT_KIND, 'top_level_profile');
+    assert.equal(off.role_sha256, null);
+    assert.equal(fs.existsSync(path.join(off.homeDir, 'agents')), false);
     assert.doesNotMatch(
-      role,
+      config,
       /\b(?:offcut|efficacy|experiment|treatment|control|baseline|minimal|simple|cheap|dependenc|abstract)\b/i,
     );
     const offHooks = JSON.parse(fs.readFileSync(path.join(off.homeDir, 'hooks.json')));
@@ -1414,6 +1327,10 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
 
     const full = prepareCodexHome({ arm: 'full', authPath, parentDir: root });
     const fullHooks = JSON.parse(fs.readFileSync(path.join(full.homeDir, 'hooks.json')));
+    assert.equal(offHooks.hooks.SessionStart, undefined);
+    assert.equal(offHooks.hooks.UserPromptSubmit, undefined);
+    assert.ok(fullHooks.hooks.SessionStart?.length > 0);
+    assert.ok(fullHooks.hooks.UserPromptSubmit?.length > 0);
     assert.match(fullHooks.hooks.PreToolUse[0].matcher, /apply_patch/);
     assert.match(fullHooks.hooks.PostToolUse[0].matcher, /apply_patch/);
     for (const event of ['SubagentStart', 'SubagentStop', 'PreToolUse', 'PostToolUse']) {
@@ -1430,20 +1347,12 @@ test('Codex isolated home contains only auth, neutral config, role, and arm hook
   }
 });
 
-test('Codex envelope is arm-neutral, delegates verbatim ticket, and is hashable', async () => {
-  const { CODEX_CUSTOM_ROLE, buildCodexEnvelope } = await import('../bench/run.mjs');
+test('Codex top-level profile receives the verbatim task prompt without an envelope', async () => {
+  const { buildCodexArgs } = await import('../bench/run.mjs');
   const ticket = 'Change the formatter.\nKeep its public output stable.\n';
-  const first = buildCodexEnvelope(ticket);
-  const second = buildCodexEnvelope(ticket);
-  assert.equal(first, second);
-  assert.match(first, new RegExp(CODEX_CUSTOM_ROLE));
-  assert.match(first, /spawn_agent/);
-  assert.match(first, /wait/i);
-  assert.equal(first.includes(ticket), true);
-  assert.doesNotMatch(
-    first,
-    /\b(?:offcut|efficacy|experiment|treatment|control|baseline)\b/i,
-  );
+  const args = buildCodexArgs({ workDir: 'D:\\work', prompt: ticket });
+  assert.equal(args.at(-1), ticket);
+  assert.equal(args.some((arg) => /spawn_agent|delegate|ticket-worker/i.test(arg)), false);
 });
 
 test('Codex agent audit records only silent nonsecret lifecycle attribution', () => {
@@ -1501,14 +1410,11 @@ test('Codex agent audit records only silent nonsecret lifecycle attribution', ()
   }
 });
 
-test('Codex lifecycle audit proves exact worker independently of JSONL attribution', async () => {
-  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
-  const spawn = codexCollabSpawnEvent();
+test('Codex top-level profile rejects collaboration and preserves telemetry', async () => {
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
   const result = parseCodexJsonl(
     [
       JSON.stringify({ type: 'turn.started' }),
-      JSON.stringify(spawn),
-      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify(CODEX_USAGE_EVENT),
       JSON.stringify({
         type: 'turn.completed',
@@ -1526,12 +1432,12 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
     {
       durationMs: 99,
       authKind: 'chatgpt',
-      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+      auditEntries: codexWorkerAudit(),
     },
   );
   assert.equal(result.ok, true);
   assert.equal(result.customAgentVerified, true);
-  assert.equal(result.workerAgentId, 'worker-1');
+  assert.equal(Object.hasOwn(result, 'workerAgentId'), false);
   assert.equal(result.modelId, null);
   assert.equal(result.modelObservation, 'requested_not_reported');
   assert.deepEqual(result.telemetry, {
@@ -1550,7 +1456,7 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
 
   const genericSpawnWithoutAudit = parseCodexJsonl(
     [
-      JSON.stringify(spawn),
+      JSON.stringify(codexCollabSpawnEvent()),
       JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify(CODEX_USAGE_EVENT),
     ].join('\n'),
@@ -1559,20 +1465,20 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
     { durationMs: 1, authKind: 'chatgpt', auditEntries: [] },
   );
   assert.equal(genericSpawnWithoutAudit.ok, false);
-  assert.equal(genericSpawnWithoutAudit.customAgentVerified, false);
+  assert.equal(genericSpawnWithoutAudit.customAgentVerified, true);
   assert.equal(genericSpawnWithoutAudit.failureKind, 'model');
 
   const markerOnly = parseCodexJsonl(
     JSON.stringify({
       type: 'item.completed',
-      item: { type: 'agent_message', text: `spawned ${CODEX_CUSTOM_ROLE}` },
+      item: { type: 'agent_message', text: 'completed directly' },
     }),
     0,
     null,
     {
       durationMs: 1,
       authKind: 'chatgpt',
-      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+      auditEntries: codexWorkerAudit(),
     },
   );
   assert.equal(markerOnly.ok, false);
@@ -1581,8 +1487,6 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
 
   const workerFailed = parseCodexJsonl(
     [
-      JSON.stringify(spawn),
-      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify({ type: 'turn.failed', error: { message: 'tool failed' } }),
     ].join('\n'),
     0,
@@ -1590,7 +1494,7 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
     {
       durationMs: 2,
       authKind: 'chatgpt',
-      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+      auditEntries: codexWorkerAudit(),
     },
   );
   assert.equal(workerFailed.customAgentVerified, true);
@@ -1598,8 +1502,8 @@ test('Codex lifecycle audit proves exact worker independently of JSONL attributi
   assert.equal(workerFailed.failureKind, 'model');
 });
 
-test('Codex measured lifecycle audit is authoritative when collaboration JSONL omits child state', async () => {
-  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+test('Codex profile audit rejects every child or collaboration event', async () => {
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
   const warningEvent = {
     type: 'item.completed',
     item: { id: 'warning-1', type: 'error', message: CODEX_HOOK_TRUST_WARNING },
@@ -1609,19 +1513,6 @@ test('Codex measured lifecycle audit is authoritative when collaboration JSONL o
     warningEvent,
     { ...warningEvent, item: { ...warningEvent.item, id: 'warning-2' } },
     { type: 'turn.started' },
-    {
-      type: 'item.completed',
-      item: {
-        id: 'wait-1',
-        type: 'collab_tool_call',
-        tool: 'wait',
-        sender_thread_id: 'parent-thread-1',
-        receiver_thread_ids: [],
-        prompt: null,
-        agents_states: {},
-        status: 'completed',
-      },
-    },
     CODEX_USAGE_EVENT,
   ];
   const parse = (auditEntries, events = observedEvents) =>
@@ -1636,37 +1527,36 @@ test('Codex measured lifecycle audit is authoritative when collaboration JSONL o
       },
     );
 
-  const observed = parse(observedCodexWorkerAudit(CODEX_CUSTOM_ROLE));
+  const observed = parse(observedCodexWorkerAudit());
   assert.equal(observed.ok, true);
   assert.equal(observed.customAgentVerified, true);
-  assert.equal(observed.workerAgentId, 'worker-live-1');
+  assert.equal(Object.hasOwn(observed, 'workerAgentId'), false);
   assert.equal(observed.warningCount, 2);
 
-  const tooManySpawnFailures = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE);
-  tooManySpawnFailures.unshift({
-    hook_event_name: 'PreToolUse',
-    tool_name: 'collaborationspawn_agent',
-    tool_use_id: 'spawn-failed-3',
-  });
-  assert.equal(parse(tooManySpawnFailures).ok, false);
+  const childAudit = [
+    ...codexWorkerAudit(),
+    {
+      hook_event_name: 'SubagentStart',
+      agent_id: 'child-1',
+      agent_type: 'ticket-worker',
+    },
+  ];
+  assert.equal(parse(childAudit).ok, false);
 
-  for (const toolName of ['Bash', 'collaborationsend_input']) {
-    const parentMutation = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE);
-    parentMutation.push(
-      ...codexToolAuditPair({
-        agentId: undefined,
-        agentType: undefined,
-        toolName,
-        toolUseId: `parent-${toolName}`,
-      }),
-    );
-    assert.equal(parse(parentMutation).ok, false, toolName);
-  }
+  const childToolAudit = codexWorkerAudit();
+  childToolAudit[0].agent_id = 'child-1';
+  childToolAudit[0].agent_type = 'ticket-worker';
+  assert.equal(parse(childToolAudit).ok, false);
 
-  const missingStop = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE).filter(
-    (entry) => entry.hook_event_name !== 'SubagentStop',
-  );
-  assert.equal(parse(missingStop).ok, false);
+  const collaboration = {
+    type: 'item.completed',
+    item: {
+      type: 'collab_tool_call',
+      tool: 'spawn_agent',
+      status: 'completed',
+    },
+  };
+  assert.equal(parse(codexWorkerAudit(), [...observedEvents, collaboration]).ok, false);
 
   const unexpectedError = {
     ...warningEvent,
@@ -1674,16 +1564,15 @@ test('Codex measured lifecycle audit is authoritative when collaboration JSONL o
   };
   assert.equal(
     parse(
-      observedCodexWorkerAudit(CODEX_CUSTOM_ROLE),
+      observedCodexWorkerAudit(),
       observedEvents.map((event) => event === warningEvent ? unexpectedError : event),
     ).ok,
     false,
   );
 });
 
-test('Codex rejects external user skill paths but permits isolated role paths', async () => {
+test('Codex rejects external user skill paths but permits isolated paths', async () => {
   const {
-    CODEX_CUSTOM_ROLE,
     codexUserHomeFromAuthPath,
     parseCodexJsonl,
   } = await import('../bench/run.mjs');
@@ -1700,7 +1589,7 @@ test('Codex rejects external user skill paths but permits isolated role paths', 
     return parseCodexJsonl(transcript, 0, null, {
       durationMs: 10,
       authKind: 'chatgpt',
-      auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+      auditEntries: codexWorkerAudit(),
       stderr,
       userHome,
       workDir,
@@ -1743,7 +1632,7 @@ test('Codex rejects external user skill paths but permits isolated role paths', 
     'The phrase agents skills is documentation, not a path.',
     `${workDir}\\.agents\\skills\\repository\\SKILL.md`,
     [
-      `${isolatedHomeDir}\\agents\\ticket-worker.toml`,
+      `${isolatedHomeDir}\\config.toml`,
       `${isolatedHomeDir}\\.agents\\skills\\local\\SKILL.md`,
     ].join('\n'),
   ]) {
@@ -1763,119 +1652,29 @@ test('Codex rejects external user skill paths but permits isolated role paths', 
   assert.equal(codexUserHomeFromAuthPath('relative/.codex/auth.json'), null);
 });
 
-test('Codex audit enforces lifecycle and parent ownership independently of collab details', async () => {
-  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
-  const workerAudit = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  const parse = (collabEvents, auditEntries) =>
+test('Codex profile audit requires root identity and paired completed tools', async () => {
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
+  const parse = (auditEntries) =>
     parseCodexJsonl(
-      [{ type: 'turn.started' }, ...collabEvents, CODEX_USAGE_EVENT]
+      [{ type: 'turn.started' }, CODEX_USAGE_EVENT]
         .map(JSON.stringify)
         .join('\n'),
       0,
       null,
       {
-      durationMs: 1,
-      authKind: 'chatgpt',
-      auditEntries,
+        durationMs: 1,
+        authKind: 'chatgpt',
+        auditEntries,
       },
     );
-  const successfulCollab = [
-    codexCollabSpawnEvent(),
-    codexCollabTerminalEvent(),
-  ];
+  const rootAudit = codexWorkerAudit();
+  const successful = parse(rootAudit);
+  assert.equal(successful.ok, true);
+  assert.equal(successful.customAgentVerified, true);
+  assert.equal(successful.rootCompletedToolCount, 1);
+  assert.equal(successful.rootCompletedWriteToolCount, 1);
 
-  const parentWrite = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  parentWrite.splice(-1, 0, {
-    hook_event_name: 'PreToolUse',
-    agent_id: 'parent-1',
-    agent_type: 'default',
-    tool_name: 'apply_patch',
-    tool_use_id: 'parent-write',
-  });
-  assert.equal(parse(successfulCollab, parentWrite).ok, false);
-
-  for (const toolName of ['Bash', 'shell', 'exec', 'mystery_tool']) {
-    const parentTool = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-    parentTool.splice(
-      -1,
-      0,
-      ...codexToolAuditPair({
-        agentId: 'parent-1',
-        agentType: 'default',
-        toolName,
-        toolUseId: `parent-${toolName}`,
-      }),
-    );
-    assert.equal(parse(successfulCollab, parentTool).ok, false, toolName);
-  }
-
-  assert.equal(parse(successfulCollab, workerAudit).ok, true);
-
-  const missingSpawnAudit = workerAudit.filter(
-    (entry) => entry.tool_use_id !== 'parent-spawn',
-  );
-  assert.equal(parse(successfulCollab, missingSpawnAudit).ok, false);
-
-  const missingWaitAudit = workerAudit.filter(
-    (entry) => entry.tool_use_id !== 'parent-wait',
-  );
-  assert.equal(parse(successfulCollab, missingWaitAudit).ok, false);
-
-  const unpairedWaitAudit = workerAudit.filter(
-    (entry) =>
-      entry.tool_use_id !== 'parent-wait' ||
-      entry.hook_event_name !== 'PostToolUse',
-  );
-  assert.equal(parse(successfulCollab, unpairedWaitAudit).ok, false);
-
-  const unmatchedCloseAudit = [
-    ...workerAudit,
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'multi_agent_v1close_agent',
-      toolUseId: 'parent-close',
-    }),
-  ];
-  assert.equal(parse(successfulCollab, unmatchedCloseAudit).ok, false);
-
-  const close = codexCollabTerminalEvent();
-  close.item.tool = 'close_agent';
-  assert.equal(
-    parse([...successfulCollab, close], unmatchedCloseAudit).ok,
-    false,
-  );
-
-  const sendInput = codexCollabTerminalEvent();
-  sendInput.item.tool = 'send_input';
-  const sendInputAudit = [
-    ...workerAudit,
-    ...codexToolAuditPair({
-      agentId: 'parent-1',
-      agentType: 'default',
-      toolName: 'multi_agent_v1send_input',
-      toolUseId: 'parent-send',
-    }),
-  ];
-  assert.equal(
-    parse([...successfulCollab, sendInput], workerAudit).ok,
-    false,
-  );
-  assert.equal(
-    parse(successfulCollab, sendInputAudit).ok,
-    false,
-  );
-
-  const workerBash = codexWorkerAudit(CODEX_CUSTOM_ROLE);
-  workerBash.find(
-    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PreToolUse',
-  ).tool_name = 'Bash';
-  workerBash.find(
-    (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PostToolUse',
-  ).tool_name = 'bash';
-  assert.equal(parse(successfulCollab, workerBash).ok, true);
-
-  const inconsistentPair = codexWorkerAudit(CODEX_CUSTOM_ROLE);
+  const inconsistentPair = codexWorkerAudit();
   const inconsistentPre = inconsistentPair.find(
     (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PreToolUse',
   );
@@ -1883,52 +1682,42 @@ test('Codex audit enforces lifecycle and parent ownership independently of colla
     (entry) => entry.tool_use_id === 'write-1' && entry.hook_event_name === 'PostToolUse',
   );
   inconsistentPre.tool_name = 'Bash';
-  inconsistentPost.tool_name = 'bash';
-  inconsistentPost.agent_id = 'parent-1';
-  inconsistentPost.agent_type = 'default';
-  assert.equal(parse(successfulCollab, inconsistentPair).ok, false);
+  inconsistentPost.tool_name = 'shell';
+  assert.equal(parse(inconsistentPair).ok, false);
 
-  const absentStop = codexWorkerAudit(CODEX_CUSTOM_ROLE).filter(
-    (entry) => entry.hook_event_name !== 'SubagentStop',
+  const postOnly = rootAudit.filter(
+    (entry) => entry.hook_event_name === 'PostToolUse',
   );
-  assert.equal(parse(successfulCollab, absentStop).ok, false);
+  assert.equal(parse(postOnly).ok, false);
 
-  const receiverMismatch = parse([
-    codexCollabSpawnEvent('different-worker'),
-    codexCollabTerminalEvent(),
-  ], workerAudit);
-  assert.equal(receiverMismatch.ok, true);
-  assert.equal(receiverMismatch.customAgentVerified, true);
+  const rejected = observedCodexWorkerAudit();
+  const rejectedResult = parse(rejected);
+  assert.equal(rejectedResult.ok, true);
+  assert.equal(rejectedResult.rootCompletedToolCount, 0);
 
-  const missingTerminalState = parse([codexCollabSpawnEvent()], workerAudit);
-  assert.equal(missingTerminalState.ok, true);
-  assert.equal(missingTerminalState.customAgentVerified, true);
+  const tooManyRejected = Array.from({ length: 9 }, (_, index) => ({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_use_id: `rejected-${index}`,
+  }));
+  assert.equal(parse(tooManyRejected).ok, false);
 
-  const erroredTerminalState = parse([
-    codexCollabSpawnEvent(),
-    codexCollabTerminalEvent('worker-1', 'errored'),
-  ], workerAudit);
-  assert.equal(erroredTerminalState.ok, true);
-
-  const failedCollab = codexCollabTerminalEvent();
-  failedCollab.item.status = 'failed';
-  assert.equal(
-    parse([codexCollabSpawnEvent(), failedCollab], workerAudit).ok,
-    false,
-  );
+  for (const field of ['agent_id', 'agent_type']) {
+    const child = codexWorkerAudit();
+    child[0][field] = 'child';
+    assert.equal(parse(child).ok, false, field);
+  }
 });
 
 test('Codex missing usage and item-level errors are model failures without invented tokens', async () => {
-  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const { parseCodexJsonl } = await import('../bench/run.mjs');
   const baseOptions = {
     durationMs: 3,
     authKind: 'chatgpt',
-    auditEntries: codexWorkerAudit(CODEX_CUSTOM_ROLE),
+    auditEntries: codexWorkerAudit(),
   };
   const missingUsage = parseCodexJsonl(
     [
-      JSON.stringify(codexCollabSpawnEvent()),
-      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify({
         type: 'turn.completed',
         usage: {
@@ -1960,8 +1749,6 @@ test('Codex missing usage and item-level errors are model failures without inven
 
   const itemError = parseCodexJsonl(
     [
-      JSON.stringify(codexCollabSpawnEvent()),
-      JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify({
         type: 'item.completed',
         item: { id: 'error-1', type: 'error', message: 'model rerouted' },
@@ -2042,7 +1829,7 @@ test('Codex failure parsing separates API, model, and known pre-call failures', 
 });
 
 test('Codex runner removes isolated home on success and failure without preserving auth', async () => {
-  const { CODEX_CUSTOM_ROLE, runCodex } = await import('../bench/run.mjs');
+  const { runCodex } = await import('../bench/run.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-codex-cleanup-'));
   const authPath = path.join(root, 'auth-source.json');
   fs.writeFileSync(authPath, '{"secret":"opaque"}');
@@ -2081,8 +1868,6 @@ test('Codex runner removes isolated home on success and failure without preservi
       stdout: execCalls === 1
         ? [
             JSON.stringify({ type: 'turn.started' }),
-            JSON.stringify(codexCollabSpawnEvent()),
-            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n')
         : JSON.stringify({ type: 'error', message: 'worker failed' }),
@@ -2128,7 +1913,8 @@ test('Codex runner removes isolated home on success and failure without preservi
 test('Codex run record distinguishes requested from observed model', async () => {
   const {
     CODEX_BACKEND_ID,
-    CODEX_CUSTOM_ROLE,
+    CODEX_CUSTOM_AGENT_KIND,
+    CODEX_CUSTOM_AGENT_NAME,
     CODEX_HOST,
     CODEX_MODEL_ID,
     runOne,
@@ -2157,15 +1943,13 @@ test('Codex run record distinguishes requested from observed model', async () =>
         }
         appendCodexAudit(
           options.env.OFFCUT_AGENT_AUDIT_PATH,
-          codexReadOnlyWorkerAudit(CODEX_CUSTOM_ROLE),
+          codexReadOnlyWorkerAudit(),
         );
         return {
           status: 0,
           stdout: [
             JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
             JSON.stringify({ type: 'turn.started' }),
-            JSON.stringify(codexCollabSpawnEvent()),
-            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
           ].join('\n'),
           stderr: '',
@@ -2176,6 +1960,11 @@ test('Codex run record distinguishes requested from observed model', async () =>
     assert.equal(result.record.model_requested, CODEX_MODEL_ID);
     assert.equal(result.record.model_id, null);
     assert.equal(result.record.model_observation, 'requested_not_reported');
+    assert.equal(result.record.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
+    assert.equal(result.record.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
+    assert.equal(Object.hasOwn(result.record, 'custom_agent_role'), false);
+    assert.equal(Object.hasOwn(result.record, 'role_sha256'), false);
+    assert.equal(Object.hasOwn(result.record, 'envelope_sha256'), false);
     assert.equal(result.record.auth_kind, 'chatgpt');
     assert.equal(result.record.user_assets_isolated, true);
     assert.equal(result.record.cache_creation_input_tokens, 2);
@@ -2360,7 +2149,7 @@ test('Codex home cleanup retries locks and rejects persistent residue', async ()
   );
 });
 
-test('backend scoping ignores legacy Claude attempts and outcomes', async () => {
+test('backend scoping ignores legacy Claude and custom-subagent attempts', async () => {
   const {
     CODEX_BACKEND_ID,
     executeJobs,
@@ -2369,6 +2158,7 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
   } = await import('../bench/efficacy.mjs');
   const tasks = [{ id: 'x', dir: path.join(os.tmpdir(), 'x') }];
   const legacyOutcome = {
+    backend: 'codex-custom-v1',
     task_id: 'x',
     arm: 'off',
     rep: 1,
@@ -2392,6 +2182,7 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
       arm: 'off',
       rep: 1,
       attempt,
+      ...(attempt === 2 ? { backend: 'codex-custom-v1' } : {}),
       failure_kind: 'api',
       total_cost_usd: attempt === 1 ? null : 0,
     })).join('\n') + '\n',
@@ -2424,9 +2215,9 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
               model_requested: 'gpt-5.6-sol',
               model_id: null,
               model_observation: 'requested_not_reported',
-              envelope_sha256: 'envelope-hash',
+              custom_agent_kind: 'top_level_profile',
+              custom_agent_name: 'ticket-worker',
               config_sha256: 'config-hash',
-              role_sha256: 'role-hash',
               hooks_sha256: 'hooks-hash',
               total_cost_usd: 0,
               cache_creation_input_tokens: 6,
@@ -2449,9 +2240,11 @@ test('backend scoping ignores legacy Claude attempts and outcomes', async () => 
     assert.equal(codex[0].cache_creation_input_tokens, 6);
     assert.equal(codex[0].reasoning_output_tokens, 9);
     assert.equal(codex[0].verified, true);
-    assert.equal(codex[0].envelope_sha256, 'envelope-hash');
+    assert.equal(codex[0].custom_agent_kind, 'top_level_profile');
+    assert.equal(codex[0].custom_agent_name, 'ticket-worker');
+    assert.equal(Object.hasOwn(codex[0], 'custom_agent_role'), false);
     assert.equal(codex[0].config_sha256, 'config-hash');
-    assert.equal(codex[0].role_sha256, 'role-hash');
+    assert.equal(Object.hasOwn(codex[0], 'role_sha256'), false);
     assert.equal(codex[0].hooks_sha256, 'hooks-hash');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -2500,6 +2293,10 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
     assert.equal(result.ok, true);
     assert.equal(result.auth_kind, 'chatgpt');
     assert.equal(result.model_requested, 'gpt-5.6-sol');
+    assert.equal(result.backend, 'codex-profile-v1');
+    assert.equal(result.custom_agent_kind, 'top_level_profile');
+    assert.equal(result.custom_agent_name, 'ticket-worker');
+    assert.equal(Object.hasOwn(result, 'custom_agent_role'), false);
     assert.equal(result.model_id, undefined);
     assert.equal(loginStatusCalls, 2);
     assert.equal(execCalls, 0);
@@ -2533,9 +2330,10 @@ test('Codex no-model preflight validates generated inputs and always cleans up',
   }
 });
 
-test('Codex live preflight records one verified custom-role spawn then refuses rerun', async () => {
+test('Codex live preflight records one verified top-level profile then refuses rerun', async () => {
   const {
-    CODEX_CUSTOM_ROLE,
+    CODEX_CUSTOM_AGENT_KIND,
+    CODEX_CUSTOM_AGENT_NAME,
     codexLivePreflight,
   } = await import('../bench/efficacy.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-preflight-'));
@@ -2543,6 +2341,14 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
   const evidenceRoot = path.join(root, 'evidence');
   const ledgerPath = path.join(root, 'ledger.jsonl');
   fs.writeFileSync(authPath, '{"secret":"never-artifact"}');
+  fs.writeFileSync(
+    ledgerPath,
+    `${JSON.stringify({
+      backend: 'codex-custom-v1',
+      preflight_success: true,
+      custom_agent_verified: true,
+    })}\n`,
+  );
   let calls = 0;
   try {
     const first = codexLivePreflight({
@@ -2558,8 +2364,9 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
         calls += 1;
         appendCodexAudit(
           options.env.OFFCUT_AGENT_AUDIT_PATH,
-          codexWorkerAudit(CODEX_CUSTOM_ROLE),
+          codexWorkerAudit(),
         );
+        assert.equal(args.at(-1).includes('spawn_agent'), false);
         fs.writeFileSync(
           path.join(options.cwd, 'ticket-worker-write-proof.txt'),
           'ticket-worker-write-ok\n',
@@ -2570,8 +2377,6 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
           stdout: [
             JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
             JSON.stringify({ type: 'turn.started' }),
-            JSON.stringify(codexCollabSpawnEvent()),
-            JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify({
               type: 'turn.completed',
               usage: {
@@ -2590,6 +2395,11 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     });
     assert.equal(first.ok, true);
     assert.equal(first.custom_agent_verified, true);
+    assert.equal(first.custom_agent_kind, CODEX_CUSTOM_AGENT_KIND);
+    assert.equal(first.custom_agent_name, CODEX_CUSTOM_AGENT_NAME);
+    assert.equal(Object.hasOwn(first, 'custom_agent_role'), false);
+    assert.equal(Object.hasOwn(first, 'role_sha256'), false);
+    assert.equal(Object.hasOwn(first, 'envelope_sha256'), false);
     assert.equal(first.auth_kind, 'chatgpt');
     assert.equal(first.model_requested, 'gpt-5.6-sol');
     assert.equal(first.model_id, null);
@@ -2630,7 +2440,7 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
 });
 
 test('Codex live preflight requires the exact worker proof file and diff', async () => {
-  const { CODEX_CUSTOM_ROLE, codexLivePreflight } = await import('../bench/efficacy.mjs');
+  const { codexLivePreflight } = await import('../bench/efficacy.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-proof-'));
   const userHome = path.join(root, 'user-home');
   const authPath = path.join(userHome, '.codex', 'auth.json');
@@ -2651,8 +2461,8 @@ test('Codex live preflight requires the exact worker proof file and diff', async
         appendCodexAudit(
           options.env.OFFCUT_AGENT_AUDIT_PATH,
           mode === 'unpaired'
-            ? observedCodexWorkerAudit(CODEX_CUSTOM_ROLE)
-            : codexWorkerAudit(CODEX_CUSTOM_ROLE),
+            ? observedCodexWorkerAudit()
+            : codexWorkerAudit(),
         );
         if (mode !== 'missing') {
           fs.writeFileSync(

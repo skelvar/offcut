@@ -37,12 +37,13 @@ const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
 // Reasoning effort for paid runs. Named so the manifest can record it.
 const RUN_EFFORT = 'low';
 export const DEFAULT_API_RETRIES = 2;
-export const CODEX_BACKEND_ID = 'codex-custom-v1';
+export const CODEX_BACKEND_ID = 'codex-profile-v1';
 export const CODEX_HOST = 'codex-cli';
 export const CODEX_HOST_VERSION = '0.149.1';
 export const CODEX_MODEL_ID = 'gpt-5.6-sol';
-export const CODEX_CUSTOM_ROLE = 'ticket-worker';
-export const CODEX_ROLE_INSTRUCTIONS =
+export const CODEX_CUSTOM_AGENT_NAME = 'ticket-worker';
+export const CODEX_CUSTOM_AGENT_KIND = 'top_level_profile';
+export const CODEX_PROFILE_INSTRUCTIONS =
   'Implement the delegated maintenance ticket in the current repository. Inspect the files, make the changes required by the ticket, and run relevant checks. Do not commit or edit .codex. Return a concise summary.';
 
 function parseArgs(argv) {
@@ -213,7 +214,7 @@ export function buildClaudeArgs({ prompt, model, settingsPath, maxBudgetUsd = nu
   return args;
 }
 
-export function buildCodexArgs({ workDir, envelope }) {
+export function buildCodexArgs({ workDir, prompt }) {
   return [
     '--sandbox',
     'workspace-write',
@@ -225,7 +226,7 @@ export function buildCodexArgs({ workDir, envelope }) {
     'exec',
     '--json',
     '--ephemeral',
-    envelope,
+    prompt,
   ];
 }
 
@@ -233,41 +234,19 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 
-export function buildCodexEnvelope(ticket) {
-  return [
-    `Delegate the maintenance ticket below verbatim to the ${CODEX_CUSTOM_ROLE} custom role using spawn_agent.`,
-    'Wait for that role to finish.',
-    'Do not edit files yourself, do not spawn any other role, and do not modify the worker output afterward.',
-    '',
-    '<ticket>',
-    String(ticket),
-    '</ticket>',
-  ].join('\n');
-}
-
 function codexConfigText() {
   return [
     'default_permissions = ":workspace"',
     `model = ${tomlString(CODEX_MODEL_ID)}`,
     'model_reasoning_effort = "low"',
+    `developer_instructions = ${tomlString(CODEX_PROFILE_INSTRUCTIONS)}`,
     '',
     '[skills]',
     'include_instructions = false',
     '',
     '[features]',
-    'multi_agent = true',
+    'multi_agent = false',
     'hooks = true',
-    '',
-  ].join('\n');
-}
-
-function codexRoleText() {
-  return [
-    `name = ${tomlString(CODEX_CUSTOM_ROLE)}`,
-    'description = "Executes one delegated maintenance ticket"',
-    `developer_instructions = ${tomlString(CODEX_ROLE_INSTRUCTIONS)}`,
-    `model = ${tomlString(CODEX_MODEL_ID)}`,
-    'model_reasoning_effort = "low"',
     '',
   ].join('\n');
 }
@@ -309,23 +288,15 @@ export function prepareCodexHome({
   fs.mkdirSync(parentDir, { recursive: true });
   const homeDir = fs.mkdtempSync(path.join(parentDir, 'offcut-codex-home-'));
   try {
-    const agentsDir = path.join(homeDir, 'agents');
-    fs.mkdirSync(agentsDir);
     fs.copyFileSync(authPath, path.join(homeDir, 'auth.json'));
     const config = codexConfigText();
-    const role = codexRoleText();
     const hooks = buildCodexHooksSettings(arm);
     fs.writeFileSync(path.join(homeDir, 'config.toml'), config, 'utf8');
-    fs.writeFileSync(
-      path.join(agentsDir, `${CODEX_CUSTOM_ROLE}.toml`),
-      role,
-      'utf8',
-    );
     fs.writeFileSync(path.join(homeDir, 'hooks.json'), `${JSON.stringify(hooks, null, 2)}\n`, 'utf8');
     return {
       homeDir,
       config_sha256: sha256(config),
-      role_sha256: sha256(role),
+      role_sha256: null,
       hooks_sha256: sha256(`${JSON.stringify(hooks, null, 2)}\n`),
     };
   } catch (error) {
@@ -498,27 +469,14 @@ export function codexUserAssetsIsolated(text, options) {
 }
 
 export function verifyCodexAgentAudit(entries) {
-  const starts = entries.filter(
-    (entry) => entry?.hook_event_name === 'SubagentStart',
-  );
   if (
-    starts.length !== 1 ||
-    starts[0]?.agent_type !== CODEX_CUSTOM_ROLE ||
-    typeof starts[0]?.agent_id !== 'string' ||
-    !starts[0].agent_id
+    entries.some(
+      (entry) =>
+        entry?.hook_event_name === 'SubagentStart' ||
+        entry?.hook_event_name === 'SubagentStop',
+    )
   ) {
-    return { ok: false, workerAgentId: null };
-  }
-  const workerAgentId = starts[0].agent_id;
-  const stops = entries.filter(
-    (entry) => entry?.hook_event_name === 'SubagentStop',
-  );
-  if (
-    stops.length !== 1 ||
-    stops[0]?.agent_id !== workerAgentId ||
-    stops[0]?.agent_type !== CODEX_CUSTOM_ROLE
-  ) {
-    return { ok: false, workerAgentId };
+    return { ok: false };
   }
   const toolEvents = entries.filter(
     (entry) =>
@@ -527,24 +485,31 @@ export function verifyCodexAgentAudit(entries) {
   );
   const toolCalls = new Map();
   for (const entry of toolEvents) {
-    if (typeof entry.tool_use_id !== 'string' || !entry.tool_use_id) {
-      return { ok: false, workerAgentId };
+    const normalizedTool = String(entry.tool_name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+    if (
+      typeof entry.tool_use_id !== 'string' ||
+      !entry.tool_use_id ||
+      !normalizedTool ||
+      entry.agent_id !== undefined ||
+      entry.agent_type !== undefined ||
+      canonicalCodexOrchestrationTool(entry.tool_name) ||
+      /^(?:collaboration|multiagent)/.test(normalizedTool) ||
+      (entry.hook_event_name === 'PostToolUse' && entry.success === false)
+    ) {
+      return { ok: false };
     }
     const identity = {
-      agentId: entry.agent_id,
-      agentType: entry.agent_type,
       tool: String(entry.tool_name || ''),
-      canonicalTool: canonicalCodexOrchestrationTool(entry.tool_name),
       phases: new Map([[entry.hook_event_name, 1]]),
     };
     const prior = toolCalls.get(entry.tool_use_id);
     if (
       prior &&
-      (prior.agentId !== identity.agentId ||
-        prior.agentType !== identity.agentType ||
-        prior.tool.toLowerCase() !== identity.tool.toLowerCase())
+      prior.tool.toLowerCase() !== identity.tool.toLowerCase()
     ) {
-      return { ok: false, workerAgentId };
+      return { ok: false };
     }
     if (prior) {
       prior.phases.set(
@@ -555,54 +520,29 @@ export function verifyCodexAgentAudit(entries) {
       toolCalls.set(entry.tool_use_id, identity);
     }
   }
-  let successfulSpawns = 0;
-  let transientSpawns = 0;
-  let successfulWaits = 0;
-  let workerCompletedToolCount = 0;
+  let rejectedToolCount = 0;
+  let rootCompletedToolCount = 0;
+  let rootCompletedWriteToolCount = 0;
+  const writeTools = new Set(['applypatch', 'write', 'edit', 'searchreplace']);
   for (const identity of toolCalls.values()) {
-    if (
-      identity.agentId === workerAgentId &&
-      identity.agentType === CODEX_CUSTOM_ROLE
-    ) {
-      if (
-        identity.phases.get('PreToolUse') !== 1 ||
-        (identity.phases.get('PostToolUse') || 0) > 1
-      ) {
-        return { ok: false, workerAgentId };
-      }
-      if (identity.phases.get('PostToolUse') === 1) {
-        workerCompletedToolCount += 1;
-      }
-      continue;
-    }
     const pre = identity.phases.get('PreToolUse') || 0;
     const post = identity.phases.get('PostToolUse') || 0;
-    if (identity.canonicalTool === 'spawn_agent' && pre === 1 && post <= 1) {
-      if (post === 1) successfulSpawns += 1;
-      else transientSpawns += 1;
+    if (pre !== 1 || post > 1) return { ok: false };
+    if (post === 0) {
+      rejectedToolCount += 1;
       continue;
     }
-    if (identity.canonicalTool === 'wait' && pre === 1 && post === 1) {
-      successfulWaits += 1;
-      continue;
-    }
-    return { ok: false, workerAgentId };
+    rootCompletedToolCount += 1;
+    const normalizedTool = identity.tool.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (writeTools.has(normalizedTool)) rootCompletedWriteToolCount += 1;
   }
-  if (
-    successfulSpawns !== 1 ||
-    transientSpawns > 2 ||
-    successfulSpawns + transientSpawns > 3 ||
-    successfulWaits < 1
-  ) {
-    return { ok: false, workerAgentId };
-  }
+  // offcut: cap rejected root attempts; raise only if valid maintenance runs exceed it.
+  if (rejectedToolCount > 8) return { ok: false };
   return {
     ok: true,
-    workerAgentId,
-    spawnVerified: true,
-    terminalVerified: true,
-    workerFailed: false,
-    workerCompletedToolCount,
+    rootCompletedToolCount,
+    rootCompletedWriteToolCount,
+    rejectedToolCount,
   };
 }
 
@@ -671,13 +611,18 @@ export function parseCodexJsonl(
   const immediateHostFailure =
     callStarted && status !== 0 && !lifecycleStarted;
   const attribution = verifyCodexAgentAudit(auditEntries);
-  const genericSpawnVerified = attribution.spawnVerified === true;
   const customAgentVerified = attribution.ok;
   const isHookTrustWarning = (event) =>
     event?.type === 'item.completed' &&
     event?.item?.type === 'error' &&
     event?.item?.message === CODEX_HOOK_TRUST_WARNING;
   const warningCount = events.filter(isHookTrustWarning).length;
+  const collaborationEvent = events.some(
+    (event) =>
+      event?.item?.type === 'collab_tool_call' ||
+      canonicalCodexOrchestrationTool(event?.item?.tool) !== null ||
+      /(?:collab|spawn_agent|subagent)/i.test(String(event?.type || '')),
+  );
   const eventError = events.some((event) => {
     if (isHookTrustWarning(event)) return false;
     return (
@@ -685,9 +630,7 @@ export function parseCodexJsonl(
       event?.item?.type === 'error' ||
       event?.status === 'failed' ||
       event?.item?.status === 'failed' ||
-      (event?.item?.type === 'collab_tool_call' &&
-        canonicalCodexOrchestrationTool(event.item.tool) === 'send_input') ||
-      attribution.workerFailed === true
+      collaborationEvent
     );
   });
   const parentTurnVerified = events.some(
@@ -727,9 +670,8 @@ export function parseCodexJsonl(
     userAssetsIsolated,
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
     customAgentVerified,
-    genericSpawnVerified,
-    workerAgentId: attribution.workerAgentId,
-    workerCompletedToolCount: attribution.workerCompletedToolCount || 0,
+    rootCompletedToolCount: attribution.rootCompletedToolCount || 0,
+    rootCompletedWriteToolCount: attribution.rootCompletedWriteToolCount || 0,
     failureKind:
       ok
         ? null
@@ -768,7 +710,7 @@ export function parseCodexJsonl(
             : !userAssetsIsolated
               ? 'Codex referenced external user agent or skill assets'
               : !customAgentVerified
-                ? `Codex did not prove completed ${CODEX_CUSTOM_ROLE} ownership`
+                ? 'Codex did not prove top-level profile ownership'
                 : eventError || status !== 0
                   ? diagnostic || `codex exit ${status}`
                   : null,
@@ -847,8 +789,7 @@ export function runCodex({
   envSource = process.env,
 }) {
   const isolated = prepareCodexHome({ arm, authPath, parentDir: homeParentDir });
-  const envelope = buildCodexEnvelope(prompt);
-  const args = buildCodexArgs({ workDir, envelope });
+  const args = buildCodexArgs({ workDir, prompt });
   const resolvedAuditPath =
     auditPath || path.join(isolated.homeDir, 'agent-audit.jsonl');
   const env = buildIsolatedCodexEnv({
@@ -864,7 +805,7 @@ export function runCodex({
     maxBuffer: 32 * 1024 * 1024,
   };
   const attachHashes = (result) => Object.assign(result, {
-    envelope_sha256: sha256(envelope),
+    prompt_sha256: sha256(prompt),
     config_sha256: isolated.config_sha256,
     role_sha256: isolated.role_sha256,
     hooks_sha256: isolated.hooks_sha256,
@@ -888,9 +829,9 @@ export function runCodex({
         inferenceStarted: false,
         timedOut: false,
         customAgentVerified: false,
-        genericSpawnVerified: false,
         userAssetsIsolated: true,
-        workerAgentId: null,
+        rootCompletedToolCount: 0,
+        rootCompletedWriteToolCount: 0,
         failureKind: login.spawnError ? 'host' : 'api',
         telemetry: {
           total_cost_usd: null,
@@ -1091,7 +1032,8 @@ export function runOne(opts) {
       record.host_version = 'stub';
     } else if (host === CODEX_HOST) {
       record.host_version = opts.hostVersion ?? CODEX_HOST_VERSION;
-      record.custom_agent_role = CODEX_CUSTOM_ROLE;
+      record.custom_agent_kind = CODEX_CUSTOM_AGENT_KIND;
+      record.custom_agent_name = CODEX_CUSTOM_AGENT_NAME;
       agent = runCodex({
         workDir,
         prompt: task.prompt,
@@ -1111,9 +1053,7 @@ export function runOne(opts) {
           : null;
       record.custom_agent_verified = agent.customAgentVerified;
       record.verified = agent.customAgentVerified;
-      record.envelope_sha256 = agent.envelope_sha256;
       record.config_sha256 = agent.config_sha256;
-      record.role_sha256 = agent.role_sha256;
       record.hooks_sha256 = agent.hooks_sha256;
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;

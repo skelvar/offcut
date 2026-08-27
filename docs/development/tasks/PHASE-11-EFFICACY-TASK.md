@@ -20,21 +20,30 @@ the manifest, cost ledger, and run directories.
 
 The active execution contract is now:
 
-- Backend: `codex-custom-v1`
+- Backend: `codex-profile-v1`
 - Host: Codex CLI `0.149.1` exactly
 - Model: `gpt-5.6-sol`
 - Reasoning effort: `low`
-- Custom role: `ticket-worker`
+- Custom agent: top-level developer profile named `ticket-worker`
 - Billing: ChatGPT subscription, recorded as zero incremental API billing with
   `billing_kind: "chatgpt_subscription"` and subscription cost evidence; this
   does not claim that ChatGPT membership is free
 
+Six isolated live preflights preceded efficacy-task inference. The sixth,
+`4ae70772be5f4fb0`, proved that Codex 0.149.1's custom subagent executes under a
+read-only sandbox even when its parent is workspace-writable: the exact worker
+lifecycle and `apply_patch` attempt were audited, Codex rejected the write, and
+the Git diff was empty. The `codex-custom-v1` design was therefore abandoned
+before task inference. Its evidence and ledger rows remain immutable history
+and cannot enter or consume `codex-profile-v1` cells.
+
 Each call uses a new isolated `CODEX_HOME` containing a byte-for-byte copy of
-the authenticated user's `auth.json`, minimal config, the named role,
-arm-specific `hooks.json`, and an otherwise empty user-home directory. `HOME`
-and `USERPROFILE` point to that empty directory; agent/skill home overrides are
-cleared, while `PATH` and system directories are unchanged. This prevents
-ordinary home resolution from reaching global user assets.
+the authenticated user's `auth.json`, minimal top-level profile config,
+arm-specific `hooks.json`, and an otherwise empty user-home directory. No
+`agents/` role file exists. `HOME` and `USERPROFILE` point to the empty
+directory; agent/skill home overrides are cleared, while `PATH` and system
+directories are unchanged. This prevents ordinary home resolution from
+reaching global user assets.
 Before exec, `codex login status` runs inside that home with API-key and
 provider/base-URL overrides removed and must report the exact ChatGPT
 authentication status. A copied `auth.json` is not proof by itself. Artifacts
@@ -42,13 +51,12 @@ record only `auth_kind: "chatgpt"`.
 
 Codex 0.149.1's modern permission precedence is pinned explicitly with
 top-level `default_permissions = ":workspace"`, while the CLI remains
-`--sandbox workspace-write --ask-for-approval never`. The custom-role file
-omits `sandbox_mode` because the bounded role override did not convey the
-parent-owned workspace permission. The isolated config also sets
-`[skills] include_instructions = false`; custom roles remain discoverable
-separately. The fifth live preflight showed that HOME isolation alone still
-allowed an attempted read of a global `.agents/skills` path, so every run now
-fails closed if transcript or stderr references the absolute
+`--sandbox workspace-write --ask-for-approval never`. The same config contains
+the neutral `developer_instructions`, requested model and effort,
+`[skills] include_instructions = false`, `hooks = true`, and
+`multi_agent = false`. The fifth live preflight showed that HOME isolation
+alone still allowed an attempted read of a global `.agents/skills` path, so
+every run fails closed if transcript or stderr references the absolute
 `<original-user-home>/.agents/skills` or `.codex/skills` trees. Relative prose
 and paths under the work directory or temporary isolated home are permitted,
 and records expose `user_assets_isolated` without persisting path values.
@@ -63,25 +71,22 @@ Offcut hooks.
 
 The temporary home is removed with Windows retries after every path, verified
 absent, and never retained as an artifact. Cleanup residue fails loudly without
-printing paths or authentication bytes. Both arms use the same top-level
-delegation envelope and neutral `ticket-worker` role instructions. Neither
-model-visible input contains study or arm framing. Envelope, config, role, and
-hook hashes are recorded.
+printing paths or authentication bytes. Codex receives the exact task prompt
+directly; there is no delegation envelope or orchestration parent. Neither the
+profile instructions nor task wrapping adds study or arm framing. Records
+store `custom_agent_kind: "top_level_profile"`,
+`custom_agent_name: "ticket-worker"`, and the config and hook hashes. There is
+no role hash or envelope hash.
 
-Measured Codex 0.149.1 exec JSONL omitted every `spawn_agent` item and emitted a
-completed wait item with empty `receiver_thread_ids` and `agents_states` while
-the child demonstrably ran. JSONL therefore supplies only a generic parent turn
-and completed usage; it cannot prove child identity or terminal state in this
-version. The silent hook audit is authoritative: exactly one
-`SubagentStart` with `agent_type: "ticket-worker"` supplies the worker ID, and
-exactly one matching `SubagentStop` proves lifecycle completion. Exactly one
-parent spawn tool-use ID must have one Pre and one Post event, at least one wait
-ID must be similarly paired, and at most two additional spawn IDs may contain
-Pre only as measured transient failures. More than three spawn attempts, an
-unpaired Post, `send_input`, close, parent writes, or any other parent tool
-fails attribution. Every worker tool event must carry the exact audited worker
-ID and type; worker Pre without Post is retained as a rejected-call record.
-This check does not read tool input.
+The silent hook audit is now exclusionary attribution evidence. Any
+`SubagentStart`, `SubagentStop`, child `agent_id`/`agent_type`, collaboration
+tool audit, or collaboration JSONL item fails the run. Root tool events carry
+no child identity. A completed root call requires exactly one matching
+`PreToolUse` and `PostToolUse` with the same tool-use ID and tool name; Post-only
+or inconsistent pairs fail. Pre-only calls are retained as rejected attempts,
+with a frozen maximum of eight per run. The audit records no tool input. Final
+acceptance, the Git diff, and valid telemetry remain independently required, so
+rejected attempts cannot establish efficacy success.
 
 Tokens are aggregated from valid `turn.completed` usage, including
 `cache_write_input_tokens` as cache-creation tokens and
@@ -111,24 +116,26 @@ store `model_requested: "gpt-5.6-sol"` and set `model_id` only when Codex emits
 one; otherwise `model_id` is null with
 `model_observation: "requested_not_reported"`.
 
-Attempt keys and outcome loading are backend-scoped. The three legacy Claude
-rows therefore neither complete nor exhaust any Codex cell. The same 12 tasks,
-seed, discovery/adaptive-rep schedule, qualifier rule, confirmatory schedule,
-estimand, and commit gates remain unchanged. Results support a claim only for
-this Codex custom-agent execution contract; no cross-host claim is permitted.
+Attempt keys and outcome loading are backend-scoped. Legacy Claude and
+`codex-custom-v1` rows therefore neither complete nor exhaust any
+`codex-profile-v1` cell. The same 12 tasks, seed, discovery/adaptive-rep
+schedule, qualifier rule, confirmatory schedule, estimand, and commit gates
+remain unchanged. Results support a claim only for this Codex top-level-profile
+execution contract; no cross-host or cross-backend claim is permitted.
 
 The optional Haiku replication stage and the unused `$35` Claude API ceiling
 are retired. The preregistered run-count ceiling remains: 24 initial discovery
 runs, eligible rep 3 runs, and at most 96 confirmatory runs.
 
 The no-model `--codex-preflight` checks the frozen local contract. The separate
-`--codex-live-preflight --execute` makes one trivial isolated custom-role call,
-requires the lifecycle audit above, and requires the worker to create one named
-proof file with exact content under workspace-write. Success additionally
-requires a Git diff containing only that file and at least one paired worker
-Pre/Post tool event; evidence stores proof and diff hashes, not the temporary
-path. A successful live preflight cannot be repeated and remains outside
-efficacy outcomes.
+`--codex-live-preflight --execute` makes one trivial isolated top-level-profile
+call and requires that profile to create one named proof file with exact
+content under workspace-write. Success additionally requires a Git diff
+containing only that file, no child/collaboration evidence, and at least one
+paired root write-capable Pre/Post tool event; evidence stores proof and diff
+hashes, not the temporary path. Successful-live-preflight refusal is scoped to
+`codex-profile-v1`, so prior failed subagent preflights remain history. The live
+preflight remains outside efficacy outcomes.
 
 ## Frozen environment and ceiling
 
@@ -306,7 +313,7 @@ telemetry remain mandatory. `ENOENT` and `EACCES` before process start remain
 known-zero failures. Codex receives no `--max-budget-usd`.
 
 The following Claude budget rules are retained as historical protocol and for
-the legacy runner; they do not govern `codex-custom-v1`.
+the legacy runner; they do not govern `codex-profile-v1`.
 
 Paid execution requires `--execute`. Retry only API, host, or infrastructure
 errors, at most three attempts for a planned run. Model failure and

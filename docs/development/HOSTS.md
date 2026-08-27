@@ -508,44 +508,53 @@ update will not do it.
 
 ## Phase 11 efficacy host migration (2026-08-27)
 
-The efficacy study moved from Claude Code to the exact Codex CLI `0.149.1`
-custom-agent contract before any model inference completed. Claude subscription
-access had been canceled; its three preserved discovery attempts are 403
-subscription failures with zero input/output tokens and zero reported cost.
-They remain historical rows and do not consume Codex retries.
+The efficacy study moved from Claude Code to Codex CLI `0.149.1` before any
+efficacy-task model inference completed. Claude subscription access had been
+canceled; its three preserved discovery attempts are 403 subscription failures
+with zero input/output tokens and zero reported cost.
 
-The efficacy runner now creates a fresh isolated `CODEX_HOME` per attempt,
-copies only `auth.json`, and generates minimal config, the neutral
-`ticket-worker` role, and arm-specific hooks. Before exec, an isolated
+Six isolated live preflights then measured the custom-subagent boundary. The
+sixth (`4ae70772be5f4fb0`) proved an exact `ticket-worker` lifecycle and
+`apply_patch` attempt, but Codex enforced a read-only child sandbox and produced
+no diff. That `codex-custom-v1` backend was abandoned before efficacy-task
+inference. Claude and custom-subagent rows remain immutable and do not consume
+the active `codex-profile-v1` retries or outcomes.
+
+The runner now creates a fresh isolated `CODEX_HOME` per attempt, copies only
+`auth.json`, and generates minimal top-level profile config plus arm-specific
+hooks. The neutral developer profile is recorded as
+`custom_agent_name: "ticket-worker"` and
+`custom_agent_kind: "top_level_profile"`; no `agents/*.toml`, role hash,
+delegation envelope, or envelope hash exists. The exact task prompt goes
+directly to `codex exec`. Before exec, an isolated
 `codex login status` must report exactly `Logged in using ChatGPT`; API-key and
 provider/base-URL environment overrides are removed. A copied auth file alone
 does not establish subscription billing.
 
 Both arms carry identical silent attribution hooks for subagent start/stop and
 all tool pre/post events, with no audit matcher. The `off` arm has only those
-audit hooks; `full` adds the shipped settings with `apply_patch` matching. The
-audit records allowlisted lifecycle identifiers only, emits no context, and
-proves one `ticket-worker` start and matching stop. The stop is lifecycle
-evidence, not a success signal. Success comes from a correlated collaboration
-state of `completed`, after the completed spawn's `receiver_thread_ids`
-includes the audited worker ID. The worker may use tools; every non-worker tool
-call fails attribution except spawn/wait/close/send-input orchestration
-correlated to that exact worker.
+audit hooks; `full` adds the shipped SessionStart, UserPromptSubmit, and
+write-tool hooks. The audit records allowlisted attribution fields only and
+emits no context. Any subagent lifecycle, child identity, collaboration audit,
+or collaboration JSONL item now fails. Root completed calls require paired
+Pre/Post events with the same ID and tool; a bounded eight Pre-only rejected
+attempts are retained but cannot establish success. Live preflight additionally
+requires an exact proof-only Git diff and a paired root write-capable tool.
 Temporary homes are removed with Windows retries, verified absent on every
 exit, and excluded from evidence.
 
 Headless execution is pinned to `gpt-5.6-sol`, low reasoning effort,
 workspace-write sandboxing, no approvals, ephemeral JSONL output, and
-`--dangerously-bypass-hook-trust`. The last flag bypasses hook trust only; the
-sandbox is not bypassed. Codex 0.149.1 collaboration JSONL does not expose the
-custom role. It proves only a generic spawn; silent lifecycle audit records
-prove the exact worker identity, completion, and write ownership.
+`--dangerously-bypass-hook-trust`. Top-level config pins
+`default_permissions = ":workspace"`, disables skill instruction injection,
+enables hooks, and disables multi-agent execution. The last CLI flag bypasses
+hook trust only; the workspace-write sandbox is not bypassed.
 
 ChatGPT subscription runs expose no per-call USD telemetry. Started processes
 therefore record zero incremental API cost with explicit subscription evidence,
 while preserving tokens and wall duration. This is not a claim that membership
-is free. Phase 11 conclusions are scoped to this Codex custom-agent backend and
-cannot be generalized across hosts.
+is free. Phase 11 conclusions are scoped to this Codex top-level-profile
+backend and cannot be generalized across hosts or backends.
 
 Missing or malformed `turn.completed` usage is a model failure with null token
 fields, not invented zeros. Cache-write and reasoning-output tokens are
