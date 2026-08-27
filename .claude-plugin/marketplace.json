@@ -1,5 +1,6 @@
 {
   "name": "offcut",
+  "description": "Offcut: a code-review tool that detects over-engineering, and a persistent mode that asks what the cheapest working solution is before the code lands.",
   "owner": {
     "name": "xyzbk"
   },
