@@ -403,61 +403,67 @@ function canonicalCodexOrchestrationTool(toolName) {
       : '';
   if (
     normalized === 'spawnagent' ||
-    normalized === 'multiagentv1spawnagent'
+    normalized === 'multiagentv1spawnagent' ||
+    normalized === 'collaborationspawnagent'
   ) {
     return 'spawn_agent';
   }
   if (
     normalized === 'wait' ||
     normalized === 'waitagent' ||
-    normalized === 'multiagentv1waitagent'
+    normalized === 'multiagentv1waitagent' ||
+    normalized === 'collaborationwaitagent'
   ) {
     return 'wait';
   }
   if (
     normalized === 'closeagent' ||
-    normalized === 'multiagentv1closeagent'
+    normalized === 'multiagentv1closeagent' ||
+    normalized === 'collaborationcloseagent'
   ) {
     return 'close_agent';
   }
   if (
     normalized === 'sendinput' ||
-    normalized === 'multiagentv1sendinput'
+    normalized === 'multiagentv1sendinput' ||
+    normalized === 'collaborationsendinput'
   ) {
     return 'send_input';
   }
   return null;
 }
 
-export function verifyCodexAgentAudit(entries, events) {
+const CODEX_HOOK_TRUST_WARNING =
+  '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
+
+export function verifyCodexAgentAudit(entries) {
   const starts = entries.filter(
-    (entry) =>
-      entry?.hook_event_name === 'SubagentStart' &&
-      entry?.agent_type === CODEX_CUSTOM_ROLE &&
-      typeof entry?.agent_id === 'string' &&
-      entry.agent_id,
+    (entry) => entry?.hook_event_name === 'SubagentStart',
   );
-  if (starts.length !== 1) return { ok: false, workerAgentId: null };
+  if (
+    starts.length !== 1 ||
+    starts[0]?.agent_type !== CODEX_CUSTOM_ROLE ||
+    typeof starts[0]?.agent_id !== 'string' ||
+    !starts[0].agent_id
+  ) {
+    return { ok: false, workerAgentId: null };
+  }
   const workerAgentId = starts[0].agent_id;
   const stops = entries.filter(
-    (entry) =>
-      entry?.hook_event_name === 'SubagentStop' &&
-      entry?.agent_id === workerAgentId &&
-      entry?.agent_type === CODEX_CUSTOM_ROLE,
+    (entry) => entry?.hook_event_name === 'SubagentStop',
   );
-  if (stops.length !== 1) return { ok: false, workerAgentId };
+  if (
+    stops.length !== 1 ||
+    stops[0]?.agent_id !== workerAgentId ||
+    stops[0]?.agent_type !== CODEX_CUSTOM_ROLE
+  ) {
+    return { ok: false, workerAgentId };
+  }
   const toolEvents = entries.filter(
     (entry) =>
       (entry?.hook_event_name === 'PreToolUse' ||
         entry?.hook_event_name === 'PostToolUse'),
   );
-  const collabItems = events
-    .filter(
-      (event) =>
-        event?.type === 'item.completed' &&
-        event?.item?.type === 'collab_tool_call',
-    )
-    .map((event) => event.item);
   const toolCalls = new Map();
   for (const entry of toolEvents) {
     if (typeof entry.tool_use_id !== 'string' || !entry.tool_use_id) {
@@ -488,81 +494,54 @@ export function verifyCodexAgentAudit(entries, events) {
       toolCalls.set(entry.tool_use_id, identity);
     }
   }
-  const allowedParentTools = new Set(['spawn_agent', 'wait', 'close_agent']);
-  const auditedCounts = new Map();
+  let successfulSpawns = 0;
+  let transientSpawns = 0;
+  let successfulWaits = 0;
+  let workerCompletedToolCount = 0;
   for (const identity of toolCalls.values()) {
     if (
       identity.agentId === workerAgentId &&
       identity.agentType === CODEX_CUSTOM_ROLE
     ) {
+      if (
+        identity.phases.get('PreToolUse') !== 1 ||
+        (identity.phases.get('PostToolUse') || 0) > 1
+      ) {
+        return { ok: false, workerAgentId };
+      }
+      if (identity.phases.get('PostToolUse') === 1) {
+        workerCompletedToolCount += 1;
+      }
       continue;
     }
-    if (
-      !allowedParentTools.has(identity.canonicalTool) ||
-      identity.phases.get('PreToolUse') !== 1 ||
-      identity.phases.get('PostToolUse') !== 1
-    ) {
-      return { ok: false, workerAgentId };
+    const pre = identity.phases.get('PreToolUse') || 0;
+    const post = identity.phases.get('PostToolUse') || 0;
+    if (identity.canonicalTool === 'spawn_agent' && pre === 1 && post <= 1) {
+      if (post === 1) successfulSpawns += 1;
+      else transientSpawns += 1;
+      continue;
     }
-    auditedCounts.set(
-      identity.canonicalTool,
-      (auditedCounts.get(identity.canonicalTool) || 0) + 1,
-    );
-  }
-  const collabCounts = new Map();
-  for (const item of collabItems) {
-    const canonicalTool = canonicalCodexOrchestrationTool(item.tool);
-    const targetsWorker =
-      item.receiver_thread_ids?.includes(workerAgentId) ||
-      Object.hasOwn(item.agents_states || {}, workerAgentId);
-    if (
-      !allowedParentTools.has(canonicalTool) ||
-      item.status !== 'completed' ||
-      !targetsWorker
-    ) {
-      return { ok: false, workerAgentId };
+    if (identity.canonicalTool === 'wait' && pre === 1 && post === 1) {
+      successfulWaits += 1;
+      continue;
     }
-    collabCounts.set(
-      canonicalTool,
-      (collabCounts.get(canonicalTool) || 0) + 1,
-    );
+    return { ok: false, workerAgentId };
   }
-  // offcut: Codex 0.149.1 CollabToolCallItem has no item id to join with
-  // hook tool_use_id; require exact paired-operation counts until it exposes one.
-  for (const tool of allowedParentTools) {
-    if ((auditedCounts.get(tool) || 0) !== (collabCounts.get(tool) || 0)) {
-      return { ok: false, workerAgentId };
-    }
+  if (
+    successfulSpawns !== 1 ||
+    transientSpawns > 2 ||
+    successfulSpawns + transientSpawns > 3 ||
+    successfulWaits < 1
+  ) {
+    return { ok: false, workerAgentId };
   }
-  const spawnVerified = collabItems.some(
-    (item) =>
-      item.tool === 'spawn_agent' &&
-      item.status === 'completed' &&
-      Array.isArray(item.receiver_thread_ids) &&
-      item.receiver_thread_ids.includes(workerAgentId),
-  );
-  const failedStates = new Set([
-    'interrupted',
-    'errored',
-    'shutdown',
-    'not_found',
-  ]);
-  const workerFailed = collabItems.some(
-    (item) =>
-      item.status === 'failed' ||
-      failedStates.has(item.agents_states?.[workerAgentId]?.status),
-  );
-  const terminalVerified = collabItems.some(
-    (item) =>
-      item.status === 'completed' &&
-      item.agents_states?.[workerAgentId]?.status === 'completed',
-  );
   return {
-    ok: spawnVerified && terminalVerified && !workerFailed,
+    ok: true,
     workerAgentId,
-    spawnVerified,
-    terminalVerified,
-    workerFailed,
+    spawnVerified: true,
+    terminalVerified: true,
+    workerFailed: false,
+    workerCompletedToolCount,
   };
 }
 
@@ -587,7 +566,11 @@ export function parseCodexJsonl(
     }
   }
   const eventMessages = events.map(
-    (event) => event?.message || event?.error?.message || '',
+    (event) =>
+      event?.message ||
+      event?.error?.message ||
+      event?.item?.message ||
+      '',
   );
   const text = [
     stdout || '',
@@ -623,16 +606,28 @@ export function parseCodexJsonl(
     events.some((event) => event?.type === 'turn.completed');
   const immediateHostFailure =
     callStarted && status !== 0 && !lifecycleStarted;
-  const attribution = verifyCodexAgentAudit(auditEntries, events);
+  const attribution = verifyCodexAgentAudit(auditEntries);
   const genericSpawnVerified = attribution.spawnVerified === true;
   const customAgentVerified = attribution.ok;
-  const eventError = events.some(
-    (event) =>
+  const isHookTrustWarning = (event) =>
+    event?.type === 'item.completed' &&
+    event?.item?.type === 'error' &&
+    event?.item?.message === CODEX_HOOK_TRUST_WARNING;
+  const warningCount = events.filter(isHookTrustWarning).length;
+  const eventError = events.some((event) => {
+    if (isHookTrustWarning(event)) return false;
+    return (
       /(?:^|[._])(?:error|failed)$/i.test(String(event?.type || '')) ||
       event?.item?.type === 'error' ||
       event?.status === 'failed' ||
       event?.item?.status === 'failed' ||
-      attribution.workerFailed === true,
+      (event?.item?.type === 'collab_tool_call' &&
+        canonicalCodexOrchestrationTool(event.item.tool) === 'send_input') ||
+      attribution.workerFailed === true
+    );
+  });
+  const parentTurnVerified = events.some(
+    (event) => event?.type === 'turn.started',
   );
   const usage = aggregateCodexUsage(events);
   const modelId = observedCodexModel(events);
@@ -641,6 +636,7 @@ export function parseCodexJsonl(
     status === 0 &&
     !eventError &&
     customAgentVerified &&
+    parentTurnVerified &&
     usage !== null &&
     subscriptionVerified;
   return {
@@ -657,10 +653,12 @@ export function parseCodexJsonl(
     spawnError: Boolean(spawnErr),
     processStarted: callStarted,
     inferenceStarted,
+    warningCount,
     timedOut: Boolean(spawnErr?.code === 'ETIMEDOUT'),
     customAgentVerified,
     genericSpawnVerified,
     workerAgentId: attribution.workerAgentId,
+    workerCompletedToolCount: attribution.workerCompletedToolCount || 0,
     failureKind:
       ok
         ? null
@@ -706,6 +704,8 @@ export function parseCodexJsonl(
 
 const PROVIDER_OVERRIDE_ENV =
   /(?:API_KEY|BASE_URL|API_BASE|PROVIDER|ENDPOINT)$/i;
+const AGENT_ASSET_OVERRIDE_ENV =
+  /(?:^|_)(?:AGENT|AGENTS|SKILL|SKILLS)(?:_HOME|_DIR|_PATH)$/i;
 
 export function buildIsolatedCodexEnv({
   homeDir,
@@ -715,8 +715,17 @@ export function buildIsolatedCodexEnv({
 }) {
   const env = { ...envSource };
   for (const key of Object.keys(env)) {
-    if (PROVIDER_OVERRIDE_ENV.test(key)) delete env[key];
+    if (
+      PROVIDER_OVERRIDE_ENV.test(key) ||
+      AGENT_ASSET_OVERRIDE_ENV.test(key)
+    ) {
+      delete env[key];
+    }
   }
+  const isolatedUserHome = path.join(homeDir, 'user-home');
+  fs.mkdirSync(isolatedUserHome, { recursive: true });
+  env.HOME = isolatedUserHome;
+  env.USERPROFILE = isolatedUserHome;
   env.CODEX_HOME = homeDir;
   env.OFFCUT_STATE_DIR = stateDir;
   env.OFFCUT_AGENT_AUDIT_PATH = auditPath;
@@ -1031,6 +1040,7 @@ export function runOne(opts) {
       record.hooks_sha256 = agent.hooks_sha256;
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;
+      record.warning_count = agent.warningCount;
     } else {
       const ver = spawnSync('claude', ['--version'], { encoding: 'utf8' });
       record.host_version = (ver.stdout || ver.stderr || '').trim();

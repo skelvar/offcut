@@ -44,6 +44,8 @@ export const EFFICACY_MANIFEST_PATH = path.join(BENCH_ROOT, 'efficacy-manifest.j
 export const EFFICACY_COST_PATH = path.join(BENCH_ROOT, 'efficacy-cost.jsonl');
 export const CODEX_PREFLIGHT_ROOT = path.join(BENCH_ROOT, 'codex-preflight');
 export const CODEX_PREFLIGHT_LEDGER_PATH = path.join(CODEX_PREFLIGHT_ROOT, 'ledger.jsonl');
+const CODEX_PREFLIGHT_PROOF_FILE = 'ticket-worker-write-proof.txt';
+const CODEX_PREFLIGHT_PROOF_CONTENT = 'ticket-worker-write-ok\n';
 export const CLAUDE_CODE_VERSION = '2.1.243';
 
 export { CODEX_BACKEND_ID, CODEX_CUSTOM_ROLE };
@@ -817,13 +819,32 @@ export function codexLivePreflight({
     writeMode(stateDir, 'off');
     agent = runCodex({
       workDir,
-      prompt: 'Inspect the repository and report the single word READY. Do not modify files.',
+      prompt: [
+        `Create ${CODEX_PREFLIGHT_PROOF_FILE} using your tools.`,
+        'Its exact UTF-8 content must be one line: ticket-worker-write-ok followed by a newline.',
+        'Do not modify any other file. Then report READY.',
+      ].join(' '),
       arm: 'off',
       stateDir,
       authPath,
       auditPath: path.join(evidenceDir, 'agent-audit.jsonl'),
       spawnCodex,
     });
+    const proofPath = path.join(workDir, CODEX_PREFLIGHT_PROOF_FILE);
+    const proofContent = fs.existsSync(proofPath)
+      ? fs.readFileSync(proofPath)
+      : null;
+    const proofDiff = captureDiff(workDir);
+    const changedFiles = [
+      ...proofDiff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm),
+    ];
+    const writeProofVerified =
+      proofContent?.equals(Buffer.from(CODEX_PREFLIGHT_PROOF_CONTENT)) === true &&
+      changedFiles.length === 1 &&
+      changedFiles[0][1] === CODEX_PREFLIGHT_PROOF_FILE &&
+      changedFiles[0][2] === CODEX_PREFLIGHT_PROOF_FILE &&
+      agent.workerCompletedToolCount > 0;
+    const preflightSuccess = agent.ok && writeProofVerified;
     fs.writeFileSync(
       path.join(evidenceDir, 'transcript.jsonl'),
       agent.transcript || '',
@@ -837,7 +858,7 @@ export function codexLivePreflight({
       );
     }
     const evidence = {
-      ok: agent.ok,
+      ok: preflightSuccess,
       preflight_id: preflightId,
       backend: CODEX_BACKEND_ID,
       host: CODEX_HOST,
@@ -848,12 +869,18 @@ export function codexLivePreflight({
       auth_kind: agent.authKind,
       custom_agent_role: CODEX_CUSTOM_ROLE,
       custom_agent_verified: agent.customAgentVerified,
-      verified: agent.customAgentVerified,
-      preflight_success: agent.ok,
+      verified: preflightSuccess,
+      preflight_success: preflightSuccess,
+      write_proof_verified: writeProofVerified,
+      proof_sha256: proofContent ? sha256(proofContent) : null,
+      diff_sha256: sha256(proofDiff),
       process_started: agent.processStarted,
       inference_started: agent.inferenceStarted,
+      warning_count: agent.warningCount,
       exit_code: agent.exitCode,
-      error: agent.error || null,
+      error:
+        agent.error ||
+        (writeProofVerified ? null : 'Codex worker write proof missing or invalid'),
       billing_kind: agent.cost_evidence?.kind === 'subscription'
         ? 'chatgpt_subscription'
         : null,
@@ -871,7 +898,11 @@ export function codexLivePreflight({
       config_sha256: agent.config_sha256,
       role_sha256: agent.role_sha256,
       hooks_sha256: agent.hooks_sha256,
-      failure_kind: agent.ok ? null : agent.failureKind,
+      failure_kind: preflightSuccess
+        ? null
+        : agent.ok
+          ? 'model'
+          : agent.failureKind,
     };
     fs.writeFileSync(
       path.join(evidenceDir, 'evidence.json'),

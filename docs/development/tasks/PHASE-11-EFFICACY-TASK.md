@@ -29,13 +29,16 @@ The active execution contract is now:
   `billing_kind: "chatgpt_subscription"` and subscription cost evidence; this
   does not claim that ChatGPT membership is free
 
-Each call uses a new isolated `CODEX_HOME` containing only a byte-for-byte copy
-of the authenticated user's `auth.json`, minimal config, the named role, and
-arm-specific `hooks.json`. Before exec, `codex login status` runs inside that
-home with API-key and provider/base-URL overrides removed and must report the
-exact ChatGPT authentication status. A copied `auth.json` is not proof by
-itself. Only after this gate may a started process receive subscription billing
-evidence. Artifacts record only `auth_kind: "chatgpt"`.
+Each call uses a new isolated `CODEX_HOME` containing a byte-for-byte copy of
+the authenticated user's `auth.json`, minimal config, the named role,
+arm-specific `hooks.json`, and an otherwise empty user-home directory. `HOME`
+and `USERPROFILE` point to that empty directory; agent/skill home overrides are
+cleared, while `PATH` and system directories are unchanged. This prevents
+global `~/.agents/skills` and user instructions from entering measured input.
+Before exec, `codex login status` runs inside that home with API-key and
+provider/base-URL overrides removed and must report the exact ChatGPT
+authentication status. A copied `auth.json` is not proof by itself. Artifacts
+record only `auth_kind: "chatgpt"`.
 
 Both arms include the same silent lifecycle audit hook on `SubagentStart`,
 `SubagentStop`, `PreToolUse`, and `PostToolUse`. The tool hooks have no matcher,
@@ -52,29 +55,20 @@ delegation envelope and neutral `ticket-worker` role instructions. Neither
 model-visible input contains study or arm framing. Envelope, config, role, and
 hook hashes are recorded.
 
-Codex 0.149.1's exec JSONL `CollabToolCallItem` does not expose `agent_type`.
-JSONL therefore proves only that a generic `spawn_agent` call occurred and
-provides transcript and usage. One audited `SubagentStart` with
-`agent_type: "ticket-worker"` supplies the worker `agent_id`; a completed
-`spawn_agent` collaboration item must include that exact ID in
-`receiver_thread_ids`. A matching `SubagentStop` proves the lifecycle event
-occurred but reports no success field. Terminal success instead requires a
-collaboration item whose `agents_states[agent_id].status` is `completed`.
-Interrupted, errored, shutdown, not-found, or failed collaboration state is a
-model failure. Audited Pre/Post entries sharing a tool-use ID must report the
-same identity and normalized tool name. The exact worker may use any tool. A
-parent, default, or other-agent tool call is a model failure unless it is
-`spawn_agent`, `wait`, or `close_agent`; hook-facing
-`multi_agent_v1spawn_agent`, `multi_agent_v1wait_agent`, and
-`multi_agent_v1close_agent` names and casing variants normalize to those three
-operations. `send_input` is never allowed in either audit or JSONL evidence.
-Each parent collaboration item requires exactly one audited Pre/Post pair, and
-each such audit pair requires one collaboration item targeting the exact
-worker. Codex 0.149.1's collaboration item has no item ID to correlate with the
-hook `tool_use_id`, so this version uses exact canonical-operation counts after
-pairing each audit ID; a future item ID would replace that count correlation.
-This rejects missing, extra, unpaired, Bash, shell, exec, editor, and unknown
-parent calls without reading tool input.
+Measured Codex 0.149.1 exec JSONL omitted every `spawn_agent` item and emitted a
+completed wait item with empty `receiver_thread_ids` and `agents_states` while
+the child demonstrably ran. JSONL therefore supplies only a generic parent turn
+and completed usage; it cannot prove child identity or terminal state in this
+version. The silent hook audit is authoritative: exactly one
+`SubagentStart` with `agent_type: "ticket-worker"` supplies the worker ID, and
+exactly one matching `SubagentStop` proves lifecycle completion. Exactly one
+parent spawn tool-use ID must have one Pre and one Post event, at least one wait
+ID must be similarly paired, and at most two additional spawn IDs may contain
+Pre only as measured transient failures. More than three spawn attempts, an
+unpaired Post, `send_input`, close, parent writes, or any other parent tool
+fails attribution. Every worker tool event must carry the exact audited worker
+ID and type; worker Pre without Post is retained as a rejected-call record.
+This check does not read tool input.
 
 Tokens are aggregated from valid `turn.completed` usage, including
 `cache_write_input_tokens` as cache-creation tokens and
@@ -94,6 +88,10 @@ inference records known-zero pre-inference evidence and no subscription billing
 kind; verified `auth_kind` remains separate. Subscription evidence begins only
 after inference is evidenced.
 
+The exact hook-trust notice emitted as an `item.completed` error item is an
+expected warning and is counted, not treated as turn failure. Every other error
+item remains fatal.
+
 The CLI and config pin the requested model to `gpt-5.6-sol`, but Codex 0.149.1
 does not necessarily report the observed model in exec JSONL. Records therefore
 store `model_requested: "gpt-5.6-sol"` and set `model_id` only when Codex emits
@@ -112,9 +110,12 @@ runs, eligible rep 3 runs, and at most 96 confirmatory runs.
 
 The no-model `--codex-preflight` checks the frozen local contract. The separate
 `--codex-live-preflight --execute` makes one trivial isolated custom-role call,
-requires generic JSONL spawn proof, paired parent orchestration audits, and
-audited worker start/stop attribution, then records opaque evidence outside
-efficacy outcomes. A successful live preflight cannot be repeated.
+requires the lifecycle audit above, and requires the worker to create one named
+proof file with exact content under workspace-write. Success additionally
+requires a Git diff containing only that file and at least one paired worker
+Pre/Post tool event; evidence stores proof and diff hashes, not the temporary
+path. A successful live preflight cannot be repeated and remains outside
+efficacy outcomes.
 
 ## Frozen environment and ceiling
 

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { appendManifest } from '../bench/lib.mjs';
+import { appendManifest, sha256 } from '../bench/lib.mjs';
 
 const EFFICACY_TASKS = Object.freeze({
   'asset-base-url': 'new-config-surface',
@@ -1128,6 +1128,9 @@ const CODEX_USAGE_EVENT = {
   },
 };
 
+const CODEX_HOOK_TRUST_WARNING =
+  '`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.';
+
 function codexCollabSpawnEvent(receiverId = 'worker-1') {
   return {
     type: 'item.completed',
@@ -1218,6 +1221,57 @@ function codexReadOnlyWorkerAudit(role = 'ticket-worker') {
   );
 }
 
+function observedCodexWorkerAudit(role = 'ticket-worker') {
+  return [
+    {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'collaborationspawn_agent',
+      tool_use_id: 'spawn-failed-1',
+    },
+    {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'collaborationspawn_agent',
+      tool_use_id: 'spawn-failed-2',
+    },
+    ...codexToolAuditPair({
+      agentId: undefined,
+      agentType: undefined,
+      toolName: 'collaborationspawn_agent',
+      toolUseId: 'spawn-success',
+    }),
+    ...codexToolAuditPair({
+      agentId: undefined,
+      agentType: undefined,
+      toolName: 'collaborationwait_agent',
+      toolUseId: 'wait-success',
+    }),
+    {
+      hook_event_name: 'SubagentStart',
+      agent_id: 'worker-live-1',
+      agent_type: role,
+    },
+    {
+      hook_event_name: 'PreToolUse',
+      agent_id: 'worker-live-1',
+      agent_type: role,
+      tool_name: 'Bash',
+      tool_use_id: 'worker-rejected-1',
+    },
+    {
+      hook_event_name: 'PreToolUse',
+      agent_id: 'worker-live-1',
+      agent_type: role,
+      tool_name: 'Bash',
+      tool_use_id: 'worker-rejected-2',
+    },
+    {
+      hook_event_name: 'SubagentStop',
+      agent_id: 'worker-live-1',
+      agent_type: role,
+    },
+  ];
+}
+
 function appendCodexAudit(file, entries = codexWorkerAudit()) {
   fs.appendFileSync(file, `${entries.map(JSON.stringify).join('\n')}\n`);
 }
@@ -1227,8 +1281,8 @@ function codexToolAuditPair({ agentId, agentType, toolName, toolUseId }) {
     hook_event_name: hookEventName,
     session_id: 'session-1',
     turn_id: 'turn-1',
-    agent_id: agentId,
-    agent_type: agentType,
+    ...(agentId === undefined ? {} : { agent_id: agentId }),
+    ...(agentType === undefined ? {} : { agent_type: agentType }),
     tool_name: toolName,
     tool_use_id: toolUseId,
   }));
@@ -1442,11 +1496,12 @@ test('Codex agent audit records only silent nonsecret lifecycle attribution', ()
   }
 });
 
-test('Codex JSONL uses generic collab proof while lifecycle audit proves exact worker', async () => {
+test('Codex lifecycle audit proves exact worker independently of JSONL attribution', async () => {
   const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
   const spawn = codexCollabSpawnEvent();
   const result = parseCodexJsonl(
     [
+      JSON.stringify({ type: 'turn.started' }),
       JSON.stringify(spawn),
       JSON.stringify(codexCollabTerminalEvent()),
       JSON.stringify(CODEX_USAGE_EVENT),
@@ -1516,7 +1571,7 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
     },
   );
   assert.equal(markerOnly.ok, false);
-  assert.equal(markerOnly.customAgentVerified, false);
+  assert.equal(markerOnly.customAgentVerified, true);
   assert.equal(markerOnly.failureKind, 'model');
 
   const workerFailed = parseCodexJsonl(
@@ -1538,12 +1593,97 @@ test('Codex JSONL uses generic collab proof while lifecycle audit proves exact w
   assert.equal(workerFailed.failureKind, 'model');
 });
 
-test('Codex lifecycle proof correlates spawn, terminal state, stop, and write owner', async () => {
+test('Codex measured lifecycle audit is authoritative when collaboration JSONL omits child state', async () => {
+  const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
+  const warningEvent = {
+    type: 'item.completed',
+    item: { id: 'warning-1', type: 'error', message: CODEX_HOOK_TRUST_WARNING },
+  };
+  const observedEvents = [
+    { type: 'thread.started', thread_id: 'parent-thread-1' },
+    warningEvent,
+    { ...warningEvent, item: { ...warningEvent.item, id: 'warning-2' } },
+    { type: 'turn.started' },
+    {
+      type: 'item.completed',
+      item: {
+        id: 'wait-1',
+        type: 'collab_tool_call',
+        tool: 'wait',
+        sender_thread_id: 'parent-thread-1',
+        receiver_thread_ids: [],
+        prompt: null,
+        agents_states: {},
+        status: 'completed',
+      },
+    },
+    CODEX_USAGE_EVENT,
+  ];
+  const parse = (auditEntries, events = observedEvents) =>
+    parseCodexJsonl(
+      events.map(JSON.stringify).join('\n'),
+      0,
+      null,
+      {
+        durationMs: 10,
+        authKind: 'chatgpt',
+        auditEntries,
+      },
+    );
+
+  const observed = parse(observedCodexWorkerAudit(CODEX_CUSTOM_ROLE));
+  assert.equal(observed.ok, true);
+  assert.equal(observed.customAgentVerified, true);
+  assert.equal(observed.workerAgentId, 'worker-live-1');
+  assert.equal(observed.warningCount, 2);
+
+  const tooManySpawnFailures = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE);
+  tooManySpawnFailures.unshift({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'collaborationspawn_agent',
+    tool_use_id: 'spawn-failed-3',
+  });
+  assert.equal(parse(tooManySpawnFailures).ok, false);
+
+  for (const toolName of ['Bash', 'collaborationsend_input']) {
+    const parentMutation = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE);
+    parentMutation.push(
+      ...codexToolAuditPair({
+        agentId: undefined,
+        agentType: undefined,
+        toolName,
+        toolUseId: `parent-${toolName}`,
+      }),
+    );
+    assert.equal(parse(parentMutation).ok, false, toolName);
+  }
+
+  const missingStop = observedCodexWorkerAudit(CODEX_CUSTOM_ROLE).filter(
+    (entry) => entry.hook_event_name !== 'SubagentStop',
+  );
+  assert.equal(parse(missingStop).ok, false);
+
+  const unexpectedError = {
+    ...warningEvent,
+    item: { ...warningEvent.item, message: 'worker execution failed' },
+  };
+  assert.equal(
+    parse(
+      observedCodexWorkerAudit(CODEX_CUSTOM_ROLE),
+      observedEvents.map((event) => event === warningEvent ? unexpectedError : event),
+    ).ok,
+    false,
+  );
+});
+
+test('Codex audit enforces lifecycle and parent ownership independently of collab details', async () => {
   const { CODEX_CUSTOM_ROLE, parseCodexJsonl } = await import('../bench/run.mjs');
   const workerAudit = codexWorkerAudit(CODEX_CUSTOM_ROLE);
   const parse = (collabEvents, auditEntries) =>
     parseCodexJsonl(
-      [...collabEvents, CODEX_USAGE_EVENT].map(JSON.stringify).join('\n'),
+      [{ type: 'turn.started' }, ...collabEvents, CODEX_USAGE_EVENT]
+        .map(JSON.stringify)
+        .join('\n'),
       0,
       null,
       {
@@ -1616,7 +1756,7 @@ test('Codex lifecycle proof correlates spawn, terminal state, stop, and write ow
   close.item.tool = 'close_agent';
   assert.equal(
     parse([...successfulCollab, close], unmatchedCloseAudit).ok,
-    true,
+    false,
   );
 
   const sendInput = codexCollabTerminalEvent();
@@ -1670,19 +1810,18 @@ test('Codex lifecycle proof correlates spawn, terminal state, stop, and write ow
     codexCollabSpawnEvent('different-worker'),
     codexCollabTerminalEvent(),
   ], workerAudit);
-  assert.equal(receiverMismatch.ok, false);
-  assert.equal(receiverMismatch.customAgentVerified, false);
+  assert.equal(receiverMismatch.ok, true);
+  assert.equal(receiverMismatch.customAgentVerified, true);
 
   const missingTerminalState = parse([codexCollabSpawnEvent()], workerAudit);
-  assert.equal(missingTerminalState.ok, false);
-  assert.equal(missingTerminalState.customAgentVerified, false);
+  assert.equal(missingTerminalState.ok, true);
+  assert.equal(missingTerminalState.customAgentVerified, true);
 
   const erroredTerminalState = parse([
     codexCollabSpawnEvent(),
     codexCollabTerminalEvent('worker-1', 'errored'),
   ], workerAudit);
-  assert.equal(erroredTerminalState.ok, false);
-  assert.equal(erroredTerminalState.failureKind, 'model');
+  assert.equal(erroredTerminalState.ok, true);
 
   const failedCollab = codexCollabTerminalEvent();
   failedCollab.item.status = 'failed';
@@ -1822,11 +1961,29 @@ test('Codex runner removes isolated home on success and failure without preservi
   fs.writeFileSync(authPath, '{"secret":"opaque"}');
   const homes = [];
   let execCalls = 0;
+  const isolatedEnvSource = {
+    ...process.env,
+    OPENAI_API_KEY: 'must-strip',
+    OPENAI_BASE_URL: 'https://must-strip.invalid',
+    CODEX_API_KEY: 'must-strip',
+    AGENTS_HOME: 'C:\\Users\\bash\\.agents',
+    SKILL_PATH: 'C:\\Users\\bash\\.agents\\skills',
+    HOME: 'C:\\Users\\bash',
+    USERPROFILE: 'C:\\Users\\bash',
+    PATH: 'preserve-system-path',
+  };
   const fake = (_command, args, options) => {
     homes.push(options.env.CODEX_HOME);
     for (const key of ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY']) {
       assert.equal(options.env[key], undefined);
     }
+    assert.equal(options.env.HOME, options.env.USERPROFILE);
+    assert.equal(path.dirname(options.env.HOME), options.env.CODEX_HOME);
+    assert.equal(fs.existsSync(options.env.HOME), true);
+    assert.equal(fs.existsSync(path.join(options.env.HOME, '.agents')), false);
+    assert.equal(options.env.AGENTS_HOME, undefined);
+    assert.equal(options.env.SKILL_PATH, undefined);
+    assert.equal(options.env.PATH, 'preserve-system-path');
     if (args[0] === 'login') {
       return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
     }
@@ -1836,6 +1993,7 @@ test('Codex runner removes isolated home on success and failure without preservi
       status: execCalls === 1 ? 0 : 1,
       stdout: execCalls === 1
         ? [
+            JSON.stringify({ type: 'turn.started' }),
             JSON.stringify(codexCollabSpawnEvent()),
             JSON.stringify(codexCollabTerminalEvent()),
             JSON.stringify(CODEX_USAGE_EVENT),
@@ -1855,12 +2013,7 @@ test('Codex runner removes isolated home on success and failure without preservi
       homeParentDir: root,
       spawnCodex: fake,
       auditPath: path.join(root, 'success-audit.jsonl'),
-      envSource: {
-        ...process.env,
-        OPENAI_API_KEY: 'must-strip',
-        OPENAI_BASE_URL: 'https://must-strip.invalid',
-        CODEX_API_KEY: 'must-strip',
-      },
+      envSource: isolatedEnvSource,
     });
     assert.equal(success.ok, true);
     assert.equal(success.authKind, 'chatgpt');
@@ -1873,12 +2026,7 @@ test('Codex runner removes isolated home on success and failure without preservi
       homeParentDir: root,
       spawnCodex: fake,
       auditPath: path.join(root, 'failure-audit.jsonl'),
-      envSource: {
-        ...process.env,
-        OPENAI_API_KEY: 'must-strip',
-        OPENAI_BASE_URL: 'https://must-strip.invalid',
-        CODEX_API_KEY: 'must-strip',
-      },
+      envSource: isolatedEnvSource,
     });
     assert.equal(failed.ok, false);
     assert.equal(execCalls, 2);
@@ -2321,7 +2469,12 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
         calls += 1;
         appendCodexAudit(
           options.env.OFFCUT_AGENT_AUDIT_PATH,
-          codexReadOnlyWorkerAudit(CODEX_CUSTOM_ROLE),
+          codexWorkerAudit(CODEX_CUSTOM_ROLE),
+        );
+        fs.writeFileSync(
+          path.join(options.cwd, 'ticket-worker-write-proof.txt'),
+          'ticket-worker-write-ok\n',
+          'utf8',
         );
         return {
           status: 0,
@@ -2354,6 +2507,10 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
     assert.equal(first.model_observation, 'requested_not_reported');
     assert.equal(first.process_started, true);
     assert.equal(first.inference_started, true);
+    assert.equal(first.write_proof_verified, true);
+    assert.equal(first.proof_sha256, sha256('ticket-worker-write-ok\n'));
+    assert.match(first.diff_sha256, /^[a-f0-9]{64}$/);
+    assert.equal(first.warning_count, 0);
     assert.equal(first.cache_creation_input_tokens, 0);
     assert.equal(first.reasoning_output_tokens, 0);
     assert.equal(calls, 1);
@@ -2377,6 +2534,65 @@ test('Codex live preflight records one verified custom-role spawn then refuses r
       /successful Codex live preflight already exists/i,
     );
     assert.equal(calls, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Codex live preflight requires the exact worker proof file and diff', async () => {
+  const { CODEX_CUSTOM_ROLE, codexLivePreflight } = await import('../bench/efficacy.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-live-proof-'));
+  const authPath = path.join(root, 'auth.json');
+  const evidenceRoot = path.join(root, 'evidence');
+  const ledgerPath = path.join(root, 'ledger.jsonl');
+  fs.writeFileSync(authPath, '{"secret":"never-proof-artifact"}');
+  const run = (mode) =>
+    codexLivePreflight({
+      execute: true,
+      authPath,
+      evidenceRoot,
+      ledgerPath,
+      spawnCodex(_command, args, options) {
+        if (args[0] === 'login') {
+          return { status: 0, stdout: 'Logged in using ChatGPT\n', stderr: '', error: null };
+        }
+        appendCodexAudit(
+          options.env.OFFCUT_AGENT_AUDIT_PATH,
+          mode === 'unpaired'
+            ? observedCodexWorkerAudit(CODEX_CUSTOM_ROLE)
+            : codexWorkerAudit(CODEX_CUSTOM_ROLE),
+        );
+        if (mode !== 'missing') {
+          fs.writeFileSync(
+            path.join(options.cwd, 'ticket-worker-write-proof.txt'),
+            'ticket-worker-write-ok\n',
+            'utf8',
+          );
+        }
+        if (mode === 'extra') {
+          fs.writeFileSync(path.join(options.cwd, 'extra.txt'), 'unexpected\n', 'utf8');
+        }
+        return {
+          status: 0,
+          stdout: [
+            JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
+            JSON.stringify({ type: 'turn.started' }),
+            JSON.stringify(CODEX_USAGE_EVENT),
+          ].join('\n'),
+          stderr: '',
+          error: null,
+        };
+      },
+    });
+  try {
+    for (const mode of ['missing', 'extra', 'unpaired']) {
+      const failed = run(mode);
+      assert.equal(failed.ok, false, mode);
+      assert.equal(failed.preflight_success, false, mode);
+      assert.equal(failed.write_proof_verified, false, mode);
+      assert.equal(failed.failure_kind, 'model', mode);
+      assert.match(failed.error, /write proof/i, mode);
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
