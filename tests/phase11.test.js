@@ -857,6 +857,30 @@ test('model-visible efficacy repositories contain no study framing', async () =>
   }
 });
 
+test('event normalizer documents every accepted mapping and output convention', () => {
+  const taskDir = fileURLToPath(new URL('../bench/efficacy-tasks/event-normalizer/', import.meta.url));
+  const acceptSource = fs.readFileSync(path.join(taskDir, 'accept.mjs'), 'utf8');
+  const readme = fs.readFileSync(path.join(taskDir, 'repo', 'README.md'), 'utf8');
+  const mappings = [...acceptSource.matchAll(
+    /\['([^']+)', '([^']+)', '([^']+)', '([^']+)', '([^']+)', '([^']+)'\]/g,
+  )].map((match) => match.slice(1));
+
+  assert.equal(mappings.length, 10, 'all accepted event mappings must be discoverable');
+  for (const [type, idKey, atKey, actorKey, kind, summary] of mappings) {
+    assert.match(
+      readme,
+      new RegExp(
+        `\\| \`${type.replace('.', '\\.')}\` \\| \`data\\.${idKey}\` \\| \`data\\.${atKey}\` \\| ` +
+        `\`data\\.${actorKey}\` \\| \`${kind}\` \\| ${summary} \\|`,
+      ),
+      `${type}: accepted mapping is not documented`,
+    );
+  }
+  assert.match(readme, /exactly `\{ id, kind, occurredAt, actor, summary \}`/);
+  assert.match(readme, /`occurredAt` preserves the source timestamp text/);
+  assert.match(readme, /`summary` is `<summary label>: <id>`/);
+});
+
 test('dependency target stubs use their optional package with a fallback', async () => {
   const { copyTree, initGitRepo } = await import('../bench/lib.mjs');
   const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
