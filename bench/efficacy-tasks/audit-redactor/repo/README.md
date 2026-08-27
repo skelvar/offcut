@@ -1,3 +1,3 @@
-# audit-redactor
+# Audit event scrubber
 
-Offline fixture for the maintenance ticket.
+Scrubs sensitive fields from stored audit events.

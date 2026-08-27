@@ -1,3 +1,3 @@
-# route-matcher
+# Request route parameters
 
-Offline fixture for the maintenance ticket.
+Extracts route parameters for request logs.

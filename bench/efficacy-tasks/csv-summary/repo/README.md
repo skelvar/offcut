@@ -1,3 +1,3 @@
-# csv-summary
+# Ledger sales summary
 
-Offline fixture for the maintenance ticket.
+Summarizes regional sales exports.

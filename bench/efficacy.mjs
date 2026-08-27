@@ -202,6 +202,23 @@ function applyOperation(workDir, operation) {
   throw new Error(`stub operation must use Write or Edit: ${operation.tool_name}`);
 }
 
+export function assertOperationIntegrity(repoDir, actualWorkDir, operations) {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-efficacy-integrity-'));
+  const replayDir = path.join(parent, 'repo');
+  try {
+    copyTree(repoDir, replayDir);
+    initGitRepo(replayDir);
+    for (const operation of operations) applyOperation(replayDir, operation);
+    const actualDiff = captureDiff(actualWorkDir);
+    const replayDiff = captureDiff(replayDir);
+    if (actualDiff !== replayDiff) {
+      throw new Error('declared operations do not reproduce stub changes');
+    }
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+}
+
 export function replayHookOperations(repoDir, operations) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-efficacy-replay-'));
   const workDir = path.join(parent, 'repo');
@@ -292,6 +309,11 @@ function selftestStyle(taskDir, style) {
     if (!Array.isArray(stubResult.operations) || stubResult.operations.length === 0) {
       throw new Error(`${style} stub must return realistic Write/Edit operations`);
     }
+    assertOperationIntegrity(
+      path.join(taskDir, 'repo'),
+      workDir,
+      stubResult.operations,
+    );
     const acceptResult = spawnSync(
       process.execPath,
       [path.join(taskDir, 'accept.mjs'), workDir],

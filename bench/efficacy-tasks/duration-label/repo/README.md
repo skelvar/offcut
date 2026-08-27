@@ -1,3 +1,3 @@
-# duration-label
+# Job history duration
 
-Offline fixture for the maintenance ticket.
+Formats elapsed times for job history rows.

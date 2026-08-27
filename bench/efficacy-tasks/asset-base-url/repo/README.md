@@ -1,3 +1,3 @@
-# asset-base-url
+# Preview asset links
 
-Offline fixture for the maintenance ticket.
+Builds asset URLs for preview cards.

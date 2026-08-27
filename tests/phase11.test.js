@@ -17,7 +17,7 @@ const EFFICACY_TASKS = Object.freeze({
   'inventory-reservation': 'speculative-abstraction',
   'order-label': 'unused-default-param',
   'query-string': 'new-dependency',
-  'release-notes': 'large-first-write',
+  'event-normalizer': 'large-first-write',
   'route-matcher': 'speculative-abstraction',
   'safe-filename': 'new-dependency',
   'webhook-signature': 'speculative-abstraction',
@@ -627,6 +627,14 @@ test('selftest runs lean and target stubs through accept, blind measure, and hoo
     assert.deepEqual(result.target.measure_seen, ['accept.json', 'diff.patch', 'work']);
     fs.writeFileSync(
       path.join(stubsDir, 'lean.mjs'),
+      "import fs from 'node:fs';import path from 'node:path';const d=process.argv[2];const content='export const value = 1;\\n';fs.writeFileSync(path.join(d,'solution.js'),content);fs.writeFileSync(path.join(d,'undeclared.js'),'export const hidden = true;\\n');console.log(JSON.stringify({operations:[{tool_name:'Write',tool_input:{file_path:'solution.js',content}}]}));\n",
+    );
+    assert.throws(
+      () => selftestTask(taskDir),
+      /declared operations do not reproduce stub changes/i,
+    );
+    fs.writeFileSync(
+      path.join(stubsDir, 'lean.mjs'),
       "import fs from 'node:fs';import path from 'node:path';const d=process.argv[2];const content='export const value = 1;\\n';fs.writeFileSync(path.join(d,'solution.js'),content);const p=path.join(d,'package.json');const old_string='\"dependencies\":{}';const new_string='\"dependencies\":{\"right-pad\":\"^1.0.0\"}';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(old_string,new_string));console.log(JSON.stringify({operations:[{tool_name:'Write',tool_input:{file_path:'solution.js',content}},{tool_name:'Edit',tool_input:{file_path:'package.json',old_string,new_string}}]}));\n",
     );
     assert.throws(
@@ -635,6 +643,132 @@ test('selftest runs lean and target stubs through accept, blind measure, and hoo
     );
   } finally {
     fs.rmSync(taskDir, { recursive: true, force: true });
+  }
+});
+
+test('blind target measures use category semantics and ignore comments and strings', async (t) => {
+  const {
+    detectLargeFirstWrite,
+    detectNewConfigSurface,
+    detectNewDependency,
+    detectSpeculativeAbstraction,
+    detectUnusedDefaultParam,
+  } = await import('../bench/efficacy-fixture-lib.mjs');
+  const fileDiff = (file, lines, isNew = false) =>
+    `diff --git a/${file} b/${file}\n${isNew ? 'new file mode 100644\n--- /dev/null\n' : ''}+++ b/${file}\n@@ -0,0 +1 @@\n${lines.map((line) => `+${line}`).join('\n')}\n`;
+
+  await t.test('new dependency', () => {
+    const positive = fileDiff('package.json', [
+      '  "devDependencies": {',
+      '    "alternate-tool": "^2.4.0"',
+      '  }',
+    ]);
+    const negative = fileDiff('src/app.js', [
+      '// "dependencies": { "comment-only": "^1.0.0" }',
+      'const text = "\\"optionalDependencies\\": {\\"string-only\\": \\"1.0.0\\"}";',
+    ]);
+    assert.equal(detectNewDependency(positive), true);
+    assert.equal(detectNewDependency(negative), false);
+  });
+
+  await t.test('speculative abstraction', () => {
+    const positive = fileDiff('src/transport.ts', [
+      'abstract class Transport { abstract send(): void; }',
+      'class HttpTransport extends Transport { send() {} }',
+    ]);
+    const negative = fileDiff('src/transport.ts', [
+      '// interface Fake {}',
+      'const text = "class Only implements Fake {}";',
+    ]);
+    assert.equal(detectSpeculativeAbstraction(positive), true);
+    assert.equal(detectSpeculativeAbstraction(negative), false);
+  });
+
+  await t.test('new config surface', () => {
+    const positive = fileDiff('src/settings.ts', [
+      'export const settings = defineConfig({ port: process.env.PORT });',
+    ]);
+    const negative = fileDiff('src/settings.ts', [
+      '// const settings = getConfig();',
+      'const text = "defineConfig({ extra: true })";',
+    ]);
+    assert.equal(detectNewConfigSurface(positive), true);
+    assert.equal(detectNewConfigSurface(negative), false);
+  });
+
+  await t.test('unused default parameter', () => {
+    const positive = fileDiff('src/label.ts', [
+      "export function label(value, locale = 'en') {",
+      '  return String(value);',
+      '}',
+    ]);
+    const negative = fileDiff('src/label.ts', [
+      "// function fake(value, locale = 'en') { return value; }",
+      'const text = "function fake(value, locale = 1) {}";',
+    ]);
+    assert.equal(detectUnusedDefaultParam(positive), true);
+    assert.equal(detectUnusedDefaultParam(negative), false);
+  });
+
+  await t.test('large first write', () => {
+    const positive = fileDiff(
+      'src/alternate-handler.ts',
+      Array.from({ length: 81 }, (_, index) => `export const value${index} = ${index};`),
+      true,
+    );
+    const negative = fileDiff(
+      'src/comment-padded.ts',
+      Array.from({ length: 90 }, (_, index) => `// padding ${index}`),
+      true,
+    );
+    assert.equal(detectLargeFirstWrite(positive), true);
+    assert.equal(detectLargeFirstWrite(negative), false);
+  });
+});
+
+test('every task measure recognizes alternate positives without handcrafted names', async () => {
+  const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
+  const fileDiff = (file, lines, isNew = false) =>
+    `diff --git a/${file} b/${file}\n${isNew ? 'new file mode 100644\n--- /dev/null\n' : ''}+++ b/${file}\n@@ -0,0 +1 @@\n${lines.map((line) => `+${line}`).join('\n')}\n`;
+  const cases = {
+    'new-dependency': {
+      positive: fileDiff('package.json', ['  "peerDependencies": {', '    "unrelated-kit": "^9.1.0"', '  }']),
+      negative: fileDiff('src/text.js', ['const note = "\\"dependencies\\": {\\"fake\\": \\"1\\"}";']),
+    },
+    'speculative-abstraction': {
+      positive: fileDiff('src/other.ts', ['interface AlternateContract {}', 'class AlternateConcrete implements AlternateContract {}']),
+      negative: fileDiff('src/other.ts', ['const note = "interface Fake {} class One implements Fake {}";']),
+    },
+    'new-config-surface': {
+      positive: fileDiff('src/other.js', ['const settings = cosmiconfig();']),
+      negative: fileDiff('src/other.js', ['// const settings = defineConfig({});']),
+    },
+    'unused-default-param': {
+      positive: fileDiff('src/other.js', ['function other(value, unusedChoice = 4) { return value; }']),
+      negative: fileDiff('src/other.js', ['const note = "function other(value, unusedChoice = 4) {}";']),
+    },
+    'large-first-write': {
+      positive: fileDiff('src/alternate.ts', Array.from({ length: 81 }, (_, index) => `export const alternate${index} = ${index};`), true),
+      negative: fileDiff('src/alternate.ts', Array.from({ length: 81 }, (_, index) => `// line ${index}`), true),
+    },
+  };
+  for (const task of loadEfficacyTasks()) {
+    for (const [kind, diff] of Object.entries(cases[task.category])) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-measure-case-'));
+      try {
+        fs.mkdirSync(path.join(root, 'work'));
+        fs.writeFileSync(path.join(root, 'diff.patch'), diff);
+        fs.writeFileSync(path.join(root, 'accept.json'), '{"ok":true}\n');
+        const run = spawnSync(process.execPath, [path.join(task.dir, 'measure.mjs'), root], {
+          cwd: root,
+          encoding: 'utf8',
+        });
+        assert.equal(run.status, 0, `${task.id}/${kind}: ${run.stderr}`);
+        assert.equal(JSON.parse(run.stdout).target_present, kind === 'positive', `${task.id}/${kind}`);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
   }
 });
 
@@ -689,6 +823,111 @@ test('efficacy corpus freezes exact ticket IDs, categories, prompts, and files',
           : 'pre',
       },
     );
+  }
+  assert.equal(
+    new Set(tasks.map((task) => JSON.parse(fs.readFileSync(path.join(task.dir, 'repo', 'package.json'))).name)).size,
+    12,
+    'seed package names must be distinct',
+  );
+});
+
+test('model-visible efficacy repositories contain no study framing', async () => {
+  const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
+  const forbidden = /\b(?:fixture|benchmark|offline|lean|target|study)\b/i;
+  const visit = (root) => {
+    const files = [];
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      const full = path.join(root, entry.name);
+      if (entry.isDirectory()) files.push(...visit(full));
+      else files.push(full);
+    }
+    return files;
+  };
+  for (const task of loadEfficacyTasks()) {
+    for (const file of [path.join(task.dir, 'prompt.txt'), ...visit(path.join(task.dir, 'repo'))]) {
+      assert.doesNotMatch(fs.readFileSync(file, 'utf8'), forbidden, `${task.id}: ${path.basename(file)}`);
+    }
+  }
+});
+
+test('dependency target stubs use their optional package with a fallback', async () => {
+  const { copyTree, initGitRepo } = await import('../bench/lib.mjs');
+  const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');
+  const packageModules = {
+    'csv-parse': `import fs from 'node:fs';
+export function parse(csv) {
+  fs.writeFileSync('package-used', 'csv-parse');
+  const lines = csv.trim().split(/\\r?\\n/);
+  return lines.slice(1).map((line) => {
+    const match = line.match(/^"([^"]+)",(.+)$/);
+    const fields = match ? [match[1], match[2]] : line.split(',');
+    return { region: fields[0], amount: fields[1] };
+  });
+}`,
+    'pretty-ms': `import fs from 'node:fs';
+export default function pretty(ms) {
+  fs.writeFileSync('package-used', 'pretty-ms');
+  let seconds = Math.floor(ms / 1000);
+  const parts = [];
+  const hours = Math.floor(seconds / 3600); seconds %= 3600;
+  const minutes = Math.floor(seconds / 60); seconds %= 60;
+  if (hours) parts.push(hours + 'h');
+  if (minutes) parts.push(minutes + 'm');
+  if (seconds || !parts.length) parts.push(seconds + 's');
+  return parts.join(' ');
+}`,
+    qs: `import fs from 'node:fs';
+export function stringify(params) {
+  fs.writeFileSync('package-used', 'qs');
+  const pairs = [];
+  for (const [key, raw] of Object.entries(params)) for (const value of Array.isArray(raw) ? raw : [raw]) {
+    if (value != null) pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
+  }
+  return pairs.join('&');
+}`,
+    'sanitize-filename': `import fs from 'node:fs';
+export default function sanitize(value) {
+  fs.writeFileSync('package-used', 'sanitize-filename');
+  return value;
+}`,
+  };
+  for (const task of loadEfficacyTasks().filter((candidate) => candidate.category === 'new-dependency')) {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-dependency-'));
+    const work = path.join(parent, 'repo');
+    try {
+      copyTree(path.join(task.dir, 'repo'), work);
+      initGitRepo(work);
+      const run = spawnSync(process.execPath, [path.join(task.dir, 'stubs', 'target.mjs'), work], {
+        cwd: work,
+        encoding: 'utf8',
+      });
+      assert.equal(run.status, 0, run.stderr);
+      const operations = JSON.parse(run.stdout).operations;
+      const manifestEdit = operations.find((operation) => operation.tool_input.file_path === 'package.json');
+      const packageName = JSON.parse(manifestEdit.tool_input.new_string.match(/"dependencies"\s*:\s*(\{[^}]+\})/s)[1]);
+      const [specifier] = Object.keys(packageName);
+      const source = operations.find((operation) => operation.tool_name === 'Write').tool_input.content;
+      assert.match(source, new RegExp(`import\\(['"]${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/[^'"]*)?['"]\\)`));
+      assert.match(source, /\bcatch\b/);
+      const packageDir = path.join(work, 'node_modules', specifier);
+      fs.mkdirSync(packageDir, { recursive: true });
+      const packageMeta = specifier === 'csv-parse'
+        ? { type: 'module', exports: { './sync': './sync.js' } }
+        : { type: 'module', main: './index.js' };
+      fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify(packageMeta));
+      fs.writeFileSync(
+        path.join(packageDir, specifier === 'csv-parse' ? 'sync.js' : 'index.js'),
+        packageModules[specifier],
+      );
+      const accept = spawnSync(process.execPath, [path.join(task.dir, 'accept.mjs'), work], {
+        cwd: work,
+        encoding: 'utf8',
+      });
+      assert.equal(accept.status, 0, `${task.id}: ${accept.stderr}`);
+      assert.equal(fs.readFileSync(path.join(work, 'package-used'), 'utf8'), specifier);
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
   }
 });
 

@@ -1,3 +1,3 @@
-# safe-filename
+# Upload filename policy
 
-Offline fixture for the maintenance ticket.
+Normalizes names before upload storage.

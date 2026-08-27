@@ -1,1 +1,0 @@
-The deployment page needs Markdown release notes from change records. Add src/release-notes.js exporting renderReleaseNotes(version, changes). Start with "# Release <version>", then render nonempty Added, Fixed, and Changed sections in that order. Each record has type and text; sort text within each section, render bullets as "- <text>", and ignore unknown types.

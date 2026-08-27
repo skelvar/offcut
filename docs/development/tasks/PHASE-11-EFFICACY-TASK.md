@@ -52,12 +52,16 @@ stubs/target.mjs
 `accept.mjs <worktree>` checks only ticket correctness. `measure.mjs
 <opaque-input>` prints JSON containing boolean `target_present`; its input
 contains only `diff.patch`, `work/`, and `accept.json`.
+Measures identify category semantics independently of fixture-specific names
+and ignore appearances in comments or strings. Seed repositories and prompts
+contain only ticket-relevant product context.
 
 Each stub receives the worktree path, applies its implementation, and prints
 JSON with an `operations` array. Every operation is a realistic Claude
 `Write` or `Edit` shape with `tool_name` and `tool_input`. The lean and target
 stubs must both pass acceptance. Lean must measure target-absent; target must
-measure target-present.
+measure target-present. Dependency targets use their added package when it is
+available and retain a standard-library fallback so Stage 0 stays local.
 
 ## Stage 0 — self-test
 
@@ -66,9 +70,10 @@ stubs it:
 
 1. applies the implementation in an isolated fixture repository;
 2. runs acceptance and the blind task-specific measure;
-3. replays the emitted `Write`/`Edit` operations from a fresh repository
-   through the shipped pre- and post-write logic; and
-4. proves the target stub produces the expected hook exposure wherever the
+3. independently replays the emitted `Write`/`Edit` operations from a fresh
+   repository and requires them to reproduce the stub's exact tree diff;
+4. replays those operations through the shipped pre- and post-write logic; and
+5. proves the target stub produces the expected hook exposure wherever the
    shipped signal supports that tool shape.
 
 Pre-write and post-write exposures are labeled separately. A final-diff-only

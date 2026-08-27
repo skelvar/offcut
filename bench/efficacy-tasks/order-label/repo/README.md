@@ -1,3 +1,3 @@
-# order-label
+# Packing order labels
 
-Offline fixture for the maintenance ticket.
+Formats headings used on packing slips.

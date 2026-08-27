@@ -1,3 +1,3 @@
-# inventory-reservation
+# Checkout stock reservation
 
-Offline fixture for the maintenance ticket.
+Allocates requested stock during checkout.

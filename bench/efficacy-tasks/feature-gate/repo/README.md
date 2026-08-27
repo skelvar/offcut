@@ -1,3 +1,3 @@
-# feature-gate
+# Admin feature flags
 
-Offline fixture for the maintenance ticket.
+Evaluates downloaded flags for the admin portal.

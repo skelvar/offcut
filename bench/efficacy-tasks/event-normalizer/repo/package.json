@@ -1,5 +1,5 @@
 {
-  "name": "fixture-app",
+  "name": "webhook-event-normalizer",
   "private": true,
   "type": "module"
 }

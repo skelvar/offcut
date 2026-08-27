@@ -1,3 +1,3 @@
-# query-string
+# Internal API query
 
-Offline fixture for the maintenance ticket.
+Builds query text for internal API requests.
