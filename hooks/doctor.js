@@ -232,10 +232,25 @@ export function runDoctor(opts = {}) {
   if (active.state === 'ok' && active.mode === 'off') {
     record('ok', 'ruleset served', 'mode off — no ruleset is being served');
   } else if (served.state === 'missing') {
+    // No record splits into two very different states. If this copy's hook is
+    // newer than the last SessionStart, nothing has run it yet and nothing
+    // could have recorded — an upgrade away from a warning, not a fault. If it
+    // is older, a session did start with this hook in place and left no
+    // record, so some other copy served that session.
+    let hookMtime = null;
+    try {
+      hookMtime = fs.statSync(path.join(root, 'hooks', 'activate.js')).mtime;
+    } catch {
+      // a missing hook script is check 6's business
+    }
+    const notRunYet =
+      !active.mtime || (hookMtime && hookMtime.getTime() > active.mtime.getTime());
     record(
-      'warn',
+      notRunYet ? 'ok' : 'warn',
       'ruleset served',
-      'unknown — no SessionStart has recorded which copy it served; start a new session, and if this line persists then the copy that runs predates this check',
+      notRunYet
+        ? 'not yet recorded — no session has started since this copy was installed; the next one will name the serving copy'
+        : `no record, though a session started ${formatAge(active.mtime)} — this copy would have left one, so another copy served it`,
     );
   } else if (!sameDir(served.root, root)) {
     record(

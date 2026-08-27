@@ -484,6 +484,15 @@ function touch(p, secondsFromNow) {
   fs.utimesSync(p, t, t);
 }
 
+/** Give a copy the hook whose age says whether it can have recorded anything. */
+function addHook(dir, secondsFromNow) {
+  const p = path.join(dir, 'hooks', 'activate.js');
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, '// stand-in for the recording hook\n', 'utf8');
+  touch(p, secondsFromNow);
+  return p;
+}
+
 test('doctor: a second copy served the ruleset → warn naming both roots', () => {
   return withStateDir(() => {
     writeMode('full');
@@ -558,13 +567,40 @@ test('doctor: a mid-session mode switch does not mask an edited ruleset', () => 
   });
 });
 
-test('doctor: no record of which copy served → warn, not a silent OK', () => {
+test('doctor: a copy newer than the last session is not yet recorded, not a fault', () => {
+  // Upgrading Offcut must not manufacture a warning. Nothing has run the new
+  // hook yet, so nothing could have recorded which copy served.
+  return withStateDir((dir) => {
+    const copy = makeCopy('body');
+    addHook(copy, 0);
+    try {
+      writeMode('full');
+      touch(path.join(dir, 'active'), -7200);
+      const result = runDoctor({ silent: true, root: copy });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(served.verdict, 'ok');
+      assert.match(served.detail, /not yet recorded/i);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  });
+});
+
+test('doctor: a session ran with this copy in place and left no record → warn', () => {
+  // The other half: this hook was installed before the session started, so it
+  // would have recorded. Silence means a different copy served that session.
   return withStateDir(() => {
-    writeMode('full');
-    const result = runDoctor({ silent: true, root });
-    const served = result.lines.find((l) => l.check === 'ruleset served');
-    assert.equal(served.verdict, 'warn');
-    assert.match(served.detail, /unknown/i);
+    const copy = makeCopy('body');
+    addHook(copy, -7200);
+    try {
+      writeMode('full');
+      const result = runDoctor({ silent: true, root: copy });
+      const served = result.lines.find((l) => l.check === 'ruleset served');
+      assert.equal(served.verdict, 'warn');
+      assert.match(served.detail, /another copy served it/i);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
   });
 });
 
