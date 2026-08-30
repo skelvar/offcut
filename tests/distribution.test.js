@@ -144,10 +144,36 @@ test('marketplaces ship a generated plugin package that matches runtime source',
 
 test('README leads with the universal installer and accurate marketplace names', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-  assert.match(readme, /npx --yes github:xyzbk\/offcut/);
-  assert.match(readme, /codex plugin marketplace add xyzbk\/offcut/);
+  assert.match(readme, /npx --yes github:skelvar\/offcut/);
+  assert.match(readme, /codex plugin marketplace add skelvar\/offcut/);
   assert.match(readme, /codex plugin add offcut@skelvar/);
   assert.match(readme, /\/plugin install offcut@skelvar/);
   assert.match(readme, /cursor\.com\/marketplace\/publish/);
   assert.doesNotMatch(readme, /offcut@offcut|\.offcut-src/);
+});
+
+test('public distribution identity is consistently Skelvar', () => {
+  const legacyIdentity = ['xyz', 'bk'].join('');
+  for (const rel of [
+    'README.md',
+    'package.json',
+    'plugin.json',
+    'LICENSE',
+    '.claude-plugin/marketplace.json',
+    '.claude-plugin/plugin.json',
+    '.codex-plugin/plugin.json',
+    '.cursor-plugin/marketplace.json',
+    '.cursor-plugin/plugin.json',
+    'skills/offcut/SKILL.md',
+    'skills/offcut-audit/SKILL.md',
+    'skills/offcut-help/SKILL.md',
+    'skills/offcut-review/SKILL.md',
+  ]) {
+    const source = fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.equal(
+      source.toLowerCase().includes(legacyIdentity),
+      false,
+      `${rel} retains the old public identity`,
+    );
+  }
 });

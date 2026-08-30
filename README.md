@@ -40,7 +40,7 @@ Requirements: Git and Node.js 20 or newer.
 ### One command — Codex, Claude Code, Cursor, and Grok Build
 
 ```bash
-npx --yes github:xyzbk/offcut
+npx --yes github:skelvar/offcut
 ```
 
 The universal installer is the recommended route. It detects the agents already
@@ -50,8 +50,8 @@ installed on the machine and gives each one native rules and lifecycle hooks.
 
 | Agent | Install |
 |---|---|
-| Codex | `codex plugin marketplace add xyzbk/offcut --ref main`<br>`codex plugin add offcut@skelvar` |
-| Claude Code | `/plugin marketplace add xyzbk/offcut`<br>`/plugin install offcut@skelvar` |
+| Codex | `codex plugin marketplace add skelvar/offcut --ref main`<br>`codex plugin add offcut@skelvar` |
+| Claude Code | `/plugin marketplace add skelvar/offcut`<br>`/plugin install offcut@skelvar` |
 | Cursor | Marketplace package ready; public listing pending review. Use the universal command today. |
 | Grok Build | Use the universal command; Grok does not expose the same managed marketplace route. |
 
@@ -203,7 +203,7 @@ Read the [evidence map](docs/development/README.md),
 Universal install:
 
 ```bash
-npx --yes github:xyzbk/offcut -- --uninstall
+npx --yes github:skelvar/offcut -- --uninstall
 ```
 
 Claude Code marketplace install:
@@ -231,4 +231,4 @@ Offcut has zero runtime dependencies and uses only the Node.js standard library.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 xyzbk.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 skelvar.

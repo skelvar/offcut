@@ -4,13 +4,13 @@
   "description": "Persistent construction discipline and concise output for coding agents.",
   "license": "MIT",
   "author": {
-    "name": "xyzbk"
+    "name": "skelvar"
   },
   "interface": {
     "displayName": "Offcut",
     "shortDescription": "Build the cheapest correct thing in the right place.",
     "longDescription": "Persistent construction discipline and concise output for coding agents, with reversible native defaults and lifecycle controls.",
-    "developerName": "xyzbk",
+    "developerName": "skelvar",
     "category": "Developer Tools",
     "capabilities": [
       "persistent project guidance",

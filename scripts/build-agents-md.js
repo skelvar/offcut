@@ -35,7 +35,7 @@ compatibility: >
   the skill remains a compatibility fallback.
 metadata:
   version: "0.3.0"
-  author: xyzbk
+  author: skelvar
 ---
 
 `;

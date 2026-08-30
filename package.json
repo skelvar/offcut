@@ -31,11 +31,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xyzbk/offcut.git"
+    "url": "git+https://github.com/skelvar/offcut.git"
   },
-  "homepage": "https://github.com/xyzbk/offcut#readme",
+  "homepage": "https://github.com/skelvar/offcut#readme",
   "license": "MIT",
-  "author": "xyzbk",
+  "author": "skelvar",
   "keywords": [
     "coding-agent",
     "codex",

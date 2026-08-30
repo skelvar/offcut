@@ -4,7 +4,7 @@
   "description": "Persistent construction discipline and concise responses for coding agents.",
   "license": "MIT",
   "author": {
-    "name": "xyzbk"
+    "name": "skelvar"
   },
   "hooks": "./adapters/claude/hooks.json"
 }

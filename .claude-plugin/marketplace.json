@@ -2,7 +2,7 @@
   "name": "skelvar",
   "description": "Offcut: persistent construction discipline, concise responses, and deterministic over-engineering checks for coding agents.",
   "owner": {
-    "name": "xyzbk"
+    "name": "skelvar"
   },
   "plugins": [
     {
@@ -11,7 +11,7 @@
       "version": "0.3.0",
       "source": "./plugins/offcut",
       "author": {
-        "name": "xyzbk"
+        "name": "skelvar"
       }
     }
   ]

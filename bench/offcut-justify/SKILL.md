@@ -9,7 +9,7 @@ compatibility: >
   Bench-only variant. Requires the same Node hook host as skills/offcut.
 metadata:
   version: "0.1.0-justify"
-  author: xyzbk
+  author: skelvar
 ---
 
 # Offcut
