@@ -38,6 +38,20 @@ turn behaves until switched.
 
 Deactivate: `/offcut off`, `stop offcut`, or `normal mode`.
 
+## Response style (session)
+
+Offcut uses a readable concise response style by default while it is active.
+The style changes communication only; it never reduces engineering work,
+verification, or safety content.
+
+```text
+/offcut concise on     # concise responses for this session
+/offcut concise off    # normal responses for this session
+```
+
+`/offcut concise off` changes response style only. Offcut construction rules
+remain active. `/offcut off` is the separate switch that deactivates Offcut.
+
 ## Commands (one-shot)
 
 Invoked as skills. **Touch no state.** Leave the mode exactly as found.
@@ -49,7 +63,8 @@ Invoked as skills. **Touch no state.** Leave the mode exactly as found.
 | `/offcut-help` | This card |
 
 Automatic invocation uses each skill's `description`. The `UserPromptSubmit`
-hook only parses mode switches — it does not detect "review" / "audit" intent.
+hook only parses mode and response-style switches — it does not detect
+"review" / "audit" intent.
 
 ## Mode vs scan
 

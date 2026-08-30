@@ -58,9 +58,10 @@ function walkText(dir) {
 export function listNegativeRuns() {
   if (!fs.existsSync(RUNS_DIR)) return [];
   const out = [];
-  for (const name of fs.readdirSync(RUNS_DIR)) {
+  for (const entry of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const name = entry.name;
     const dir = path.join(RUNS_DIR, name);
-    if (!fs.statSync(dir).isDirectory()) continue;
     const acceptPath = path.join(dir, 'accept.json');
     const diffPath = path.join(dir, 'diff.patch');
     const runPath = path.join(dir, 'run.json');
@@ -221,7 +222,11 @@ export function scanPositiveCorpus() {
           path: rel,
           content,
           addedContent: content,
-          shape: /** @type {const} */ ('full'),
+          // Change-only dependency detection needs the dependency object in a
+          // fragment view; a whole existing package.json cannot prove an add.
+          shape: /** @type {const} */ (
+            sig.id === 'new-dependency' ? 'fragment' : 'full'
+          ),
           pathExists: sig.id === 'large-first-write' ? false : true,
           truncated: false,
           context,

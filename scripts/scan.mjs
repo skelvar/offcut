@@ -72,22 +72,132 @@ const TEXT_EXT = new Set([
  *   path: string,
  *   content: string,
  *   addedContent: string,
+ *   removedContent: string,
  *   pathExists: boolean,
  *   shape: 'full' | 'fragment',
  * }>}
  */
+function takeGitPathToken(text) {
+  const source = String(text || '').trimStart();
+  if (!source) return { token: '', rest: '' };
+  if (source[0] !== '"') {
+    const end = source.search(/\s/);
+    return end === -1
+      ? { token: source, rest: '' }
+      : { token: source.slice(0, end), rest: source.slice(end) };
+  }
+
+  let escaped = false;
+  for (let index = 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      return {
+        token: source.slice(0, index + 1),
+        rest: source.slice(index + 1),
+      };
+    }
+  }
+  return { token: source, rest: '' };
+}
+
+function decodeGitPathToken(token) {
+  const source = String(token || '');
+  if (!(source.startsWith('"') && source.endsWith('"'))) return source;
+
+  const bytes = [];
+  const pushText = (value) => bytes.push(...Buffer.from(value, 'utf8'));
+  const escapes = {
+    a: '\x07',
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t',
+    v: '\x0b',
+    '\\': '\\',
+    '"': '"',
+  };
+
+  for (let index = 1; index < source.length - 1; index += 1) {
+    const char = source[index];
+    if (char !== '\\') {
+      const codePoint = source.codePointAt(index);
+      const value = String.fromCodePoint(codePoint);
+      pushText(value);
+      index += value.length - 1;
+      continue;
+    }
+
+    const octal = source.slice(index + 1, index + 4);
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(Number.parseInt(octal, 8));
+      index += 3;
+      continue;
+    }
+
+    const escaped = source[index + 1];
+    if (escaped === undefined) break;
+    pushText(escapes[escaped] ?? escaped);
+    index += 1;
+  }
+
+  return Buffer.from(bytes).toString('utf8');
+}
+
+function normalizeDiffPath(token) {
+  const decoded = decodeGitPathToken(token);
+  return decoded.replace(/^[ab]\//, '');
+}
+
+function gitHeaderPath(line) {
+  if (!line.startsWith('diff --git ')) return null;
+  const body = line.slice('diff --git '.length);
+  if (!body.startsWith('"')) {
+    // Git leaves ordinary spaces unquoted (`a/foo bar.js b/foo bar.js`). The
+    // destination prefix is the last ` b/`; the later +++ marker remains the
+    // authoritative path when an exotic filename itself contains that text.
+    const split = body.lastIndexOf(' b/');
+    return split === -1 ? null : normalizeDiffPath(body.slice(split + 1));
+  }
+  const first = takeGitPathToken(body);
+  const second = takeGitPathToken(first.rest);
+  return second.token ? normalizeDiffPath(second.token) : null;
+}
+
+function markerPath(line, marker) {
+  if (!line.startsWith(`${marker} `)) return null;
+  const body = line.slice(marker.length + 1);
+  const token = body.startsWith('"')
+    ? takeGitPathToken(body).token
+    : body.split('\t', 1)[0].trimEnd();
+  if (!token) return null;
+  const decoded = decodeGitPathToken(token);
+  if (decoded === '/dev/null') return '/dev/null';
+  return decoded.replace(/^[ab]\//, '');
+}
+
 export function parseUnifiedDiff(text) {
   const files = [];
-  /** @type {{ path: string, added: string[], isNew: boolean } | null} */
+  /** @type {{ path: string, added: string[], removed: string[], visible: string[], isNew: boolean } | null} */
   let current = null;
 
   const push = () => {
     if (!current) return;
     const added = current.added.join('\n');
+    const removed = current.removed.join('\n');
     files.push({
       path: current.path,
-      content: added,
+      content: current.isNew ? added : current.visible.join('\n'),
       addedContent: added,
+      removedContent: removed,
       pathExists: current.isNew ? false : true,
       // New files are whole-file creates; edits are fragments.
       shape: current.isNew ? /** @type {const} */ ('full') : /** @type {const} */ ('fragment'),
@@ -96,29 +206,34 @@ export function parseUnifiedDiff(text) {
   };
 
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const git = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    if (git) {
+    const gitPath = gitHeaderPath(line);
+    if (gitPath) {
       push();
-      current = { path: git[2], added: [], isNew: false };
+      current = { path: gitPath, added: [], removed: [], visible: [], isNew: false };
       continue;
     }
     if (!current) {
       // Bare ---/+++ without diff --git (rare); start a file on +++.
-      const plusPlus = line.match(/^\+\+\+\s+(?:b\/)?(.+)$/);
-      if (plusPlus && plusPlus[1] !== '/dev/null') {
-        current = { path: plusPlus[1], added: [], isNew: false };
+      const plusPlus = markerPath(line, '+++');
+      if (plusPlus && plusPlus !== '/dev/null') {
+        current = { path: plusPlus, added: [], removed: [], visible: [], isNew: false };
       }
       continue;
     }
-    if (line.startsWith('new file mode') || line === '--- /dev/null') {
+    if (line.startsWith('new file mode') || markerPath(line, '---') === '/dev/null') {
       current.isNew = true;
     }
-    const plusPlus = line.match(/^\+\+\+\s+(?:b\/)?(.+)$/);
-    if (plusPlus && plusPlus[1] !== '/dev/null') {
-      current.path = plusPlus[1];
+    const plusPlus = markerPath(line, '+++');
+    if (plusPlus && plusPlus !== '/dev/null') {
+      current.path = plusPlus;
     }
     if (line.startsWith('+') && !line.startsWith('+++')) {
       current.added.push(line.slice(1));
+      current.visible.push(line.slice(1));
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      current.removed.push(line.slice(1));
+    } else if (line.startsWith(' ')) {
+      current.visible.push(line.slice(1));
     }
   }
   push();
@@ -200,16 +315,18 @@ export function readTextFile(filePath) {
  * @param {string | null} corpus
  * @param {'diff' | 'repo'} context
  */
-function toView(viewPartial, corpus, context) {
+function toView(viewPartial, corpus, context, corpusFiles = null) {
   return {
     path: viewPartial.path ?? null,
     content: viewPartial.content ?? '',
     addedContent: viewPartial.addedContent ?? viewPartial.content ?? '',
+    removedContent: viewPartial.removedContent ?? '',
     shape: viewPartial.shape ?? 'full',
     pathExists: viewPartial.pathExists ?? true,
     truncated: false,
     context,
     corpus,
+    corpusFiles,
   };
 }
 
@@ -244,6 +361,7 @@ export function scanFiles(filePaths, opts = {}) {
       },
       corpus,
       'repo',
+      loaded,
     );
     for (const signal of runSignals(signals, view)) {
       findings.push({
@@ -270,7 +388,7 @@ export function scanDiff(diffText, opts = {}) {
   /** @type {Finding[]} */
   const findings = [];
   for (const file of files) {
-    const view = toView(file, corpus, 'diff');
+    const view = toView(file, corpus, 'diff', files);
     for (const signal of runSignals(signals, view)) {
       findings.push({
         path: file.path,

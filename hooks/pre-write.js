@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runHook, gate } from './host.js';
-import { readMode, hasFiredSignal, markPendingSignal } from './state.js';
+import { readMode, markPendingSignal } from './state.js';
 import { PRE_SIGNALS, extractWriteFields, runSignals } from './signals.js';
 
 /**
@@ -52,6 +52,7 @@ export function buildPreView(norm) {
     path: fields.path,
     content: fields.content,
     addedContent: fields.addedContent,
+    removedContent: fields.removedContent,
     shape: writeTool.shape,
     pathExists: exists,
     truncated: Boolean(norm.toolInputTruncated),
@@ -74,9 +75,9 @@ export function decidePreWrite(norm, mode) {
 
   const hits = runSignals(PRE_SIGNALS, view);
   for (const signal of hits) {
-    if (hasFiredSignal(norm.sessionId, signal.id)) continue;
-    // Pending until PostToolUse (or cleared on next prompt if the turn died).
-    markPendingSignal(norm.sessionId, signal.id);
+    // Atomically reserve the signal across concurrent hook processes. Pending
+    // lasts until PostToolUse, or is cleared on the next prompt if the turn died.
+    if (!markPendingSignal(norm.sessionId, signal.id)) continue;
 
     const escalate =
       mode === 'strict' && signal.id === 'new-dependency';
@@ -100,7 +101,7 @@ export function decidePreWrite(norm, mode) {
 
 export async function handlePreWrite(norm) {
   if (!norm) return null;
-  const mode = readMode();
+  const mode = readMode(norm.sessionId);
   const decision = decidePreWrite(norm, mode);
   if (!decision) return null;
   return gate(norm.host, decision);

@@ -231,6 +231,30 @@ test('signal large-first-write: positive on big new full write; negative otherwi
     truncated: false,
   }));
   assert.ok(!hits.find((h) => h.id === 'large-first-write'));
+
+  const commentPadding = Array.from(
+    { length: LARGE_FIRST_WRITE_LINES + 5 },
+    (_, i) => `// padding ${i}`,
+  ).join('\n');
+  assert.equal(
+    sig.check(view({ pathExists: false, content: commentPadding, shape: 'full' })),
+    false,
+    'comment padding is not a large implementation',
+  );
+  assert.equal(
+    runSignals(
+      [sig],
+      view({
+        path: 'large.py',
+        pathExists: false,
+        content: big,
+        addedContent: big,
+        shape: 'full',
+      }),
+    ).length,
+    0,
+    'JS/TS line heuristics must not claim coverage on Python',
+  );
 });
 
 test('signal new-dependency: positive on package.json dep add; negative on src edit', () => {
@@ -241,9 +265,23 @@ test('signal new-dependency: positive on package.json dep add; negative on src e
         path: 'package.json',
         addedContent: '"dependencies": {\n  "left-pad": "1.0.0"\n}',
         content: '"dependencies": {\n  "left-pad": "1.0.0"\n}',
+        pathExists: false,
       }),
     ),
     true,
+  );
+  assert.equal(
+    sig.check(
+      view({
+        path: 'package.json',
+        addedContent: '"dependencies": {\n  "left-pad": "1.0.0"\n}',
+        content: '"dependencies": {\n  "left-pad": "1.0.0"\n}',
+        pathExists: true,
+        shape: 'full',
+      }),
+    ),
+    false,
+    'rewriting an existing manifest does not prove that its dependencies are new',
   );
   assert.equal(
     sig.check(
@@ -265,6 +303,69 @@ test('signal new-dependency: positive on package.json dep add; negative on src e
     ),
     true,
   );
+  assert.equal(
+    sig.check(
+      view({
+        path: 'package.json',
+        addedContent: '    "node": ">=18",\n',
+        content: '    "node": ">=18",\n',
+        shape: 'fragment',
+      }),
+    ),
+    false,
+    'package engine metadata is not a dependency',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        path: 'package.json',
+        addedContent: '    "homepage": "https://example.test/project",\n',
+        content: '    "homepage": "https://example.test/project",\n',
+        shape: 'fragment',
+      }),
+    ),
+    false,
+    'package metadata URLs are not dependencies',
+  );
+  for (const ambiguous of [
+    '    "vscode": "^1.80.0",\n',
+    '    "port": "3000",\n',
+    '    "left-pad": "^1.0.0",\n',
+  ]) {
+    assert.equal(
+      sig.check(
+        view({
+          path: 'package.json',
+          addedContent: ambiguous,
+          content: ambiguous,
+          shape: 'fragment',
+        }),
+      ),
+      false,
+      `bare package line is not enough context: ${ambiguous.trim()}`,
+    );
+  }
+  assert.equal(
+    sig.check(
+      view({
+        path: 'Cargo.toml',
+        addedContent: '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2024"\n',
+        content: '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2024"\n',
+      }),
+    ),
+    false,
+    'Cargo package metadata is not a dependency',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        path: 'Cargo.toml',
+        addedContent: '[workspace.dependencies]\nserde = { version = "1" }\n',
+        content: '[workspace.dependencies]\nserde = { version = "1" }\n',
+      }),
+    ),
+    true,
+  );
 });
 
 test('signal speculative-abstraction: positive one-impl interface; negative two-impl', () => {
@@ -281,6 +382,34 @@ class DiskStore implements Store { get(k: string) { return k } }
   assert.equal(sig.check(view({ content: one })), true);
   assert.equal(sig.check(view({ content: two })), false);
   assert.equal(sig.check(view({ content: 'function add(a,b){return a+b}' })), false);
+  assert.equal(
+    sig.check(
+      view({
+        content: 'const note = "interface Fake {} class One implements Fake {}";\n',
+      }),
+    ),
+    false,
+    'an abstraction described in a string is not source structure',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        content: 'const pattern = /interface Fake {} class One implements Fake {}/;\n',
+      }),
+    ),
+    false,
+    'an abstraction described in a regular expression is not source structure',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        content:
+          'if (enabled) /interface Fake {} class One implements Fake {}/.test(value);\n',
+      }),
+    ),
+    false,
+    'a regex expression after a control condition is not source structure',
+  );
   // Name-shape alone is not an abstraction (ttl-cache false positive).
   const factory = `
 export function createCache({ defaultTtlMs = 1000 } = {}) {
@@ -289,6 +418,21 @@ export function createCache({ defaultTtlMs = 1000 } = {}) {
 }
 `;
   assert.equal(sig.check(view({ content: factory })), false);
+  assert.equal(
+    runSignals(
+      [sig],
+      view({
+        path: 'View.tsx',
+        content:
+          'export function View() { return <div>interface Fake class One implements Fake</div>; }',
+        addedContent:
+          'export function View() { return <div>interface Fake class One implements Fake</div>; }',
+        context: 'diff',
+      }),
+    ).length,
+    0,
+    'the lightweight lexer must not claim JSX/TSX structural coverage',
+  );
 });
 
 test('signal config-for-constant is deleted', () => {
@@ -301,6 +445,7 @@ test('signal config-for-constant is deleted', () => {
 
 test('post signal exported-unused: needs corpus; silent without one', () => {
   const sig = POST_SIGNALS.find((s) => s.id === 'exported-unused');
+  assert.match(sig.message, /scanned scope/i);
   const orphan = 'export function helper(){ return 1 }\n';
   // Write-time: no corpus → not decidable.
   assert.equal(sig.check(view({ content: orphan })), false);
@@ -324,6 +469,16 @@ test('post signal exported-unused: needs corpus; silent without one', () => {
     ),
     false,
   );
+  assert.equal(
+    sig.check(
+      view({
+        content: '// export function future() {}\n',
+        corpus: 'import { other } from "./x.js";\n// export function future() {}\n',
+      }),
+    ),
+    false,
+    'an export described in a comment is not an exported symbol',
+  );
   // Write context must not select the signal.
   assert.ok(!sig.contexts.includes('write'));
 });
@@ -343,6 +498,18 @@ test('post signal new-config-surface: positive and negative', () => {
     sig.check(view({ addedContent: 'const x = 1 + 2;\n' })),
     false,
   );
+  assert.equal(
+    sig.check(view({ addedContent: '// defineConfig may be added later\n' })),
+    false,
+  );
+  assert.equal(
+    sig.check(view({ addedContent: 'const note = "call getConfig later";\n' })),
+    false,
+  );
+  assert.equal(
+    sig.check(view({ addedContent: 'const pattern = /defineConfig\\(/;\n' })),
+    false,
+  );
 });
 
 test('post signal single-call-wrapper is deleted', () => {
@@ -358,6 +525,8 @@ test('post signal single-call-wrapper is deleted', () => {
 
 test('post signal unused-default-param: positive and negative', () => {
   const sig = POST_SIGNALS.find((s) => s.id === 'unused-default-param');
+  assert.match(sig.message, /never read/i);
+  assert.doesNotMatch(sig.message, /no call site passes/i);
   assert.equal(
     sig.check(view({ content: 'function load(path, opts = {}){ return read(path) }\n' })),
     true,
@@ -370,6 +539,48 @@ test('post signal unused-default-param: positive and negative', () => {
       }),
     ),
     false,
+  );
+  assert.equal(
+    sig.check(view({ content: '// function future(timeout = 30) {}\n' })),
+    false,
+  );
+  assert.equal(
+    sig.check(view({ content: 'const note = "function future(timeout = 30) {}";\n' })),
+    false,
+  );
+  assert.equal(
+    sig.check(view({ content: 'const pattern = /function future(timeout = 30)/;\n' })),
+    false,
+  );
+  assert.equal(
+    sig.check(
+      view({
+        content:
+          'function greeting(prefix = "Hi") { return `${prefix}, world`; }\n',
+      }),
+    ),
+    false,
+    'a parameter used inside a template interpolation is not unused',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        content:
+          'function greeting(prefix = "Hi") { return `literal prefix only`; }\n',
+      }),
+    ),
+    true,
+    'literal template text must not count as a parameter reference',
+  );
+  assert.equal(
+    sig.check(
+      view({
+        content:
+          "const apiError = (parsed && parsed.terminal_reason === 'api_error') || status >= 400;\n",
+      }),
+    ),
+    false,
+    'a parenthesized assignment is not an arrow-function parameter list',
   );
 });
 
@@ -451,6 +662,37 @@ test('one challenge per signal per session', async () => {
       normalize({ ...payload, session_id: 'once-b' }),
     );
     assert.ok(other?.hookSpecificOutput?.additionalContext.includes('one implementation'));
+  });
+});
+
+test('one challenge per signal remains true across concurrent hook processes', async () => {
+  await withStateDir(async (dir) => {
+    writeMode('full');
+    const payload = JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      session_id: 'parallel-once',
+      cwd: dir,
+      tool_name: 'Write',
+      tool_input: {
+        file_path: path.join(dir, 'parallel.ts'),
+        content:
+          'interface Store { get(k: string): string }\n' +
+          'class MemoryStore implements Store { get(k: string) { return k } }\n',
+      },
+    });
+
+    const results = await Promise.all([
+      runHookScript('pre-write.js', payload, { OFFCUT_STATE_DIR: dir }),
+      runHookScript('pre-write.js', payload, { OFFCUT_STATE_DIR: dir }),
+    ]);
+    assert.deepEqual(results.map((result) => result.code), [0, 0]);
+    const emitted = results.filter((result) => result.stdout.trim());
+    assert.equal(
+      emitted.length,
+      1,
+      `concurrent hooks emitted ${emitted.length} copies of one session signal`,
+    );
+    assert.match(emitted[0].stdout, /one implementation/i);
   });
 });
 

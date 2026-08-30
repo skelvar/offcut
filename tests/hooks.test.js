@@ -24,19 +24,22 @@ import {
   paths,
   DEFAULT_MODE,
 } from '../hooks/state.js';
+import * as stateModule from '../hooks/state.js';
 import {
   loadRuleset,
   stripFrontmatter,
   sessionContext,
   FALLBACK_RULESET,
   REMINDER,
+  SESSION_FOOTER,
 } from '../hooks/rules.js';
 import {
-  parseModeCommand,
+  parseOffcutCommand,
   shouldRemind,
   handlePrompt,
   reminderText,
 } from '../hooks/prompt.js';
+import * as promptModule from '../hooks/prompt.js';
 import { handleActivate } from '../hooks/activate.js';
 import { handleSubagent } from '../hooks/subagent.js';
 
@@ -215,6 +218,41 @@ test('state: activateSession seeds from default', async () => {
   });
 });
 
+test('state: session overrides do not cross concurrent conversations', async () => {
+  await withStateDir(() => {
+    writeDefaultMode('full');
+    clearMode();
+
+    assert.equal(activateSession('alpha', 'startup'), 'full');
+    assert.equal(activateSession('beta', 'startup'), 'full');
+    assert.equal(writeMode('off', 'alpha'), true);
+
+    assert.equal(readMode('alpha'), 'off');
+    assert.equal(readMode('beta'), 'full');
+    assert.equal(
+      activateSession('gamma', 'startup'),
+      'full',
+      'a new session inherited alpha\'s temporary override instead of the default',
+    );
+  });
+});
+
+test('state: default changes affect the current and future sessions, not existing peers', async () => {
+  await withStateDir(() => {
+    writeDefaultMode('full');
+    clearMode();
+    activateSession('alpha', 'startup');
+    activateSession('beta', 'startup');
+
+    writeDefaultMode('strict');
+    writeMode('strict', 'alpha');
+
+    assert.equal(readMode('alpha'), 'strict');
+    assert.equal(readMode('beta'), 'full');
+    assert.equal(activateSession('gamma', 'startup'), 'strict');
+  });
+});
+
 test('state: bumpTurn increments', async () => {
   await withStateDir(() => {
     resetTurn('s1');
@@ -271,24 +309,93 @@ test('rules: reminder under 60 tokens (rough)', () => {
   assert.equal(reminderText(), REMINDER);
 });
 
+test('rules: Q2 is not a pre-write repo-search ritual', () => {
+  const { text } = loadRuleset(root);
+  assert.doesNotMatch(text, /Search this repository before writing/i);
+  assert.doesNotMatch(FALLBACK_RULESET, /Search this repository before writing/i);
+  assert.match(text, /Reuse files already open this turn/i);
+  assert.doesNotMatch(REMINDER, /No tool preamble/);
+});
+
+test('state: concise is the default and style overrides are session scoped', async () => {
+  await withStateDir((dir) => {
+    assert.equal(typeof stateModule.readStyle, 'function');
+    assert.equal(typeof stateModule.writeStyle, 'function');
+    assert.equal(typeof stateModule.normalizeStyle, 'function');
+    assert.equal(stateModule.DEFAULT_STYLE, 'concise');
+    assert.equal(stateModule.readStyle('alpha'), 'concise');
+    assert.equal(stateModule.writeStyle('normal', 'alpha'), true);
+    assert.equal(stateModule.readStyle('alpha'), 'normal');
+    assert.equal(stateModule.readStyle('beta'), 'concise');
+    assert.equal(stateModule.writeStyle('loud', 'alpha'), false);
+    assert.equal(stateModule.readStyle('alpha'), 'normal');
+
+    stateModule.writeStyle('normal');
+    fs.writeFileSync(path.join(dir, 'style-alpha'), 'corrupt\n', 'utf8');
+    assert.equal(stateModule.readStyle('alpha'), 'concise');
+  });
+});
+
+test('rules: canonical and fallback concise styles preserve required content', () => {
+  const shipped = loadRuleset(root).text;
+  for (const text of [shipped, FALLBACK_RULESET]) {
+    assert.match(text, /OFFCUT STYLE: normal/);
+    assert.match(text, /result, evidence, material caveat/i);
+    assert.match(text, /exact errors/i);
+    assert.match(text, /security or privacy\s+warnings/i);
+    assert.match(text, /never reduces engineering work/i);
+  }
+  assert.doesNotMatch(REMINDER, /OFFCUT STYLE|tool preamble|exact errors/i);
+  assert.doesNotMatch(SESSION_FOOTER, /No tool preamble/i);
+});
+
+test('rules: default concise keeps a stable prefix and normal is a late override', () => {
+  const concise = sessionContext('full', root, 'concise');
+  const normal = sessionContext('full', root, 'normal');
+  const markerLines = (text) =>
+    text.split(/\r?\n/).filter((line) => /^OFFCUT STYLE: (?:concise|normal)$/.test(line));
+
+  assert.deepEqual(markerLines(concise), []);
+  assert.deepEqual(markerLines(normal), ['OFFCUT STYLE: normal']);
+  assert.ok(normal.startsWith(`${concise}\n\n`));
+  assert.doesNotMatch(normal, /^OFFCUT STYLE: concise$/m);
+});
+
 // --- prompt commands ---
 
-test('parseModeCommand: mode switches', () => {
-  assert.deepEqual(parseModeCommand('/offcut lite').mode, 'lite');
-  assert.deepEqual(parseModeCommand('/offcut full').type, 'set');
-  assert.deepEqual(parseModeCommand('/offcut strict').mode, 'strict');
-  assert.deepEqual(parseModeCommand('/offcut off').mode, 'off');
+test('parseOffcutCommand: mode switches', () => {
+  assert.deepEqual(parseOffcutCommand('/offcut lite').mode, 'lite');
+  assert.deepEqual(parseOffcutCommand('/offcut full').type, 'set');
+  assert.deepEqual(parseOffcutCommand('/offcut strict').mode, 'strict');
+  assert.deepEqual(parseOffcutCommand('/offcut off').mode, 'off');
 });
 
-test('parseModeCommand: default and deactivation phrases', () => {
-  assert.equal(parseModeCommand('/offcut default lite').type, 'default');
-  assert.equal(parseModeCommand('stop offcut').mode, 'off');
-  assert.equal(parseModeCommand('normal mode').mode, 'off');
+test('parseOffcutCommand: default and deactivation phrases', () => {
+  assert.equal(parseOffcutCommand('/offcut default lite').type, 'default');
+  assert.equal(parseOffcutCommand('stop offcut').mode, 'off');
+  assert.equal(parseOffcutCommand('normal mode').mode, 'off');
 });
 
-test('parseModeCommand: other /offcut skips reminder', () => {
-  assert.equal(parseModeCommand('/offcut review').type, 'command');
-  assert.equal(parseModeCommand('add caching'), null);
+test('parseOffcutCommand: other /offcut skips reminder', () => {
+  assert.equal(parseOffcutCommand('/offcut review').type, 'command');
+  assert.equal(parseOffcutCommand('add caching'), null);
+});
+
+test('parseOffcutCommand: concise style grammar is exact', () => {
+  assert.equal(typeof promptModule.parseOffcutCommand, 'function');
+  assert.deepEqual(promptModule.parseOffcutCommand('/offcut concise on'), {
+    type: 'style',
+    style: 'concise',
+    message: 'OFFCUT STYLE: concise. Concise responses are on for this session.',
+  });
+  assert.deepEqual(promptModule.parseOffcutCommand('/offcut concise off'), {
+    type: 'style',
+    style: 'normal',
+    message:
+      'OFFCUT STYLE: normal. Concise responses are off for this session; Offcut construction rules remain active.',
+  });
+  assert.equal(promptModule.parseOffcutCommand('/offcut concise')?.type, 'command');
+  assert.equal(promptModule.parseOffcutCommand('/offcut concise maybe')?.type, 'command');
 });
 
 test('shouldRemind: off never, full always, lite every 3rd', () => {
@@ -343,6 +450,162 @@ test('handlePrompt: mode command switches and confirms', async () => {
     );
     assert.equal(readMode(), 'lite');
     assert.match(out.hookSpecificOutput.additionalContext, /lite/);
+  });
+});
+
+test('handlePrompt: concise off changes style, not Offcut mode', async () => {
+  await withStateDir(async () => {
+    assert.equal(typeof stateModule.readStyle, 'function');
+    writeMode('full', 'alpha');
+    const out = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'alpha',
+        prompt: '/offcut concise off',
+      }),
+    );
+    assert.equal(readMode('alpha'), 'full');
+    assert.equal(stateModule.readStyle('alpha'), 'normal');
+    assert.match(out.hookSpecificOutput.additionalContext, /OFFCUT STYLE: normal/);
+    assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /OFFCUT ACTIVE/);
+    assert.equal(stateModule.readStyle('beta'), 'concise');
+  });
+});
+
+test('style lifecycle keeps session overrides isolated and invalid commands inert', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    writeMode('full', 'alpha');
+    stateModule.writeStyle('normal', 'alpha');
+
+    for (const source of ['resume', 'clear', 'compact']) {
+      const out = await handleActivate(
+        normalize({ hook_event_name: 'SessionStart', source, session_id: 'alpha' }),
+      );
+      assert.match(out.hookSpecificOutput.additionalContext, /^OFFCUT STYLE: normal$/m);
+      assert.equal(stateModule.readStyle('alpha'), 'normal');
+    }
+
+    const invalid = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'alpha',
+        prompt: '/offcut concise maybe',
+      }),
+    );
+    assert.equal(invalid, null);
+    assert.equal(readMode('alpha'), 'full');
+    assert.equal(stateModule.readStyle('alpha'), 'normal');
+
+    writeMode('off', 'silent');
+    stateModule.writeStyle('normal', 'silent');
+    assert.equal(
+      await handleActivate(
+        normalize({ hook_event_name: 'SessionStart', source: 'resume', session_id: 'silent' }),
+      ),
+      null,
+    );
+  });
+});
+
+test('handlePrompt: stopping one session does not silence another or a new session', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'alpha' }),
+    );
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'beta' }),
+    );
+
+    await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'stop offcut',
+        session_id: 'alpha',
+      }),
+    );
+    const beta = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'build a parser',
+        session_id: 'beta',
+      }),
+    );
+    const gamma = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'gamma' }),
+    );
+
+    assert.equal(readMode('alpha'), 'off');
+    assert.equal(readMode('beta'), 'full');
+    assert.match(beta.hookSpecificOutput.additionalContext, /OFFCUT ACTIVE/);
+    assert.match(gamma.hookSpecificOutput.additionalContext, /OFFCUT MODE: full/);
+  });
+});
+
+test('handlePrompt: default command changes this and future sessions, not an existing peer', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'alpha' }),
+    );
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'beta' }),
+    );
+
+    const changed = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: '/offcut default strict',
+        session_id: 'alpha',
+      }),
+    );
+    const gamma = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'gamma' }),
+    );
+
+    assert.match(changed.hookSpecificOutput.additionalContext, /default.*strict/i);
+    assert.equal(readMode('alpha'), 'strict');
+    assert.equal(readMode('beta'), 'full');
+    assert.equal(readMode('gamma'), 'strict');
+    assert.match(gamma.hookSpecificOutput.additionalContext, /OFFCUT MODE: strict/);
+  });
+});
+
+test('handleActivate: a new fork never inherits an unrelated active session mode', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'alpha' }),
+    );
+    await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: '/offcut off',
+        session_id: 'alpha',
+      }),
+    );
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'beta' }),
+    );
+    await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: '/offcut strict',
+        session_id: 'beta',
+      }),
+    );
+
+    await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'fork', session_id: 'child' }),
+    );
+
+    assert.equal(readMode('alpha'), 'off');
+    assert.equal(readMode('beta'), 'strict');
+    assert.equal(readMode('child'), 'full');
   });
 });
 
@@ -577,6 +840,76 @@ test('statusline.sh reflects mode', async (t) => {
     });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout.trim(), /offcut:strict/);
+  });
+});
+
+test('handleActivate and subagents deliver only the normal style override', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    stateModule.writeStyle('normal', 'alpha');
+
+    const normal = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'resume', session_id: 'alpha' }),
+    );
+    const normalText = normal.hookSpecificOutput.additionalContext;
+    assert.match(normalText, /^OFFCUT STYLE: normal$/m);
+    assert.doesNotMatch(normalText, /^OFFCUT STYLE: concise$/m);
+
+    const child = await handleSubagent(
+      normalize({
+        hook_event_name: 'SubagentStart',
+        session_id: 'alpha',
+        agent_id: 'child',
+        agent_type: 'general-purpose',
+      }),
+    );
+    assert.match(child.hookSpecificOutput.additionalContext, /^OFFCUT STYLE: normal$/m);
+
+    const fresh = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'fork', session_id: 'beta' }),
+    );
+    assert.doesNotMatch(fresh.hookSpecificOutput.additionalContext, /^OFFCUT STYLE:/m);
+  });
+});
+
+test('statusline.sh uses the session id from status JSON', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('statusline.sh exercised on POSIX CI');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    writeMode('full', 'beta');
+    writeMode('off', 'alpha');
+    const script = path.join(root, 'hooks', 'statusline.sh');
+    const run = (sessionId) =>
+      new Promise((resolve, reject) => {
+        const child = spawn('bash', [script], {
+          env: { ...process.env, OFFCUT_STATE_DIR: dir },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (d) => {
+          stdout += d;
+        });
+        child.stderr.on('data', (d) => {
+          stderr += d;
+        });
+        child.on('close', (code) => resolve({ code, stdout, stderr }));
+        child.on('error', reject);
+        child.stdin.end(JSON.stringify({ session_id: sessionId }));
+      });
+
+    const beta = await run('beta');
+    const alpha = await run('alpha');
+    const unknown = await run('not-started');
+    assert.equal(beta.code, 0, beta.stderr);
+    assert.equal(alpha.code, 0, alpha.stderr);
+    assert.equal(unknown.code, 0, unknown.stderr);
+    assert.equal(beta.stdout.trim(), 'offcut:full');
+    assert.equal(alpha.stdout.trim(), 'offcut:off');
+    assert.equal(unknown.stdout.trim(), 'offcut:-');
   });
 });
 

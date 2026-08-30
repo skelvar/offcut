@@ -561,19 +561,51 @@ function omitCompleted(jobs, outcomes, stage, backend) {
   );
 }
 
+function repoRelativeEvidencePath(repoRoot, filePath) {
+  const relative = path
+    .relative(path.resolve(repoRoot), path.resolve(filePath))
+    .replace(/\\/g, '/');
+  if (
+    !relative ||
+    relative === '..' ||
+    relative.startsWith('../') ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(`raw-result evidence path escapes repository: ${filePath}`);
+  }
+  return relative;
+}
+
+export function rawEvidencePaths({
+  repoRoot = path.dirname(BENCH_ROOT),
+  manifestPath = EFFICACY_MANIFEST_PATH,
+  costPath = EFFICACY_COST_PATH,
+  preflightLedgerPath = CODEX_PREFLIGHT_LEDGER_PATH,
+  tasksDir = EFFICACY_TASKS_DIR,
+  runsDir = path.join(repoRoot, 'bench', 'runs'),
+} = {}) {
+  return [
+    repoRelativeEvidencePath(repoRoot, manifestPath),
+    repoRelativeEvidencePath(repoRoot, costPath),
+    repoRelativeEvidencePath(repoRoot, preflightLedgerPath),
+    repoRelativeEvidencePath(repoRoot, tasksDir),
+    repoRelativeEvidencePath(repoRoot, runsDir),
+  ];
+}
+
 export function assertRawGateCommitted({
   spawnGit = spawnSync,
   repoRoot = path.dirname(BENCH_ROOT),
+  evidencePaths = rawEvidencePaths({ repoRoot }),
 } = {}) {
-  for (const relative of [
-    'bench/efficacy-manifest.jsonl',
-    'bench/efficacy-cost.jsonl',
-  ]) {
-    const tracked = spawnGit('git', ['ls-files', '--error-unmatch', relative], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    });
-    if (tracked.status !== 0) throw new Error(`raw-result commit gate not met: ${relative}`);
+  const paths = [...new Set(evidencePaths.map(String))];
+  const tracked = spawnGit(
+    'git',
+    ['ls-files', '--error-unmatch', '--', ...paths],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  if (tracked.status !== 0) {
+    throw new Error('raw-result commit gate not met: efficacy evidence is untracked or missing');
   }
   const status = spawnGit(
     'git',
@@ -581,9 +613,7 @@ export function assertRawGateCommitted({
       'status',
       '--porcelain',
       '--',
-      'bench/efficacy-manifest.jsonl',
-      'bench/efficacy-cost.jsonl',
-      'bench/runs',
+      ...paths,
     ],
     { cwd: repoRoot, encoding: 'utf8' },
   );
@@ -1087,7 +1117,7 @@ function efficacyReportMarkdown(analysis) {
   ].join('\n');
 }
 
-function rawEvidenceCommit(spawnGit, repoRoot) {
+function rawEvidenceCommit(spawnGit, repoRoot, evidencePaths) {
   const result = spawnGit(
     'git',
     [
@@ -1095,9 +1125,7 @@ function rawEvidenceCommit(spawnGit, repoRoot) {
       '-1',
       '--format=%H',
       '--',
-      'bench/efficacy-manifest.jsonl',
-      'bench/efficacy-cost.jsonl',
-      'bench/runs',
+      ...evidencePaths,
     ],
     { cwd: repoRoot, encoding: 'utf8' },
   );
@@ -1111,6 +1139,7 @@ function rawEvidenceCommit(spawnGit, repoRoot) {
 export function publishEfficacyReport({
   repoRoot = path.dirname(BENCH_ROOT),
   manifestPath = EFFICACY_MANIFEST_PATH,
+  costPath = EFFICACY_COST_PATH,
   runsDir = RUNS_DIR,
   tasksDir = EFFICACY_TASKS_DIR,
   preflightLedgerPath = CODEX_PREFLIGHT_LEDGER_PATH,
@@ -1118,9 +1147,18 @@ export function publishEfficacyReport({
   reportPath = EFFICACY_RESULTS_PATH,
   spawnGit = spawnSync,
 } = {}) {
-  assertRawGateCommitted({ spawnGit, repoRoot });
-  const rawCommitSha = rawEvidenceCommit(spawnGit, repoRoot);
   const manifestEntries = readManifest(manifestPath);
+  const costEntries = readCostLedger(costPath);
+  const evidencePaths = rawEvidencePaths({
+    repoRoot,
+    manifestPath,
+    costPath,
+    preflightLedgerPath,
+    tasksDir,
+    runsDir,
+  });
+  assertRawGateCommitted({ spawnGit, repoRoot, evidencePaths });
+  const rawCommitSha = rawEvidenceCommit(spawnGit, repoRoot, evidencePaths);
   const scoped = manifestEntries.filter(
     (entry) => entry.backend === CODEX_BACKEND_ID,
   );

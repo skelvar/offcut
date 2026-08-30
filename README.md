@@ -22,15 +22,14 @@ It is named after what it finds, like `lint`.
 $ node scripts/scan.mjs src/
 
 src/api/index.js (1)
-  [exported-unused]         exported symbol with no caller — did anyone ask for it?
+  [exported-unused]         exported symbol has no other reference in the scanned scope — did anyone ask for it?
 src/config/loader.ts (1)
   [speculative-abstraction] one implementation — is the indirection carrying its weight?
 ```
 
-Six deterministic checks. No model call, no network, no dependencies — about
-0.3 ms per file, so a 3,000-file tree scans in under a second. Every scan prints
-its own file count and timing, so that figure is checkable on your code rather
-than only on ours.
+Six deterministic checks. No model call, no network, no dependencies. Tree
+scans print their own file count and elapsed time, so performance is measured on
+the checkout being scanned rather than extrapolated from ours.
 
 ## Install
 
@@ -50,6 +49,16 @@ node ~/.offcut-src/tools/install.mjs
 
 Codex headless runs need trusted hooks, or write hooks stay silent — grant
 trust, or pass `--dangerously-bypass-hook-trust`.
+
+`install.mjs` installs lifecycle hooks only. To add the three one-shot command
+skills globally, ask Codex's built-in `$skill-installer` to install these GitHub
+folders, then restart Codex:
+
+```text
+https://github.com/xyzbk/offcut/tree/main/skills/offcut-review
+https://github.com/xyzbk/offcut/tree/main/skills/offcut-audit
+https://github.com/xyzbk/offcut/tree/main/skills/offcut-help
+```
 
 ### Cursor
 
@@ -74,13 +83,15 @@ tool call, not speak to the model. Use the generated ruleset and the skills:
 ```bash
 cp ~/.offcut-src/AGENTS.md .              # always-on ruleset
 mkdir -p .grok/skills
+ln -s ~/.offcut-src/skills/offcut        .grok/skills/offcut
 ln -s ~/.offcut-src/skills/offcut-review .grok/skills/offcut-review
 ln -s ~/.offcut-src/skills/offcut-audit  .grok/skills/offcut-audit
+ln -s ~/.offcut-src/skills/offcut-help   .grok/skills/offcut-help
 ```
 
 ### Anything else
 
-Copy `AGENTS.md` to your repo root. Most agents read it as project rules. This
+Copy `AGENTS.md` to your repo root on hosts that load it as project rules. This
 hook-less fallback is verified on Cursor and Grok Build; the ruleset arrives,
 but modes and write-time challenges still need native hooks.
 
@@ -107,6 +118,36 @@ only if you also want to discard the persisted mode and diagnostics.
 
 ## Commands
 
+### Response style
+
+Concise responses are the default while Offcut is active. The style leads with
+the result and removes routine narration, but preserves evidence, material
+caveats, verification, exact errors, and safety-critical content.
+
+```text
+/offcut concise on     # concise responses for this session
+/offcut concise off    # normal responses; construction checks stay active
+```
+
+This does not edit Claude `outputStyle`, Codex `model_verbosity`, Cursor,
+Gemini, or other harness settings. `/offcut off` remains the separate command
+that disables Offcut itself. Token savings are not claimed until the guarded
+live comparison passes both cost and answer-completeness gates.
+
+The local benchmark is plan-only by default:
+
+```powershell
+node bench/live-style.mjs busy-helper --reps 2
+```
+
+Its three arms are normal prose, the one-line `Be terse.` control, and Offcut
+concise. Paid execution requires two explicit flags; generated receipts remain
+**NOT CLAIMABLE** until every arm passes task acceptance and an explicit blind
+answer-completeness review. Cold and warm cache evidence is reported separately.
+See [the response-style benchmark protocol](docs/development/STYLE-BENCHMARK.md).
+
+### Review and audit
+
 | Command | Does |
 |---|---|
 | `/offcut-review` | Run the checks against a diff |
@@ -124,9 +165,10 @@ Reads only. No network, no writes, no subprocesses.
 
 ## Accuracy
 
-The labeled corpora ship in this repository and reproduce exactly. The real-code
-corpus does not — `realcode.mjs` scans whichever Claude Code plugins are
-installed on the machine running it, so your totals will differ from these.
+The labeled corpora and their dated results ship in this repository. The
+real-code corpus is machine-dependent — `realcode.mjs` scans whichever Claude
+Code plugins are installed on the machine running it, so your totals will differ
+from these.
 
 ```bash
 node bench/fp.mjs        # labeled negatives + positive corpus
@@ -135,56 +177,53 @@ node bench/realcode.mjs  # whatever is installed locally
 
 | Corpus | What it is | Result |
 |---|---|---|
-| **Labeled negatives** | 95 accepted benchmark solutions — any fire is definitively wrong | **0/95**, every check, both contexts |
+| **Labeled negatives** | 95 accepted benchmark solutions — any fire is definitively wrong | **0/95** for every check applicable to write/diff context |
 | **Positive corpus** | hand-written true positives, one per check | every shipping check fires |
-| **Real code** | 65 eligible JS/TS files across 15 *independent* plugins | **2 of 65** — too small a sample to call a rate |
+| **Real code** | current v0.2 corpus: 65 eligible JS/TS files across 15 *independent* plugins | **8 of 65** — too small a sample to call a stable rate |
 
 The two labeled corpora matter together: a detector scores zero on negatives by
 never firing, so the positive corpus is what stops a silent tool from looking
 perfect.
 
-**Read the real-code row carefully** (measured 2026-08-27). That run walked
-6,878 files, but 5,960 of them were JSON, Markdown, shell or Python — file types
-the checks are gated off entirely ([Limits](#limits)) and which therefore cannot
-fire. Reporting "1.1% of all files" would be arithmetically true and misleading,
-so only the 918 files a check actually examines are counted.
+**Read the real-code row carefully** (rerun 2026-08-29). That run walked 1,318
+files, but only 149 had an extension examined by a repository signal. Reporting
+"1.3% of all files" would be arithmetically true and misleading, so the table
+below keeps the eligible denominator visible.
 
-Of those 918, most are not an independent sample. The corpus is whatever plugins
-happen to be installed on the measuring machine, and on this machine that is
-mostly Offcut itself: 810 eligible files (88%) are Offcut's own source, counted
-twice because the working tree and the installed plugin copy are both present. A
-further 43 belong to ponytail, the tool Offcut is to be benchmarked against —
-scoring our own checks over the comparison subject is not independent of either.
-That leaves **65 genuinely independent files, with 2 findings.**
+The corpus is whatever plugins happen to be installed on the measuring machine.
+Cached Offcut copies are now excluded because the working tree already supplies
+the self corpus and cached copies may contain generated benchmark runs. A further
+43 eligible files belong to ponytail, the comparison subject. That leaves **65
+genuinely independent files, with 8 findings.**
 
 | Group | Eligible files | Fired |
 |---|---:|---:|
-| Independent third-party | 65 | 2 |
-| Offcut's own source | 810 | 76 |
+| Independent third-party | 65 | 8 |
+| Offcut's own source | 41 | 9 |
 | Benchmark subject | 43 | 0 |
 
-Earlier versions of this table blended all three into a single "8.5% of eligible
-files". That figure was mostly Offcut measuring itself. `realcode.mjs` now
+Earlier versions blended all three into one rate. `realcode.mjs` now
 classifies every project, prints each group with its denominator, and names the
 independent row as the only publishable one — so the composition cannot be
 mistaken again.
 
 **On a codebase it had never seen** — a private 259-file project — Offcut
-produced 2 findings and both were real dead exports. Getting there required
+produced 2 scope-relative export findings and both were confirmed manually as
+dead. Getting there required
 fixing two bugs the corpora above had missed, which is why unseen code is worth
 more than more test fixtures. That project is private, so this is the one
 number here you cannot re-run.
 
 ### The checks
 
-| Check | Fires when |
-|---|---|
-| `speculative-abstraction` | an interface or abstract class has exactly one implementor |
-| `exported-unused` | an export has no caller anywhere in the repo |
-| `new-dependency` | a dependency manifest gains a package |
-| `new-config-surface` | a config system appears where a constant would do |
-| `unused-default-param` | a parameter has a default no call site passes |
-| `large-first-write` | a new file lands over the line threshold |
+| Check | Fires when | Scope |
+|---|---|---|
+| `speculative-abstraction` | an interface or abstract class has exactly one implementor in the file or a directly importing module | pending writes, diffs, repository audits |
+| `exported-unused` | an export has no other textual reference in the scanned multi-module corpus | repository audits only; relative to the paths scanned |
+| `new-dependency` | a dependency manifest gains a package and the dependency section is present in the available change | pending writes and diffs only |
+| `new-config-surface` | a known config-framework API appears in added code | pending writes and diffs only |
+| `unused-default-param` | a parameter has a default but is not read | pending writes, diffs, repository audits |
+| `large-first-write` | a newly created JS/TS file exceeds the substantive-line threshold | pending writes and diffs only |
 
 Three more were **deleted on evidence** — `config-for-constant` fired on 47.9%
 of real files, `single-call-wrapper` matched a pattern that was not a defect,
@@ -203,7 +242,7 @@ changes what an agent builds, and could not.
 | Framing | Does "is it justified?" beat "what's cheapest?" | **No** — and **0 structural over-building across 90 runs** |
 | Efficacy discovery | When a signal-shaped opportunity exists, does `full` remove it? | **No estimate** — Codex `gpt-5.6-sol` produced **0/24** targets on 12 tickets, so the frozen rule never opened `off` vs `full`. Acceptance 22/24; frozen primary 17/24. |
 
-The last one closed the obvious objection to the first. It used multi-file,
+The framing experiment addressed the obvious objection to the premise run. It used multi-file,
 placement-ambiguous tasks with ambient future pressure — the conditions where
 over-engineering should appear — across three arms and five reps. It did not
 appear on any run, under any framing.
@@ -219,23 +258,31 @@ runs are published under `bench/`, with one documented exception noted in
 simply not change what a modern coding model writes. That is worth knowing, and
 almost nobody measures it.
 
+The separate live reuse harness is qualitative, not efficacy evidence. Its
+corrected 16-run acceptance result is 14/16; the five-ticket grid shows a 2.47%
+increase in noncached input for `full`, with one replicate and no terse control.
+See [`bench/LIVE-REUSE-RESULTS.md`](bench/LIVE-REUSE-RESULTS.md). It supports no
+token-saving claim and does not justify another hook.
+
 ## Limits
 
 ### The persistent mode is unproven
 
 Not disproven — unproven, on tasks up to multi-file scale, for one model. Use
-it if you like the reminder. The review and audit commands stand on the
-accuracy numbers above and do not depend on it.
+it if you like the reminder. The review and audit commands are deterministic,
+have their context limits listed above, and do not depend on the efficacy claim.
 
-### The checks are JavaScript/TypeScript only
+### Structural checks are JavaScript/TypeScript only
 
 They are syntax-level. Ungated they produced 65% false positives on Python and
 100% on JSON, so they are gated by extension.
 
 | | |
 |---|---|
-| Full | `.js` `.mjs` `.cjs` `.ts` `.tsx` `.jsx` + dependency manifests |
-| Reminder only | everything else |
+| Structural signals | `.js` `.mjs` `.cjs` `.ts` |
+| Dependency checks | `package.json`, `requirements.txt`, `go.mod`, `Cargo.toml` |
+| No structural signals | `.jsx` `.tsx` and other source languages the lightweight lexer does not parse |
+| Reminder only | every remaining file type |
 
 On a Python project Offcut activates, switches modes and re-asks the question,
 but will not challenge an individual write, and an audit of it reports nothing.
@@ -255,12 +302,16 @@ install.
 | ChatGPT, other skill hosts | no | yes |
 | Cursor 3.17.19 | full | yes |
 
-### No comparison to other tools
+### No competitor win claim
 
-Offcut has not been benchmarked against ponytail or anything similar, and that
-comparison is **deferred rather than scheduled**. The reason is the real-code row
-above: 65 independent files is too thin a base to compare anything against. If it
-ever runs, the numbers go here whichever way they fall.
+Offcut has not been benchmarked against Caveman, Ponytail, or anything similar.
+The response-style harness now defines the controls and claim gates needed
+before publishing a percentage, but competitor arms remain deferred. Caveman
+compresses prose while Ponytail governs construction, so treating them as one
+token leaderboard would measure different products as if they were equivalent.
+The [benchmark protocol](docs/development/STYLE-BENCHMARK.md) defines the source,
+license, acceptance, completeness, and cache controls a future comparison must
+meet. The numbers go here whichever way they fall.
 
 Two confounds were found and removed while establishing that, so nobody has to
 rediscover them. Ponytail's source sits in the plugin cache that feeds the
@@ -274,7 +325,7 @@ decided an activation comparison before it ran;
 
 ```
 SessionStart      write mode file, deliver the ruleset
-UserPromptSubmit  re-ask the question (~60 tokens)
+UserPromptSubmit  re-ask the question or switch session response style
 PreToolUse        run checks on the pending write, challenge via context
 PostToolUse       name what got added
 SubagentStart     subagents inherit the mode (Claude/Codex)
@@ -287,9 +338,9 @@ delivery are normalized in `hooks/host.js`. No hook script contains a host name,
 and CI enforces that.
 
 Offcut **never denies a tool call.** It knows the shape of a write, not whether
-the requirement is right. Cursor subagent inheritance returns `allow` only
-while appending the ruleset to a `Subagent` task; source-code write input is
-never rewritten.
+the requirement is right. Cursor subagent inheritance appends the ruleset to a
+`Subagent` task through an input-only rewrite and casts no permission vote;
+source-code write input is never rewritten.
 
 Every hook exits 0 on malformed input, empty stdin, a BOM, and stdin that never
 closes. A hook that hangs freezes a session, so that case is tested explicitly.
@@ -308,6 +359,10 @@ which copy of the ruleset actually reached the model, hook script presence,
 subagent coverage and language coverage. Read-only — it prints the repair
 command rather than editing your config, and exits non-zero when unhealthy so
 it works in CI.
+
+With concurrent sessions, the default diagnostic labels `active` as the latest
+session mirror rather than claiming it belongs to the caller. Statusline
+integrations that provide `session_id` display the exact session mode.
 
 Two copies can be installed at once: a checkout you edit, and a host-managed
 plugin copy that registers itself through its own bundled manifest. The host's

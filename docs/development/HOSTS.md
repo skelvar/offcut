@@ -26,6 +26,29 @@ Synthetic suite: started at **75/75**, ended at **79+/79+** after Phase 3 tests
 Install path used for E2E: `node tools/install.mjs` (absolute single-string
 commands). Uninstall verified clean afterward.
 
+## Concise style delivery (2026-08-30)
+
+Offcut's concise contract lives in the generated persistent instructions. The
+default adds no dynamic style marker; `OFFCUT STYLE: normal` is appended only
+when the user disables concise responses for a session. No path below edits a
+host's native verbosity or output-style configuration.
+
+| Host path | Default concise delivery | Session switch |
+|---|---|---|
+| Claude Code | Persistent skill plus SessionStart and subagent hook context | Hook state; applies to the command turn and later context |
+| Codex | Persistent skill plus SessionStart and subagent hook context | Hook state; no `model_verbosity` edit |
+| Cursor local | Persistent instructions plus native `additional_context` and subagent rewrite | Hook state |
+| Cursor cloud | Persistent project instructions; `SessionStart` hook currently unsupported | Explicit user command in conversation; no claimed persisted SessionStart state |
+| Grok Build | `AGENTS.md` fallback because required hook stdout is discarded | Explicit user command in conversation; no claimed hook delivery |
+| Other AGENTS/Skill hosts | Canonical Markdown contract | Explicit user instruction; no host configuration mutation |
+
+Cursor's current cloud hook matrix documents project command hooks but lists
+`sessionStart` as unavailable:
+<https://prod.cursor.com/docs/hooks#cloud-agent-support>. Claude documents that
+output styles alter the system prompt and can add input tokens; Offcut therefore
+does not force or mutate Claude's native setting:
+<https://code.claude.com/docs/en/output-styles>.
+
 ---
 
 ## Known-unverified #1 — `${CLAUDE_PLUGIN_ROOT}` path resolution
@@ -306,9 +329,10 @@ own line.
 
 ### State-pruning debt — paid in Phase 8
 
-`SessionEnd` → `hooks/session-end.js` deletes this session's `turn-*` /
-`fired-*` and prunes orphans older than 7 days. Both `offcut:` markers removed
-from `hooks/state.js`.
+`SessionEnd` → `hooks/session-end.js` deletes this session's `turn-*` and prunes
+ephemeral `turn-*` / `fired-*` / `claim-*` orphans older than 7 days. Session
+`mode-*` files persist until the user switches them. Both `offcut:` markers were
+removed from `hooks/state.js`.
 
 ---
 

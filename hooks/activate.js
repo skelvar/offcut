@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { runHook, emit, pluginRoot } from './host.js';
 import {
   activateSession,
+  readStyle,
   resetTurn,
   resetSuppression,
   writeServedRoot,
@@ -16,7 +17,7 @@ import { sessionContext } from './rules.js';
 export async function handleActivate(norm) {
   if (!norm) return null;
 
-  const mode = activateSession();
+  const mode = activateSession(norm.sessionId, norm.source);
   resetTurn(norm.sessionId);
 
   // clear/compact/fork wipe model context — re-allow challenges. resume keeps transcript.
@@ -35,7 +36,7 @@ export async function handleActivate(norm) {
 
   // Same root for the record and the emission, so what doctor reads is what the
   // model got — not a second guess at which copy this is.
-  return emit(norm.host, 'session_start', sessionContext(mode, root));
+  return emit(norm.host, 'session_start', sessionContext(mode, root, readStyle(norm.sessionId)));
 }
 
 const isMain =

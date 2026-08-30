@@ -311,6 +311,20 @@ test('corpus: git internals are not treated as projects', () => {
   assert.deepEqual(bad, [], 'a .git dir was scanned as a project');
 });
 
+test('real-code self corpus excludes generated benchmark run artifacts', () => {
+  const offcut = buildProjects(defaultProjectInputs()).find((project) => project.name === 'offcut');
+  assert.ok(offcut);
+  const normalized = offcut.files.map((file) => file.replace(/\\/g, '/'));
+  assert.equal(normalized.some((file) => file.includes('/bench/runs/')), false);
+  assert.equal(normalized.some((file) => file.includes('/bench/live-runs/')), false);
+  assert.ok(normalized.some((file) => file.endsWith('/bench/realcode.mjs')));
+});
+
+test('real-code default corpus does not rescan cached Offcut copies', () => {
+  const selfInputs = defaultProjectInputs().filter((input) => independence(input.name) === 'self');
+  assert.deepEqual(selfInputs.map((input) => input.name), ['offcut']);
+});
+
 test('exported-unused is repo-only: a new export in a diff is not dead code', () => {
   // Measured 2026-08-25: in diff context this fired on 27.4% of ACCEPTED
   // solutions — a newly added export has no caller inside the diff, which is
@@ -331,4 +345,32 @@ test('exported-unused is repo-only: a new export in a diff is not dead code', ()
       `exported-unused fired in ${ctx} context`,
     );
   }
+});
+
+test('concise style commands are documented without an efficacy claim', () => {
+  const help = fs.readFileSync(path.join(ROOT, 'skills', 'offcut-help', 'SKILL.md'), 'utf8');
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+
+  for (const text of [help, readme]) {
+    assert.match(text, /\/offcut concise on/);
+    assert.match(text, /\/offcut concise off/);
+  }
+  assert.match(help, /construction (?:mode|rules)\s+remain active/i);
+  assert.match(readme, /concise.*default.*Offcut.*active/is);
+  assert.doesNotMatch(readme, /saves? \d+%|token savings? (?:are )?proven/i);
+});
+
+test('style benchmark documents cache and completeness claim gates', () => {
+  const benchmark = fs.readFileSync(
+    path.join(ROOT, 'docs', 'development', 'STYLE-BENCHMARK.md'),
+    'utf8',
+  );
+
+  assert.match(benchmark, /normal.*terse.*concise/is);
+  assert.match(benchmark, /cold.*warm/is);
+  assert.match(benchmark, /blind.*answer-completeness/is);
+  assert.match(benchmark, /not.*comparable|not claimable/i);
+  assert.match(benchmark, /Caveman/);
+  assert.match(benchmark, /Ponytail/);
+  assert.doesNotMatch(benchmark, /Offcut (?:beats|saves) \d+%/i);
 });

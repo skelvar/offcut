@@ -7,6 +7,8 @@ import os from 'node:os';
 
 export const MODES = Object.freeze(['off', 'lite', 'full', 'strict']);
 export const DEFAULT_MODE = 'full';
+export const STYLES = Object.freeze(['concise', 'normal']);
+export const DEFAULT_STYLE = 'concise';
 
 /** SessionStart sources that wipe model context — suppression must reset. */
 export const CONTEXT_WIPING_SOURCES = Object.freeze(['clear', 'compact', 'fork']);
@@ -26,6 +28,10 @@ function defaultPath() {
   return path.join(stateDir(), 'default');
 }
 
+function activeSessionPath() {
+  return path.join(stateDir(), 'active-session');
+}
+
 function servedPath() {
   return path.join(stateDir(), 'served');
 }
@@ -33,14 +39,18 @@ function servedPath() {
 // Per-session, not global. Concurrent sessions share one state dir, so a single
 // turn file lets one session's SessionStart reset another's lite-mode cadence.
 function turnPath(sessionId) {
-  const key = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const key = sessionKey(sessionId);
   return path.join(stateDir(), key ? `turn-${key}` : 'turn');
 }
 
 // One challenge per signal per session. Concurrent sessions must not share this.
 function firedPath(sessionId) {
-  const key = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const key = sessionKey(sessionId);
   return path.join(stateDir(), key ? `fired-${key}` : 'fired');
+}
+
+function firedLockPath(sessionId) {
+  return `${firedPath(sessionId)}.lock`;
 }
 
 function claimPath(key) {
@@ -50,6 +60,16 @@ function claimPath(key) {
 
 function sessionKey(sessionId) {
   return String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
+
+function modePath(sessionId) {
+  const key = sessionKey(sessionId);
+  return key ? path.join(stateDir(), `mode-${key}`) : null;
+}
+
+function stylePath(sessionId) {
+  const key = sessionKey(sessionId);
+  return path.join(stateDir(), key ? `style-${key}` : 'style');
 }
 
 function ensureDir() {
@@ -70,22 +90,131 @@ export function normalizeMode(value) {
   return MODES.includes(m) ? m : null;
 }
 
+export function normalizeStyle(value) {
+  if (value == null) return null;
+  const style = String(value).trim().toLowerCase();
+  return STYLES.includes(style) ? style : null;
+}
+
+function acquireFiredLock(sessionId) {
+  const lock = firedLockPath(sessionId);
+  ensureDir();
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    try {
+      return { fd: fs.openSync(lock, 'wx'), lock };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') return null;
+      try {
+        const stat = fs.statSync(lock);
+        if (Date.now() - stat.mtimeMs > 5_000) {
+          const stale = `${lock}.stale-${process.pid}-${Date.now()}-${attempt}`;
+          fs.renameSync(lock, stale);
+          try {
+            fs.unlinkSync(stale);
+          } catch {
+            // The renamed stale lock no longer blocks progress.
+          }
+          continue;
+        }
+      } catch {
+        // The lock disappeared between open/stat; retry immediately.
+        continue;
+      }
+      // The critical section is a tiny synchronous JSON update. Bound waiting
+      // well below the write-hook budget rather than emitting a duplicate.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+    }
+  }
+  return null;
+}
+
+function withFiredLock(sessionId, fallback, fn) {
+  const acquired = acquireFiredLock(sessionId);
+  if (!acquired) return fallback;
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  } finally {
+    try {
+      fs.closeSync(acquired.fd);
+    } catch {
+      // best-effort
+    }
+    try {
+      fs.unlinkSync(acquired.lock);
+    } catch {
+      // best-effort; stale-lock recovery is bounded on the next call
+    }
+  }
+}
+
+function readModeFile(file) {
+  try {
+    if (!file || !fs.existsSync(file)) return null;
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').trim();
+    return normalizeMode(raw);
+  } catch {
+    return null;
+  }
+}
+
+function readStyleFile(file) {
+  try {
+    if (!file || !fs.existsSync(file)) return null;
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').trim();
+    return normalizeStyle(raw);
+  } catch {
+    return null;
+  }
+}
+
+function touchStateFile(file) {
+  try {
+    const now = new Date();
+    fs.utimesSync(file, now, now);
+  } catch {
+    // Liveness refresh is best-effort; reading the mode still succeeds.
+  }
+}
+
+function readActiveSession() {
+  try {
+    if (!fs.existsSync(activeSessionPath())) return null;
+    return sessionKey(
+      fs.readFileSync(activeSessionPath(), 'utf8').replace(/^\uFEFF/, '').trim(),
+    ) || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Inspect the active file for display/diagnostics.
  * Hooks still use readMode() which fails safe to the default.
  * @returns {{ state: 'missing' | 'ok' | 'corrupt', mode?: string, mtime?: Date, raw?: string }}
  */
-export function inspectActive() {
+function inspectModeFile(file) {
   try {
-    if (!fs.existsSync(activePath())) return { state: 'missing' };
-    const st = fs.statSync(activePath());
-    const raw = fs.readFileSync(activePath(), 'utf8').replace(/^\uFEFF/, '').trim();
+    if (!file || !fs.existsSync(file)) return { state: 'missing' };
+    const st = fs.statSync(file);
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').trim();
     const mode = normalizeMode(raw);
     if (!mode) return { state: 'corrupt', raw, mtime: st.mtime };
     return { state: 'ok', mode, mtime: st.mtime };
   } catch {
     return { state: 'missing' };
   }
+}
+
+export function inspectActive() {
+  return { ...inspectModeFile(activePath()), session: readActiveSession() };
+}
+
+export function inspectSessionMode(sessionId) {
+  const key = sessionKey(sessionId);
+  if (!key) return inspectActive();
+  return { ...inspectModeFile(modePath(key)), session: key };
 }
 
 /**
@@ -198,21 +327,58 @@ export function claimHookDelivery(key) {
 }
 
 /**
- * Current session mode. Absent/corrupt file → fall back to persisted default, else full.
+ * Current session mode. Session-scoped mode wins. A legacy global active file
+ * is read only when it has no different session owner; otherwise a session
+ * without state starts from the persisted default.
  * Fail-safe for hooks — not for display. Statusline/doctor use inspectActive().
+ * @param {string | null | undefined} [sessionId]
  * @returns {string}
  */
-export function readMode() {
-  try {
-    if (fs.existsSync(activePath())) {
-      const raw = fs.readFileSync(activePath(), 'utf8').replace(/^\uFEFF/, '').trim();
-      const mode = normalizeMode(raw);
-      if (mode) return mode;
+export function readMode(sessionId) {
+  const key = sessionKey(sessionId);
+  if (key) {
+    const scopedPath = modePath(key);
+    const scoped = readModeFile(scopedPath);
+    if (scoped) {
+      touchStateFile(scopedPath);
+      return scoped;
     }
-  } catch {
-    // missing/unreadable → fall through
+
+    // Backward compatibility for a session already running when Offcut is
+    // upgraded from the old one-global-active-file format. Once a session-aware
+    // write occurs, the owner marker prevents that legacy value crossing into a
+    // different conversation.
+    const owner = readActiveSession();
+    if (!owner || owner === key) {
+      const legacy = readModeFile(activePath());
+      if (legacy) return legacy;
+    }
+    return readDefaultMode();
   }
+
+  const active = readModeFile(activePath());
+  if (active) return active;
   return readDefaultMode();
+}
+
+/**
+ * Current response style. A session override wins; otherwise an unscoped
+ * benchmark/legacy value wins; absent or corrupt state fails safe to concise.
+ * @param {string | null | undefined} [sessionId]
+ * @returns {'concise' | 'normal'}
+ */
+export function readStyle(sessionId) {
+  const key = sessionKey(sessionId);
+  if (key) {
+    const scoped = stylePath(key);
+    const style = readStyleFile(scoped);
+    if (style) {
+      touchStateFile(scoped);
+      return style;
+    }
+    if (fs.existsSync(scoped)) return DEFAULT_STYLE;
+  }
+  return readStyleFile(stylePath()) || DEFAULT_STYLE;
 }
 
 /**
@@ -234,24 +400,27 @@ export function readDefaultMode() {
 
 /**
  * @param {string} mode
+ * @param {string | null | undefined} [sessionId]
  * @returns {boolean} whether the write succeeded
  */
-export function writeMode(mode) {
+export function writeMode(mode, sessionId) {
   const m = normalizeMode(mode);
   if (!m) return false;
   try {
     ensureDir();
-    if (m === 'off') {
+    const key = sessionKey(sessionId);
+    if (key) {
+      fs.writeFileSync(modePath(key), m + '\n', 'utf8');
+      fs.writeFileSync(activeSessionPath(), key + '\n', 'utf8');
+    } else {
       try {
-        fs.unlinkSync(activePath());
+        if (fs.existsSync(activeSessionPath())) fs.unlinkSync(activeSessionPath());
       } catch {
-        // absent is fine
+        // The legacy/global API deliberately has no session owner.
       }
-      // Keep an explicit off marker so statusline/readMode stay off for the session
-      // even when a default is set. Empty unlink alone would fall back to default.
-      fs.writeFileSync(activePath(), 'off\n', 'utf8');
-      return true;
     }
+    // Plain mirror retained for statusline/doctor and older installs. Hook
+    // decisions use the session-scoped file whenever a session id is present.
     fs.writeFileSync(activePath(), m + '\n', 'utf8');
     return true;
   } catch {
@@ -260,12 +429,25 @@ export function writeMode(mode) {
 }
 
 /**
- * Clear session mode so the next SessionStart picks up the persisted default.
+ * Clear a session mode so its next SessionStart picks up the persisted default.
+ * With no session id, clears the legacy/global active mirror.
+ * @param {string | null | undefined} [sessionId]
  * @returns {boolean}
  */
-export function clearMode() {
+export function clearMode(sessionId) {
   try {
-    if (fs.existsSync(activePath())) fs.unlinkSync(activePath());
+    const key = sessionKey(sessionId);
+    if (key) {
+      const scoped = modePath(key);
+      if (scoped && fs.existsSync(scoped)) fs.unlinkSync(scoped);
+      if (readActiveSession() === key) {
+        if (fs.existsSync(activePath())) fs.unlinkSync(activePath());
+        if (fs.existsSync(activeSessionPath())) fs.unlinkSync(activeSessionPath());
+      }
+    } else {
+      if (fs.existsSync(activePath())) fs.unlinkSync(activePath());
+      if (fs.existsSync(activeSessionPath())) fs.unlinkSync(activeSessionPath());
+    }
     return true;
   } catch {
     return false;
@@ -289,26 +471,65 @@ export function writeDefaultMode(mode) {
 }
 
 /**
- * Activate for a new session: seed active from default when no active file exists.
- * Always touches active so doctor can see when SessionStart last ran.
+ * Activate a session. Existing session state survives resume/clear/compact.
+ * A genuinely new session starts from the persisted default, never from another
+ * conversation's temporary override. Non-startup lifecycle sources may migrate
+ * the legacy global active value when upgrading a session created by v0.2.
+ * Always touches the active mirror so doctor can see when SessionStart last ran.
+ * @param {string | null | undefined} [sessionId]
+ * @param {string | null | undefined} [source]
  * @returns {string} the mode now in effect
  */
-export function activateSession() {
+export function activateSession(sessionId, source) {
   try {
     ensureDir();
-    if (!fs.existsSync(activePath())) {
-      const def = readDefaultMode();
-      writeMode(def);
-      return def;
+    const key = sessionKey(sessionId);
+    if (!key) {
+      if (!fs.existsSync(activePath())) {
+        const def = readDefaultMode();
+        writeMode(def);
+        return def;
+      }
+      const mode = readMode();
+      writeMode(mode);
+      return mode;
     }
-    // Rewrite current mode so mtime reflects this activation (doctor freshness).
-    const mode = readMode();
-    writeMode(mode);
+
+    let mode = readModeFile(modePath(key));
+    if (!mode) {
+      const lifecycle = String(source || '').toLowerCase();
+      const owner = readActiveSession();
+      const sameOrLegacyOwner = !owner || owner === key;
+      const mayBeLegacyContinuation =
+        sameOrLegacyOwner &&
+        (CONTEXT_WIPING_SOURCES.includes(lifecycle) || lifecycle === 'resume');
+      mode = mayBeLegacyContinuation
+        ? readModeFile(activePath()) || readDefaultMode()
+        : readDefaultMode();
+    }
+    writeMode(mode, key);
     return mode;
   } catch {
     // ignore
   }
-  return readMode();
+  return readMode(sessionId);
+}
+
+/**
+ * @param {string} value
+ * @param {string | null | undefined} [sessionId]
+ * @returns {boolean}
+ */
+export function writeStyle(value, sessionId) {
+  const style = normalizeStyle(value);
+  if (!style) return false;
+  try {
+    ensureDir();
+    fs.writeFileSync(stylePath(sessionId), `${style}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -391,9 +612,11 @@ function writeFiredState(sessionId, state) {
  */
 export function hasFiredSignal(sessionId, signalId) {
   if (!signalId) return false;
-  const state = readFiredState(sessionId);
-  const id = String(signalId);
-  return state.confirmed.has(id) || state.pending.has(id);
+  return withFiredLock(sessionId, true, () => {
+    const state = readFiredState(sessionId);
+    const id = String(signalId);
+    return state.confirmed.has(id) || state.pending.has(id);
+  });
 }
 
 /**
@@ -404,16 +627,14 @@ export function hasFiredSignal(sessionId, signalId) {
  */
 export function markPendingSignal(sessionId, signalId) {
   if (!signalId) return false;
-  try {
+  return withFiredLock(sessionId, false, () => {
     const state = readFiredState(sessionId);
     const id = String(signalId);
-    if (state.confirmed.has(id)) return true;
+    if (state.confirmed.has(id) || state.pending.has(id)) return false;
     state.pending.add(id);
     writeFiredState(sessionId, state);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 /**
@@ -424,16 +645,14 @@ export function markPendingSignal(sessionId, signalId) {
  */
 export function markFiredSignal(sessionId, signalId) {
   if (!signalId) return false;
-  try {
+  return withFiredLock(sessionId, false, () => {
     const state = readFiredState(sessionId);
     const id = String(signalId);
     state.pending.delete(id);
     state.confirmed.add(id);
     writeFiredState(sessionId, state);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 /**
@@ -443,7 +662,7 @@ export function markFiredSignal(sessionId, signalId) {
  * @returns {number} how many were confirmed
  */
 export function confirmPendingSignals(sessionId, filter) {
-  try {
+  return withFiredLock(sessionId, 0, () => {
     const state = readFiredState(sessionId);
     let n = 0;
     for (const id of [...state.pending]) {
@@ -454,9 +673,7 @@ export function confirmPendingSignals(sessionId, filter) {
     }
     if (n > 0) writeFiredState(sessionId, state);
     return n;
-  } catch {
-    return 0;
-  }
+  });
 }
 
 /**
@@ -467,7 +684,7 @@ export function confirmPendingSignals(sessionId, filter) {
  * @returns {number}
  */
 export function clearPendingSignals(sessionId, filter) {
-  try {
+  return withFiredLock(sessionId, 0, () => {
     const state = readFiredState(sessionId);
     let n = 0;
     for (const id of [...state.pending]) {
@@ -477,9 +694,7 @@ export function clearPendingSignals(sessionId, filter) {
     }
     if (n > 0) writeFiredState(sessionId, state);
     return n;
-  } catch {
-    return 0;
-  }
+  });
 }
 
 /**
@@ -488,17 +703,16 @@ export function clearPendingSignals(sessionId, filter) {
  * @returns {boolean}
  */
 export function resetSuppression(sessionId) {
-  try {
+  return withFiredLock(sessionId, false, () => {
     const p = firedPath(sessionId);
     if (fs.existsSync(p)) fs.unlinkSync(p);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 /**
- * Remove turn-* / fired-* / claim-* files older than maxAgeMs.
+ * Remove ephemeral turn-* / fired-* / claim-* files older than maxAgeMs.
+ * Session modes and styles are user settings and persist until explicitly switched.
  * @param {{ maxAgeMs?: number, now?: number }} [opts]
  * @returns {number} files removed
  */
@@ -552,11 +766,15 @@ export function paths() {
   return {
     dir: stateDir(),
     active: activePath(),
+    activeSession: activeSessionPath(),
     default: defaultPath(),
     served: servedPath(),
     turn: turnPath(),
     turnFor: turnPath,
     firedFor: firedPath,
+    modeFor: modePath,
+    style: stylePath(),
+    styleFor: stylePath,
     sessionKey,
   };
 }

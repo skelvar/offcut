@@ -108,6 +108,13 @@ const GROUP_LABELS = {
  */
 export function defaultProjectInputs() {
   const here = path.resolve(import.meta.dirname, '..');
+  const benchRoot = path.join(here, 'bench');
+  const benchSources = fs.existsSync(benchRoot)
+    ? fs
+        .readdirSync(benchRoot, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && /\.(?:mjs|js)$/.test(entry.name))
+        .map((entry) => path.join(benchRoot, entry.name))
+    : [];
   /** @type {ProjectInput[]} */
   const inputs = [
     {
@@ -116,8 +123,8 @@ export function defaultProjectInputs() {
       dirs: [
         path.join(here, 'hooks'),
         path.join(here, 'scripts'),
-        path.join(here, 'bench'),
         path.join(here, 'tests'),
+        ...benchSources,
       ].filter((d) => fs.existsSync(d)),
     },
   ];
@@ -138,8 +145,12 @@ export function defaultProjectInputs() {
         // walkDir only skips .git as a CHILD, so rooting a scan inside one
         // silently feeds git objects into the denominator.
         if (ver.name === '.git' || ver.name === 'node_modules') continue;
+        const name = `${plugin.name}@${ver.name}`;
+        // The working tree is already the self corpus. Cached copies add no
+        // independent evidence and may contain thousands of generated runs.
+        if (independence(name) === 'self') continue;
         inputs.push({
-          name: `${plugin.name}@${ver.name}`,
+          name,
           dirs: [path.join(pluginDir, ver.name)],
         });
       }

@@ -2,6 +2,8 @@
 // Signal definitions as data. Free of where the content came from —
 // takes a write view and returns findings. Phase 4 reuses this for review/audit.
 
+import path from 'node:path';
+
 /** @typedef {'full' | 'fragment'} WriteShape */
 /** @typedef {'write' | 'diff' | 'repo'} SignalContext */
 /**
@@ -13,11 +15,13 @@
  *   path: string | null,
  *   content: string,
  *   addedContent: string,
+ *   removedContent?: string,
  *   shape: WriteShape,
  *   pathExists: boolean | null,
  *   truncated: boolean,
  *   context?: SignalContext,
  *   corpus?: string | null,
+ *   corpusFiles?: Array<{ path: string, content: string }> | null,
  * }} WriteView
  */
 /**
@@ -35,8 +39,8 @@
 
 export const LARGE_FIRST_WRITE_LINES = 80;
 
-/** JS/TS source extensions — structural signals reason about export/function/interface. */
-export const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'];
+/** Plain JS/TS extensions understood by the lightweight lexical checks. */
+export const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts'];
 
 /** Dependency manifest extensions for new-dependency. */
 export const DEP_EXTENSIONS = ['.json', '.txt', '.toml', '.mod'];
@@ -47,6 +51,24 @@ const DEP_BASENAMES = new Set([
   'go.mod',
   'Cargo.toml',
 ]);
+
+const REGEX_PREFIX_WORDS = new Set([
+  'await',
+  'case',
+  'delete',
+  'do',
+  'else',
+  'in',
+  'instanceof',
+  'of',
+  'return',
+  'throw',
+  'typeof',
+  'void',
+  'yield',
+]);
+
+const REGEX_AFTER_CONTROL_PAREN = new Set(['for', 'if', 'while', 'with']);
 
 /**
  * Pull a path + content view out of a tool input object.
@@ -67,7 +89,12 @@ export function extractWriteFields(toolInput, shape) {
 
   if (shape === 'full') {
     const content = String(input.content ?? input.contents ?? input.new_string ?? '');
-    return { path: filePath != null ? String(filePath) : null, content, addedContent: content };
+    return {
+      path: filePath != null ? String(filePath) : null,
+      content,
+      addedContent: content,
+      removedContent: '',
+    };
   }
 
   // Fragment: prefer the added side. apply_patch carries a unified patch blob.
@@ -81,6 +108,7 @@ export function extractWriteFields(toolInput, shape) {
       path: filePath != null ? String(filePath) : null,
       content,
       addedContent: added,
+      removedContent: old,
     };
   }
 
@@ -100,6 +128,11 @@ export function extractWriteFields(toolInput, shape) {
       .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
       .map((l) => l.slice(1))
       .join('\n');
+    const removed = patch
+      .split(/\r?\n/)
+      .filter((l) => l.startsWith('-') && !l.startsWith('---'))
+      .map((l) => l.slice(1))
+      .join('\n');
     // Prefer reconstructed added lines as `content` so text signals see
     // `interface Foo` rather than `+interface Foo` from the raw patch.
     const reconstructed = added || patch;
@@ -112,6 +145,7 @@ export function extractWriteFields(toolInput, shape) {
             : null,
       content: reconstructed,
       addedContent: reconstructed,
+      removedContent: removed,
     };
   }
 
@@ -120,6 +154,7 @@ export function extractWriteFields(toolInput, shape) {
     path: filePath != null ? String(filePath) : null,
     content,
     addedContent: content,
+    removedContent: '',
   };
 }
 
@@ -135,6 +170,219 @@ function lineCount(text) {
   return String(text).split(/\r?\n/).length;
 }
 
+/**
+ * Replace comments and string/template literal bodies with whitespace while
+ * preserving line breaks. Text-level source checks must inspect code, not a
+ * comment or string that happens to describe the pattern they detect.
+ */
+function stripCommentsAndStrings(text) {
+  let output = '';
+  let mode = 'code';
+  let escaped = false;
+  let inRegexClass = false;
+  const templateExpressionDepths = [];
+  const source = String(text || '');
+
+  const closesControlCondition = (before) => {
+    if (!before.endsWith(')')) return false;
+    let depth = 0;
+    for (let index = before.length - 1; index >= 0; index -= 1) {
+      const char = before[index];
+      if (char === ')') depth += 1;
+      else if (char === '(') {
+        depth -= 1;
+        if (depth === 0) {
+          const prefix = before.slice(0, index).trimEnd();
+          const word = prefix.match(/([A-Za-z_$][\w$]*)$/)?.[1];
+          return REGEX_AFTER_CONTROL_PAREN.has(word || '');
+        }
+      }
+    }
+    return false;
+  };
+
+  const regexCanStartHere = () => {
+    const before = output.trimEnd();
+    if (!before) return true;
+    const last = before.at(-1);
+    if (/[([{=,:;!?&|+*%^~<>-]/.test(last)) return true;
+    if (last === ')' && closesControlCondition(before)) return true;
+    const word = before.match(/([A-Za-z_$][\w$]*)$/)?.[1];
+    return REGEX_PREFIX_WORDS.has(word || '');
+  };
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (mode === 'line') {
+      if (char === '\n') {
+        mode = 'code';
+        output += '\n';
+      } else {
+        output += ' ';
+      }
+      continue;
+    }
+
+    if (mode === 'block') {
+      if (char === '*' && next === '/') {
+        output += '  ';
+        index += 1;
+        mode = 'code';
+      } else {
+        output += char === '\n' ? '\n' : ' ';
+      }
+      continue;
+    }
+
+    if (mode === 'regex') {
+      output += char === '\n' ? '\n' : ' ';
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '[') {
+        inRegexClass = true;
+      } else if (char === ']') {
+        inRegexClass = false;
+      } else if (char === '/' && !inRegexClass) {
+        while (/[A-Za-z]/.test(source[index + 1] || '')) {
+          output += ' ';
+          index += 1;
+        }
+        mode = 'code';
+      }
+      continue;
+    }
+
+    if (mode === 'template') {
+      output += char === '\n' ? '\n' : ' ';
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '`') {
+        mode = 'code';
+      } else if (char === '$' && next === '{') {
+        output += ' ';
+        index += 1;
+        templateExpressionDepths.push(1);
+        mode = 'code';
+      }
+      continue;
+    }
+
+    if (mode === 'single' || mode === 'double') {
+      output += char === '\n' ? '\n' : ' ';
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (
+        (mode === 'single' && char === "'") ||
+        (mode === 'double' && char === '"')
+      ) {
+        mode = 'code';
+      }
+      continue;
+    }
+
+    if (templateExpressionDepths.length) {
+      const top = templateExpressionDepths.length - 1;
+      if (char === '{') {
+        templateExpressionDepths[top] += 1;
+        output += char;
+        continue;
+      }
+      if (char === '}') {
+        templateExpressionDepths[top] -= 1;
+        if (templateExpressionDepths[top] === 0) {
+          templateExpressionDepths.pop();
+          output += ' ';
+          mode = 'template';
+        } else {
+          output += char;
+        }
+        continue;
+      }
+    }
+
+    if (char === '/' && next === '/') {
+      output += '  ';
+      index += 1;
+      mode = 'line';
+    } else if (char === '/' && next === '*') {
+      output += '  ';
+      index += 1;
+      mode = 'block';
+    } else if (char === '/' && regexCanStartHere()) {
+      output += ' ';
+      mode = 'regex';
+      escaped = false;
+      inRegexClass = false;
+    } else if (char === "'" || char === '"' || char === '`') {
+      output += ' ';
+      mode = char === "'" ? 'single' : char === '"' ? 'double' : 'template';
+    } else {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
+function substantiveLineCount(text) {
+  return stripCommentsAndStrings(text)
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .length;
+}
+
+const PACKAGE_DEPENDENCY_KEYS = new Set([
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+]);
+
+function jsonStringKeys(text) {
+  return new Set(
+    [...String(text || '').matchAll(/"([^"]+)"\s*:\s*"[^"]*"/g)]
+      .map((match) => match[1])
+      .filter((key) => !PACKAGE_DEPENDENCY_KEYS.has(key)),
+  );
+}
+
+function packageDependencyKeys(text) {
+  try {
+    const parsed = JSON.parse(String(text || ''));
+    const keys = new Set();
+    for (const section of PACKAGE_DEPENDENCY_KEYS) {
+      const dependencies = parsed?.[section];
+      if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+        continue;
+      }
+      for (const key of Object.keys(dependencies)) keys.add(key);
+    }
+    return keys;
+  } catch {
+    return null;
+  }
+}
+
+function packageFragmentContainsKey(text, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sections = [
+    ...String(text || '').matchAll(
+      /"(?:dependencies|devDependencies|peerDependencies|optionalDependencies)"\s*:\s*\{/g,
+    ),
+  ];
+  for (const section of sections) {
+    const rest = String(text).slice((section.index || 0) + section[0].length);
+    const end = rest.search(/^\s*}/m);
+    const body = end === -1 ? rest : rest.slice(0, end);
+    if (new RegExp(`^\\s*"${escaped}"\\s*:`, 'm').test(body)) return true;
+  }
+  return false;
+}
+
 function looksLikeNewDependency(view) {
   const base = basenameOf(view.path);
   if (!DEP_BASENAMES.has(base)) return false;
@@ -142,20 +390,22 @@ function looksLikeNewDependency(view) {
   if (!text.trim()) return false;
 
   if (base === 'package.json') {
-    // A dependencies/devDependencies block gaining a package line.
-    if (!/"dependencies"|"devDependencies"|"peerDependencies"|"optionalDependencies"/.test(text)) {
-      // Fragment may be just the new package line inside an existing block.
-      // The value must look like a version spec, not a shell command: a diff
-      // adding `"check:taxonomy": "node scripts/check-taxonomy.mjs"` is a new
-      // npm script, and was reported as a new dependency (sponsorsync, f6a73e8).
-      const VERSIONISH = /^\s*"[^"]+"\s*:\s*"(?:[\^~>=<]|\d|\*|latest|next|workspace:|npm:|file:|link:|git\+|https?:)[^"]*"\s*,?\s*$/m;
-      return VERSIONISH.test(text) && !/"name"|"version"|"scripts"/.test(text)
-        ? true
-        : /"(?:dependencies|devDependencies)"\s*:\s*\{[\s\S]*?"[^"]+"\s*:\s*"[^"]+"/.test(text);
-    }
-    return /"(?:dependencies|devDependencies|peerDependencies|optionalDependencies)"\s*:\s*\{[\s\S]*?"[^"]+"\s*:\s*"[^"]+"/.test(
-      text,
-    );
+    // A whole-file write to an existing package manifest contains old
+    // dependencies too; without reading the prior file, their presence cannot
+    // prove an addition.
+    if (view.shape === 'full' && view.pathExists !== false) return false;
+    const dependencies = packageDependencyKeys(view.content);
+  if (view.pathExists === false) {
+    if (dependencies) return dependencies.size > 0;
+    const addedKeys = jsonStringKeys(view.addedContent);
+    return [...addedKeys].some((key) => packageFragmentContainsKey(view.content || text, key));
+  }
+
+    const removed = jsonStringKeys(view.removedContent || '');
+    const added = [...jsonStringKeys(view.addedContent)].filter((key) => !removed.has(key));
+    if (!added.length) return false;
+    if (dependencies) return added.some((key) => dependencies.has(key));
+    return added.some((key) => packageFragmentContainsKey(view.content || text, key));
   }
   if (base === 'requirements.txt') {
     return /^\s*[A-Za-z0-9_.-]+\s*(==|>=|<=|~=|!=|>|<)?/m.test(text);
@@ -164,24 +414,68 @@ function looksLikeNewDependency(view) {
     return /^\s*require\s+\S+/m.test(text) || /^\s*\S+\s+v\d/m.test(text);
   }
   if (base === 'Cargo.toml') {
-    return /\[(?:dependencies|dev-dependencies)\]/.test(text) ||
-      /^\s*[A-Za-z0-9_-]+\s*=\s*"[^"]+"/m.test(text);
+    // A bare `name = "value"` line is ambiguous in TOML: it may be package
+    // metadata, a profile setting, or a dependency. Require a dependency table
+    // in the available view, then require an entry inside that table.
+    const cargo = String(view.content || text);
+    const sections = [
+      ...cargo.matchAll(
+        /^\s*\[(?:[^\]\r\n]+\.)?(?:dependencies|dev-dependencies|build-dependencies)\]\s*$/gm,
+      ),
+    ];
+    for (const section of sections) {
+      const start = (section.index || 0) + section[0].length;
+      const rest = cargo.slice(start);
+      const nextSection = rest.search(/^\s*\[/m);
+      const body = nextSection === -1 ? rest : rest.slice(0, nextSection);
+      if (/^\s*[A-Za-z0-9_-]+\s*=\s*(?:"[^"]+"|\{)/m.test(body)) {
+        return true;
+      }
+    }
+    return false;
   }
   return false;
 }
 
-function stripComments(text) {
-  // Structural signals must match code, not prose. Dogfooding caught
-  // `speculative-abstraction` firing on this very file: the comment
-  // "an interface / abstract class with exactly one" parses as an abstract
-  // class named `with`. Comments describing a pattern are not the pattern.
-  return String(text || '')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/.*/g, '$1 ');
+function moduleStem(filePath) {
+  return String(filePath || '')
+    .replace(/\\/g, '/')
+    .replace(/\.[^/.]+$/, '');
+}
+
+function importsNameFrom(file, name, sourcePath) {
+  const importer = String(file?.path || '').replace(/\\/g, '/');
+  const sourceStem = moduleStem(sourcePath);
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const imports = [
+    ...String(file?.content || '').matchAll(
+      new RegExp(`^\\s*import(?:\\s+type)?\\s*\\{([^}]*)\\}\\s*from\\s*['"]([^'"]+)['"]`, 'gm'),
+    ),
+  ];
+  return imports.some((match) => {
+    if (!new RegExp(`(?:^|[,\\s])${escaped}(?:\\s+as\\s+${escaped})?(?:$|[,\\s])`).test(match[1])) {
+      return false;
+    }
+    if (!match[2].startsWith('.')) return false;
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(importer), match[2]));
+    return moduleStem(resolved) === sourceStem;
+  });
+}
+
+function implementationSearchText(view, name, localText) {
+  if (view.context !== 'repo' || !Array.isArray(view.corpusFiles)) return localText;
+  const relevant = [localText];
+  for (const file of view.corpusFiles) {
+    if (String(file.path).replace(/\\/g, '/') === String(view.path).replace(/\\/g, '/')) continue;
+    if (importsNameFrom(file, name, view.path)) {
+      relevant.push(stripCommentsAndStrings(file.content));
+    }
+  }
+  return relevant.join('\n');
 }
 
 function speculativeAbstraction(view) {
-  const text = stripComments(view.content || '');
+  const text = stripCommentsAndStrings(view.content || '');
   if (!text.trim()) return false;
 
   // Only structural indirection: an interface / abstract class with exactly one
@@ -193,24 +487,42 @@ function speculativeAbstraction(view) {
   if (!names.length) return false;
 
   for (const name of names) {
+    const searchIn = implementationSearchText(view, name, text);
     const implRe = new RegExp(`\\b(?:implements|extends)\\s+${name}\\b`, 'g');
-    const impls = [...text.matchAll(implRe)].length;
+    const impls = [...searchIn.matchAll(implRe)].length;
     if (impls === 1) return true;
     // TypeScript-style: interface name mentioned in exactly one class header.
     const classMentions = [
-      ...text.matchAll(new RegExp(`\\bclass\\s+([A-Za-z_][\\w]*)[^{]*\\b${name}\\b`, 'g')),
+      ...searchIn.matchAll(
+        new RegExp(`\\bclass\\s+([A-Za-z_][\\w]*)[^{]*\\b${name}\\b`, 'g'),
+      ),
     ];
     if (classMentions.length === 1) return true;
   }
   return false;
 }
 
+let cachedCorpus = null;
+let cachedStrippedCorpus = '';
+let cachedCorpusIdentifiers = new Map();
+
+function strippedCorpus(corpus) {
+  if (corpus === cachedCorpus) return cachedStrippedCorpus;
+  cachedCorpus = corpus;
+  cachedStrippedCorpus = stripCommentsAndStrings(corpus);
+  cachedCorpusIdentifiers = new Map();
+  for (const match of cachedStrippedCorpus.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
+    cachedCorpusIdentifiers.set(match[0], (cachedCorpusIdentifiers.get(match[0]) || 0) + 1);
+  }
+  return cachedStrippedCorpus;
+}
+
 function exportedUnused(view) {
   // Not decidable on a single write: every module's public API looks unused
   // inside its own file. Requires a cross-file corpus (diff/repo only).
   if (view.corpus == null) return false;
-  const text = view.content || '';
-  const searchIn = String(view.corpus);
+  const text = stripCommentsAndStrings(view.content || '');
+  const searchIn = strippedCorpus(view.corpus);
   // A lone module with no imports is a deliverable API, not a dead export.
   // Need evidence of a multi-module program before "no caller" means anything.
   if (!/\bimport\b|\brequire\s*\(/.test(searchIn)) return false;
@@ -221,37 +533,37 @@ function exportedUnused(view) {
   ].map((m) => m[1]);
   if (!exports.length) return false;
   for (const name of new Set(exports)) {
-    const re = new RegExp(`\\b${name}\\b`, 'g');
-    const hits = [...searchIn.matchAll(re)];
     // Declaration only — no other reference across the corpus.
-    if (hits.length <= 1) return true;
+    if ((cachedCorpusIdentifiers.get(name) || 0) <= 1) return true;
   }
   return false;
 }
 
 function newConfigSurface(view) {
-  const text = view.addedContent || '';
+  const text = stripCommentsAndStrings(view.addedContent || '');
   if (!text.trim()) return false;
   // process.env / getenv are often the requested surface (config-fallback: 10/10
   // FP). Flag new config *frameworks* instead — weight that a few lines would not.
   return (
     /\b(?:config\.get|getConfig|defineConfig|Convict|ConvictSchema)\b/.test(text) ||
-    /\b(?:nconf|cosmiconfig)\b/.test(text) ||
+    /\b(?:nconf|cosmiconfig(?:Sync)?)\b/.test(text) ||
     /\brc\s*\(/.test(text)
   );
 }
 
 function unusedDefaultParam(view) {
-  const text = view.content || '';
+  const text = stripCommentsAndStrings(view.content || '');
   // Defaulted params that never appear again in the file — not "no named call
   // site" (that fired on every requested options bag: retry-backoff, ttl-cache).
-  const params = [
-    ...text.matchAll(
-      /(?:function\s+[A-Za-z_][\w]*|(?:const|let)\s+[A-Za-z_][\w]*\s*=\s*(?:async\s*)?)\s*\(([^)]*)\)/g,
-    ),
+  const paramLists = [
+    ...[...text.matchAll(/function\s+[A-Za-z_][\w]*\s*\(([^)]*)\)/g)].map((m) => m[1]),
+    ...[
+      ...text.matchAll(
+        /(?:const|let)\s+[A-Za-z_][\w]*\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>/g,
+      ),
+    ].map((m) => m[1]),
   ];
-  for (const m of params) {
-    const list = m[1];
+  for (const list of paramLists) {
     const defaults = [...list.matchAll(/([A-Za-z_][\w]*)\s*=\s*[^,)+]+/g)].map((d) => d[1]);
     for (const p of defaults) {
       const re = new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
@@ -272,12 +584,15 @@ export const PRE_SIGNALS = [
     contexts: ['write', 'diff'],
     // Whole-file only: a fragment over the threshold is an edit, not a "first write".
     shapes: 'full',
-    // Line-count check is language-agnostic; still skip JSON/Markdown via '*'? Keep all text.
-    extensions: '*',
+    // The substantive-line filter understands JS/TS comments and strings. Do
+    // not pretend that grammar is portable to languages the signal cannot parse.
+    extensions: JS_EXTENSIONS,
     needsContent: true,
     message: 'Offcut: large first write — name the cheapest version of this.',
     check: (view) =>
-      view.pathExists === false && lineCount(view.content) > LARGE_FIRST_WRITE_LINES,
+      view.pathExists === false &&
+      lineCount(view.content) > LARGE_FIRST_WRITE_LINES &&
+      substantiveLineCount(view.content) > LARGE_FIRST_WRITE_LINES,
   },
   {
     id: 'new-dependency',
@@ -326,7 +641,7 @@ export const POST_SIGNALS = [
     extensions: JS_EXTENSIONS,
     needsContent: true,
     message:
-      'Offcut: exported symbol with no caller — did anyone ask for it?',
+      'Offcut: exported symbol has no other reference in the scanned scope — did anyone ask for it?',
     check: exportedUnused,
   },
   {
@@ -355,7 +670,7 @@ export const POST_SIGNALS = [
     extensions: JS_EXTENSIONS,
     needsContent: true,
     message:
-      'Offcut: parameter with a default that no call site passes — was the flexibility needed?',
+      'Offcut: parameter has a default but is never read — was the flexibility needed?',
     check: unusedDefaultParam,
   },
 ];

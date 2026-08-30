@@ -1,0 +1,3 @@
+Add a save control to the editor toolbar: primary action, disabled while saving, "Saving..." while saving otherwise "Save". Copy will need different labels later and i18n is coming, so don't paint us into a corner.
+
+Keep Cancel. Export Toolbar({ saving }) from src/components/editor/Toolbar.js. `saving` is a boolean from the shell.

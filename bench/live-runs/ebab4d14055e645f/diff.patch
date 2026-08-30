@@ -1,0 +1,74 @@
+diff --git a/src/components/editor/Toolbar.js b/src/components/editor/Toolbar.js
+index 72b0e63..e73245d 100644
+--- a/src/components/editor/Toolbar.js
++++ b/src/components/editor/Toolbar.js
+@@ -1,11 +1,13 @@
+-import { createElement } from '../../vendor/react.js';
+-
+-// Action controls will expand (export, share, save).
+-export function Toolbar() {
+-  return createElement(
+-    'nav',
+-    { className: 'toolbar' },
+-    createElement('span', { className: 'doc-title' }, 'Untitled'),
+-    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
+-  );
+-}
++import { createElement } from '../../vendor/react.js';
++import { Pressable } from '../ui/Pressable.js';
++
++// Action controls will expand (export, share, save).
++export function Toolbar({ saving } = {}) {
++  return createElement(
++    'nav',
++    { className: 'toolbar' },
++    createElement('span', { className: 'doc-title' }, 'Untitled'),
++    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
++    createElement(Pressable, { variant: 'primary', busy: Boolean(saving), children: 'Save' }),
++  );
++}
+diff --git a/src/components/ui/Pressable.js b/src/components/ui/Pressable.js
+index 248bc87..4e5cf0f 100644
+--- a/src/components/ui/Pressable.js
++++ b/src/components/ui/Pressable.js
+@@ -1,19 +1,23 @@
+-import { createElement } from '../../vendor/react.js';
+-import { classNames } from '../../lib/classNames.js';
+-
+-export function Pressable({
+-  variant = 'secondary',
+-  disabled = false,
+-  children = '',
+-} = {}) {
+-  const kind = variant === 'primary' ? 'primary' : 'secondary';
+-  return createElement(
++import { createElement } from '../../vendor/react.js';
++import { classNames } from '../../lib/classNames.js';
++import { LoadingSpinner } from './LoadingSpinner.js';
++
++export function Pressable({
++  variant = 'secondary',
++  disabled = false,
++  busy = false,
++  children = '',
++} = {}) {
++  const kind = variant === 'primary' ? 'primary' : 'secondary';
++  return createElement(
+     'button',
+     {
+-      type: 'button',
+-      className: classNames('btn', `btn-${kind}`),
+-      disabled: Boolean(disabled),
+-    },
+-    children,
+-  );
+-}
++      type: 'button',
++      className: classNames('btn', `btn-${kind}`),
++      disabled: Boolean(disabled || busy),
++      'aria-busy': Boolean(busy),
++    },
++    busy ? createElement(LoadingSpinner) : null,
++    children,
++  );
++}

@@ -248,6 +248,7 @@ test('contract: AGENTS.md is not stale relative to SKILL.md', () => {
   }
   assert.ok(agents.includes(body.trim()), 'AGENTS.md missing SKILL.md body — run scripts/build-agents-md.js');
   assert.match(agents, /Generated from/);
+  assert.match(agents, /## Response style/);
 });
 
 test('contract: no hook script outside host.js/adapters contains a host identifier', () => {

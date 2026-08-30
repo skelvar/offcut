@@ -27,6 +27,7 @@ import {
   tmpName,
   writeArmOverrides,
   writeMode,
+  writeStyle,
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
 import { hookCommand } from '../tools/install.mjs';
@@ -248,12 +249,12 @@ function codexConfigText() {
   ].join('\n');
 }
 
-function codexProfileText() {
+function codexProfileText(instructions = CODEX_PROFILE_INSTRUCTIONS) {
   return [
     'default_permissions = ":workspace"',
     `model = ${tomlString(CODEX_MODEL_ID)}`,
     'model_reasoning_effort = "low"',
-    `developer_instructions = ${tomlString(CODEX_PROFILE_INSTRUCTIONS)}`,
+    `developer_instructions = ${tomlString(instructions)}`,
     '',
   ].join('\n');
 }
@@ -289,6 +290,7 @@ export function prepareCodexHome({
   arm,
   authPath = path.join(os.homedir(), '.codex', 'auth.json'),
   parentDir = os.tmpdir(),
+  profileInstructions = CODEX_PROFILE_INSTRUCTIONS,
 }) {
   if (arm !== 'off' && arm !== 'full') throw new Error(`bad Codex efficacy arm: ${arm}`);
   if (!fs.existsSync(authPath)) throw new Error('Codex auth file missing');
@@ -297,7 +299,7 @@ export function prepareCodexHome({
   try {
     fs.copyFileSync(authPath, path.join(homeDir, 'auth.json'));
     const config = codexConfigText();
-    const profileConfig = codexProfileText();
+    const profileConfig = codexProfileText(profileInstructions);
     const hooks = buildCodexHooksSettings(arm);
     fs.writeFileSync(path.join(homeDir, 'config.toml'), config, 'utf8');
     fs.writeFileSync(
@@ -747,6 +749,7 @@ export function parseCodexJsonl(
     customAgentVerified,
     rootCompletedToolCount: attribution.rootCompletedToolCount || 0,
     rootCompletedWriteToolCount: attribution.rootCompletedWriteToolCount || 0,
+    modelTurnCount: events.filter((event) => event?.type === 'turn.completed').length,
     recoverableToolFailures,
     recoverableToolFailureCount: recoverableToolFailures.length,
     failureKind:
@@ -864,8 +867,14 @@ export function runCodex({
   spawnCodex = spawnSync,
   now = () => performance.now(),
   envSource = process.env,
+  profileInstructions = CODEX_PROFILE_INSTRUCTIONS,
 }) {
-  const isolated = prepareCodexHome({ arm, authPath, parentDir: homeParentDir });
+  const isolated = prepareCodexHome({
+    arm,
+    authPath,
+    parentDir: homeParentDir,
+    profileInstructions,
+  });
   const args = buildCodexArgs({ workDir, prompt });
   const resolvedAuditPath =
     auditPath || path.join(isolated.homeDir, 'agent-audit.jsonl');
@@ -1005,6 +1014,7 @@ export function runOne(opts) {
     tasksDir,
   } = opts;
   const host = opts.host ?? 'claude-code';
+  const style = opts.style ?? 'concise';
   const apiRetries = resolveApiRetries(opts);
   if (!taskId || !arm) throw new Error('--task and --arm required');
   if (!LEGACY_ARMS.has(arm) && !JUSTIFY_ARMS.has(arm)) {
@@ -1018,7 +1028,8 @@ export function runOne(opts) {
 
   const task = loadTask(taskId, tasksDir);
   const runId = opaqueId();
-  const runDir = path.join(RUNS_DIR, runId);
+  const runRoot = opts.runRoot ?? RUNS_DIR;
+  const runDir = path.join(runRoot, runId);
   fs.mkdirSync(runDir, { recursive: true });
 
   const stateDir = tmpName('offcut-bench-state-');
@@ -1046,6 +1057,8 @@ export function runOne(opts) {
     prompt_sha256: task.promptSha256,
     prompt_path: path.relative(BENCH_ROOT, path.join(task.dir, 'prompt.txt')).replace(/\\/g, '/'),
     offcut_mode: modeForState,
+    offcut_style: style,
+    ...(opts.styleArm ? { style_arm: opts.styleArm } : {}),
     ruleset_path: armCfg?.rulesetPath
       ? path.relative(BENCH_ROOT, armCfg.rulesetPath).replace(/\\/g, '/')
       : null,
@@ -1059,6 +1072,8 @@ export function runOne(opts) {
     cache_read_input_tokens: null,
     cache_creation_input_tokens: null,
     reasoning_output_tokens: null,
+    model_turns: null,
+    completed_tool_calls: null,
     ...(opts.stage ? { stage: opts.stage } : {}),
     ...(opts.attempt ? { attempt: opts.attempt } : {}),
     ...(opts.backend ? { backend: opts.backend } : {}),
@@ -1067,6 +1082,7 @@ export function runOne(opts) {
   try {
     // Isolation asserts
     writeMode(stateDir, modeForState);
+    writeStyle(stateDir, style);
     if (armCfg) {
       writeArmOverrides(stateDir, {
         rulesetPath: armCfg.rulesetPath,
@@ -1123,6 +1139,7 @@ export function runOne(opts) {
         homeParentDir: opts.homeParentDir,
         auditPath: path.join(runDir, 'agent-audit.jsonl'),
         spawnCodex: opts.spawnCodex,
+        profileInstructions: opts.profileInstructions,
       });
       record.model_id = agent.modelId;
       record.model_observation = agent.modelObservation;
@@ -1187,6 +1204,8 @@ export function runOne(opts) {
       record.failure_kind = classifyAgentFailure(agent);
     }
     Object.assign(record, agent.telemetry || {});
+    record.model_turns = agent.modelTurnCount ?? null;
+    record.completed_tool_calls = agent.rootCompletedToolCount ?? null;
     record.cost_evidence = agent.cost_evidence || null;
     if (agent.attempts && agent.attempts > 1) {
       record.retried = true;

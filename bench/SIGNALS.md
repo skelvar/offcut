@@ -293,7 +293,7 @@ all**. The identical structure as `.ts` fires normally.
 
 | | covered | not covered |
 |---|---|---|
-| extensions | `.js .mjs .cjs .ts .tsx .jsx` (+ manifests) | `.py .go .rs .rb .php .java .kt .swift .sh .sql .css .html` |
+| extensions | `.js .mjs .cjs .ts` (+ manifests) | `.jsx .tsx .py .go .rs .rb .php .java .kt .swift .sh .sql .css .html` |
 
 What still works outside JS/TS: session activation, mode switching, the
 statusline, and **the per-turn reminder** (language-agnostic, verified firing on

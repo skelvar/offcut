@@ -1,0 +1,10 @@
+{"hook_event_name":"PreToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-d240351b-1ff8-4682-b454-6aaacfaec0f1"}
+{"hook_event_name":"PostToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-d240351b-1ff8-4682-b454-6aaacfaec0f1"}
+{"hook_event_name":"PreToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-0932a792-deaa-4769-a61f-2eaf277256ef"}
+{"hook_event_name":"PostToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-0932a792-deaa-4769-a61f-2eaf277256ef"}
+{"hook_event_name":"PreToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-f0d61a9a-ce49-4bde-8e49-67980101496a"}
+{"hook_event_name":"PostToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-f0d61a9a-ce49-4bde-8e49-67980101496a"}
+{"hook_event_name":"PreToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"apply_patch","tool_use_id":"exec-0bd1f0ce-14c4-4a90-bc93-3ed9bdba072f"}
+{"hook_event_name":"PostToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"apply_patch","tool_use_id":"exec-0bd1f0ce-14c4-4a90-bc93-3ed9bdba072f"}
+{"hook_event_name":"PreToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-4b54ca8e-1dce-4a2e-8578-024241f2019c"}
+{"hook_event_name":"PostToolUse","session_id":"01a0483c-480b-7d42-83f8-844a942788e8","turn_id":"01a0483c-4864-79d2-8d0c-3ee661b38db1","tool_name":"Bash","tool_use_id":"exec-4b54ca8e-1dce-4a2e-8578-024241f2019c"}

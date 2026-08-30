@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runHook, emit } from './host.js';
 import {
   readMode,
+  writeStyle,
   writeMode,
   writeDefaultMode,
   bumpTurn,
@@ -20,9 +21,9 @@ export { reminderText };
 
 /**
  * @param {string} prompt
- * @returns {{ type: 'set' | 'default' | 'command', mode?: string, message?: string } | null}
+ * @returns {{ type: 'set' | 'default' | 'style' | 'command', mode?: string, style?: string, message?: string } | null}
  */
-export function parseModeCommand(prompt) {
+export function parseOffcutCommand(prompt) {
   const t = String(prompt ?? '').trim();
   if (!t) return null;
 
@@ -47,6 +48,18 @@ export function parseModeCommand(prompt) {
       type: 'default',
       mode,
       message: `Offcut default mode set to ${mode}.`,
+    };
+  }
+
+  const style = t.match(/^\/offcut\s+concise\s+(on|off)\s*$/i);
+  if (style) {
+    const enabled = style[1].toLowerCase() === 'on';
+    return {
+      type: 'style',
+      style: enabled ? 'concise' : 'normal',
+      message: enabled
+        ? 'OFFCUT STYLE: concise. Concise responses are on for this session.'
+        : 'OFFCUT STYLE: normal. Concise responses are off for this session; Offcut construction rules remain active.',
     };
   }
 
@@ -82,7 +95,7 @@ export function shouldRemind(mode, command, sessionId = null, bump = bumpTurn) {
 export async function handlePrompt(norm) {
   if (!norm) return null;
   const prompt = norm.prompt ?? '';
-  const command = parseModeCommand(prompt);
+  const command = parseOffcutCommand(prompt);
 
   // Next turn started: post challenges from the prior turn were delivered enough
   // for the user to continue. Unconfirmed pre challenges mean the turn died
@@ -91,21 +104,26 @@ export async function handlePrompt(norm) {
   clearPendingSignals(norm.sessionId, (id) => !String(id).startsWith('post:'));
 
   if (command?.type === 'set' && command.mode) {
-    writeMode(command.mode);
+    writeMode(command.mode, norm.sessionId);
     return emit(norm.host, 'user_prompt_submit', command.message || `Offcut mode: ${command.mode}.`);
   }
 
   if (command?.type === 'default' && command.mode) {
     writeDefaultMode(command.mode);
-    writeMode(command.mode);
+    writeMode(command.mode, norm.sessionId);
     return emit(norm.host, 'user_prompt_submit', command.message || `Offcut default: ${command.mode}.`);
+  }
+
+  if (command?.type === 'style' && command.style) {
+    writeStyle(command.style, norm.sessionId);
+    return emit(norm.host, 'user_prompt_submit', command.message);
   }
 
   if (command?.type === 'command') {
     return null;
   }
 
-  const mode = readMode();
+  const mode = readMode(norm.sessionId);
   if (!shouldRemind(mode, null, norm.sessionId)) return null;
 
   return emit(norm.host, 'user_prompt_submit', reminderText());

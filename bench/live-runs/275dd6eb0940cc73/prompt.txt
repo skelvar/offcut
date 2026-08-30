@@ -1,0 +1,5 @@
+The editor toolbar needs a Save control. Create a SaveButton component and add it to the toolbar.
+
+It must look like a primary action, disable while a save is in progress, and show "Saving..." while saving (otherwise "Save"). Keep the existing Cancel control.
+
+Export renderToolbar({ saving }) from src/editor-toolbar.js. `saving` is a boolean.

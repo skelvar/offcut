@@ -5,7 +5,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inspectActive, inspectServed, paths, DEFAULT_MODE } from './state.js';
+import {
+  inspectActive,
+  inspectSessionMode,
+  inspectServed,
+  paths,
+  DEFAULT_MODE,
+} from './state.js';
 import { loadRuleset } from './rules.js';
 import {
   pluginRoot,
@@ -159,8 +165,14 @@ export function runDoctor(opts = {}) {
     record('ok', 'state dir', `exists and writable — ${p.dir}`);
   }
 
-  // 2. active exists and parses
-  const active = inspectActive();
+  // 2. requested session mode, or the explicitly labelled latest-session mirror
+  const session = p.sessionKey(opts.sessionId);
+  const active = session ? inspectSessionMode(session) : inspectActive();
+  const activeLabel = session
+    ? `session ${session}`
+    : active.session
+      ? `latest session ${active.session}`
+      : 'legacy mirror';
   if (active.state === 'missing') {
     record(
       'fail',
@@ -174,7 +186,7 @@ export function runDoctor(opts = {}) {
       `corrupt — unparseable contents ${JSON.stringify(active.raw?.slice(0, 40) || '')}; hooks fail-safe to "${DEFAULT_MODE}"`,
     );
   } else {
-    record('ok', 'active', `ok — mode ${active.mode}`);
+    record('ok', 'active', `${activeLabel} — mode ${active.mode}`);
   }
 
   // 3. when activation last ran
@@ -332,7 +344,7 @@ export function runDoctor(opts = {}) {
   record(
     'warn',
     'language coverage',
-    'write-time challenge is JS/TS (+ dependency manifests) only; other languages get the reminder, not write signals',
+    'structural write signals cover .js/.mjs/.cjs/.ts; JSX/TSX and other languages get the reminder; dependency manifests have change-only checks',
   );
 
   if (!opts.silent) {

@@ -209,6 +209,12 @@ test('cursor contract: Subagent rewrite preserves fields without casting an allo
   assert.equal(out.permission, undefined);
 });
 
+test('cursor docs describe the Subagent rewrite as permissionless', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.doesNotMatch(readme, /subagent inheritance returns `allow`/i);
+  assert.match(readme, /input-only rewrite and casts no permission vote/i);
+});
+
 test('cursor contract: subagent inheritance uses the measured input-rewrite seam', async () => {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-cursor-subagent-'));
   fs.writeFileSync(path.join(state, 'active'), 'full\n');
@@ -683,6 +689,7 @@ test('cursor coexistence: a repeated generation does not advance lite cadence', 
 test('cursor coexistence: duplicate sessionStart sources emit the ruleset once', async () => {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-cursor-session-dedupe-'));
   try {
+    fs.writeFileSync(path.join(state, 'style-cursor-conversation'), 'normal\n', 'utf8');
     const duplicate = await Promise.all([
       runHook('activate.js', CURSOR.session, state),
       runHook('activate.js', CURSOR.session, state),
@@ -694,6 +701,12 @@ test('cursor coexistence: duplicate sessionStart sources emit the ruleset once',
       duplicate.filter((result) => result.stdout.trim()).length,
       1,
       'only one installed copy may inject SessionStart context',
+    );
+    const emitted = duplicate.find((result) => result.stdout.trim());
+    const context = JSON.parse(emitted.stdout).additional_context;
+    assert.equal(
+      context.split(/\r?\n/).filter((line) => line === 'OFFCUT STYLE: normal').length,
+      1,
     );
 
     const resumed = await runHook(

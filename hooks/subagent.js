@@ -5,14 +5,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runHook, emit, gate } from './host.js';
-import { readMode } from './state.js';
+import { readMode, readStyle } from './state.js';
 import { sessionContext } from './rules.js';
 
 export async function handleSubagent(norm) {
   if (!norm) return null;
-  const mode = readMode();
+  const mode = readMode(norm.sessionId);
   if (mode === 'off') return null;
-  const context = sessionContext(mode);
+  const context = sessionContext(mode, undefined, readStyle(norm.sessionId));
 
   if (norm.event === 'pre_tool_use' && norm.toolName === 'Subagent') {
     const input = norm.toolInput;

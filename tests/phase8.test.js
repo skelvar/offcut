@@ -26,6 +26,7 @@ import {
   paths,
   CONTEXT_WIPING_SOURCES,
 } from '../hooks/state.js';
+import * as stateModule from '../hooks/state.js';
 import { handleActivate } from '../hooks/activate.js';
 import { handlePrompt } from '../hooks/prompt.js';
 import { handlePreWrite } from '../hooks/pre-write.js';
@@ -48,7 +49,7 @@ function withStateDir(fn) {
     });
 }
 
-function runStatuslinePs1(dir) {
+function runStatuslinePs1(dir, payload = null) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       'powershell.exe',
@@ -61,7 +62,7 @@ function runStatuslinePs1(dir) {
       ],
       {
         env: { ...process.env, OFFCUT_STATE_DIR: dir },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
       },
     );
     let stdout = '';
@@ -70,6 +71,7 @@ function runStatuslinePs1(dir) {
     });
     child.on('close', (code) => resolve({ code, stdout: stdout.trim() }));
     child.on('error', reject);
+    child.stdin.end(payload == null ? '' : JSON.stringify(payload));
   });
 }
 
@@ -291,6 +293,24 @@ test('statusline.ps1: healthy active still shows mode', async (t) => {
   });
 });
 
+test('statusline.ps1: concurrent sessions display their own modes', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('statusline.ps1 on Windows');
+    return;
+  }
+  await withStateDir(async (dir) => {
+    writeMode('full', 'beta');
+    writeMode('off', 'alpha');
+
+    const beta = await runStatuslinePs1(dir, { session_id: 'beta' });
+    const alpha = await runStatuslinePs1(dir, { session_id: 'alpha' });
+    const unknown = await runStatuslinePs1(dir, { session_id: 'not-started' });
+    assert.equal(beta.stdout, 'offcut:full');
+    assert.equal(alpha.stdout, 'offcut:off');
+    assert.equal(unknown.stdout, 'offcut:-');
+  });
+});
+
 // --- pruning ---
 
 test('SessionEnd prunes turn-* but keeps fired-* for resume', async () => {
@@ -310,20 +330,55 @@ test('SessionEnd prunes turn-* but keeps fired-* for resume', async () => {
   });
 });
 
-test('pruneStaleFiles removes old turn/fired orphans', () => {
+test('pruneStaleFiles removes ephemeral state but preserves persistent session modes', () => {
   return withStateDir(() => {
     const fired = paths().firedFor('old');
     const turn = paths().turnFor('old');
+    const mode = paths().modeFor('old');
+    assert.equal(typeof stateModule.writeStyle, 'function');
+    assert.equal(stateModule.writeStyle('normal', 'old'), true);
+    const style = paths().styleFor('old');
     fs.writeFileSync(fired, '{"confirmed":[],"pending":[]}\n');
     fs.writeFileSync(turn, '1\n');
+    fs.writeFileSync(mode, 'full\n');
     const old = Date.now() - 8 * 24 * 60 * 60 * 1000;
     fs.utimesSync(fired, new Date(old), new Date(old));
     fs.utimesSync(turn, new Date(old), new Date(old));
+    fs.utimesSync(mode, new Date(old), new Date(old));
+    fs.utimesSync(style, new Date(old), new Date(old));
 
     const n = pruneStaleFiles({ maxAgeMs: 7 * 24 * 60 * 60 * 1000, now: Date.now() });
     assert.ok(n >= 2);
     assert.equal(fs.existsSync(fired), false);
     assert.equal(fs.existsSync(turn), false);
+    assert.equal(fs.existsSync(mode), true);
+    assert.equal(fs.existsSync(style), true);
+  });
+});
+
+test('doctor reports the requested session mode, not the latest session mirror', () => {
+  return withStateDir(() => {
+    writeMode('off', 'alpha');
+    writeMode('strict', 'beta');
+    const result = runDoctor({ silent: true, root, sessionId: 'alpha' });
+    const active = result.lines.find((line) => line.check === 'active');
+    assert.equal(active.verdict, 'ok');
+    assert.match(active.detail, /session alpha/i);
+    assert.match(active.detail, /mode off/i);
+    assert.doesNotMatch(active.detail, /strict/i);
+  });
+});
+
+test('reading a live session mode keeps it out of stale-orphan pruning', () => {
+  return withStateDir(() => {
+    writeMode('lite', 'long-running');
+    const mode = paths().modeFor('long-running');
+    const old = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    fs.utimesSync(mode, new Date(old), new Date(old));
+
+    assert.equal(readMode('long-running'), 'lite');
+    pruneStaleFiles({ maxAgeMs: 7 * 24 * 60 * 60 * 1000, now: Date.now() });
+    assert.equal(fs.existsSync(mode), true);
   });
 });
 

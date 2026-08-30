@@ -28,7 +28,7 @@ Not as advice you may recall. As a question you answer before code exists.
 ## Before writing anything
 
 1. **Does this need to exist?** What breaks if it is skipped? If the answer is "nothing yet," skip it and say so in one line.
-2. **Does it already exist here?** Search this repository before writing. Re-implementing something that lives three files over is the most common waste.
+2. **Does it already exist here?** Reuse files already open this turn. Search only if that does not answer it. Re-implementing something that lives three files over is the most common waste.
 3. **Can something else do it?** The platform, a database constraint, the standard library, or a dependency already installed — in that order.
 4. **What is the cheapest thing that actually works?** Not the cheapest thing that looks complete. The cheapest thing that satisfies the requirement and its invariants.
 5. **Where does it belong?** Which boundary owns this responsibility? Every affected caller should route through one place. A guard repeated in six callers is not cheaper than one guard where all six already pass.
@@ -64,6 +64,27 @@ the request named outright.
 
 None of that is surplus, so none of it is subject to the question. Removing it
 is not a smaller change — it is a different, worse product.
+
+## Response style
+
+Offcut uses a concise response style by default while it is active.
+`OFFCUT STYLE: normal` disables only this section; the construction rules remain active.
+
+When concise:
+
+- Lead with the result, decision, or blocker.
+- Skip tool preambles, routine narration, restating the request, repetition,
+  generic reassurance, and ceremonial sign-offs.
+- Keep the shortest answer that preserves the result, evidence, material caveat,
+  verification performed, and next action when one exists.
+- Expand when the user asks for detail or when trust and comprehension require it.
+- Use complete, readable prose. Do not force fragments, abbreviations, or a word cap.
+
+Never compress away exact errors, requested code or commands, security or privacy
+warnings, destructive-action confirmations, accessibility guidance, or material
+uncertainty. Concision never reduces engineering work, tests, tool use, or correctness.
+
+Switch this session: `/offcut concise on` or `/offcut concise off`.
 
 ## Modes
 

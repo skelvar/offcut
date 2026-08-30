@@ -596,15 +596,40 @@ test('legacy runClaude retries two API failures before succeeding', async () => 
 });
 
 test('raw commit gate refuses dirty evidence and passes tracked clean evidence', async () => {
-  const { assertRawGateCommitted } = await import('../bench/efficacy.mjs');
+  const { assertRawGateCommitted, rawEvidencePaths } = await import('../bench/efficacy.mjs');
   assert.equal(typeof assertRawGateCommitted, 'function');
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-gate-paths-'));
+  const manifestPath = path.join(repoRoot, 'bench', 'efficacy-manifest.jsonl');
+  const costPath = path.join(repoRoot, 'bench', 'efficacy-cost.jsonl');
+  const preflightLedgerPath = path.join(repoRoot, 'bench', 'codex-preflight', 'ledger.jsonl');
+  const tasksDir = path.join(repoRoot, 'bench', 'efficacy-tasks');
+  const evidencePaths = rawEvidencePaths({
+    repoRoot,
+    manifestPath,
+    costPath,
+    preflightLedgerPath,
+    tasksDir,
+    manifestEntries: [{ run_id: '1111111111111111' }],
+    costEntries: [
+      { run_id: '1111111111111111' },
+      { run_id: '2222222222222222' },
+      { run_id: null },
+    ],
+  });
+  assert.deepEqual(evidencePaths, [
+    'bench/efficacy-manifest.jsonl',
+    'bench/efficacy-cost.jsonl',
+    'bench/codex-preflight/ledger.jsonl',
+    'bench/efficacy-tasks',
+    'bench/runs',
+  ]);
   const tracked = { status: 0, stdout: 'tracked\n', stderr: '' };
   const dirtyGit = (_command, args) =>
     args[0] === 'status'
       ? { status: 0, stdout: '?? bench/efficacy-cost.jsonl\n', stderr: '' }
       : tracked;
   assert.throws(
-    () => assertRawGateCommitted({ spawnGit: dirtyGit, repoRoot: 'repo' }),
+    () => assertRawGateCommitted({ spawnGit: dirtyGit, repoRoot, evidencePaths }),
     /attempts must be committed/i,
   );
 
@@ -616,11 +641,13 @@ test('raw commit gate refuses dirty evidence and passes tracked clean evidence',
       : tracked;
   };
   assert.doesNotThrow(() =>
-    assertRawGateCommitted({ spawnGit: cleanGit, repoRoot: 'repo' }),
+    assertRawGateCommitted({ spawnGit: cleanGit, repoRoot, evidencePaths }),
   );
-  assert.equal(calls.filter((call) => call.args[0] === 'ls-files').length, 2);
+  assert.equal(calls.filter((call) => call.args[0] === 'ls-files').length, 1);
   assert.equal(calls.at(-1).args[0], 'status');
-  assert.equal(calls.every((call) => call.cwd === 'repo'), true);
+  assert.equal(calls.every((call) => call.cwd === repoRoot), true);
+  assert.equal(calls.at(-1).args.includes('bench/runs'), true);
+  fs.rmSync(repoRoot, { recursive: true, force: true });
 });
 
 test('efficacy report recomputes the sealed null result deterministically', async () => {

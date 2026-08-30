@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { PRE_SIGNALS, POST_SIGNALS, ALL_SIGNALS, runSignals } from '../hooks/signals.js';
-import { parseModeCommand } from '../hooks/prompt.js';
+import { parseOffcutCommand } from '../hooks/prompt.js';
 import {
   parseUnifiedDiff,
   scanDiff,
@@ -147,6 +147,58 @@ test('parseUnifiedDiff: new file vs edit', () => {
   assert.equal(created.shape, 'full');
 });
 
+test('parseUnifiedDiff: quoted Git paths keep spaces and escaped UTF-8', () => {
+  const diff = [
+    'diff --git "a/src/foo bar.ts" "b/src/foo bar.ts"',
+    '--- "a/src/foo bar.ts"',
+    '+++ "b/src/foo bar.ts"',
+    '@@ -0,0 +1,2 @@',
+    '+interface Store {}',
+    '+class MemoryStore implements Store {}',
+    'diff --git "a/src/\\303\\251.ts" "b/src/\\303\\251.ts"',
+    '--- "a/src/\\303\\251.ts"',
+    '+++ "b/src/\\303\\251.ts"',
+    '@@ -0,0 +1 @@',
+    '+export const value = 1;',
+  ].join('\n');
+
+  const files = parseUnifiedDiff(diff);
+  assert.deepEqual(files.map((file) => file.path), ['src/foo bar.ts', 'src/é.ts']);
+  assert.ok(
+    scanDiff(diff).some(
+      (finding) =>
+        finding.path === 'src/foo bar.ts' &&
+        finding.signalId === 'speculative-abstraction',
+    ),
+  );
+});
+
+test('parseUnifiedDiff: Git paths preserve unquoted spaces and escaped UTF-8', () => {
+  const diff = [
+    'diff --git a/src/foo bar.ts b/src/foo bar.ts',
+    '--- a/src/foo bar.ts\t',
+    '+++ b/src/foo bar.ts\t',
+    '@@ -0,0 +1,2 @@',
+    '+interface Store {}',
+    '+class MemoryStore implements Store {}',
+    'diff --git "a/src/\\303\\251.ts" "b/src/\\303\\251.ts"',
+    '--- "a/src/\\303\\251.ts"',
+    '+++ "b/src/\\303\\251.ts"',
+    '@@ -0,0 +1 @@',
+    '+export const value = 1;',
+  ].join('\n');
+
+  const files = parseUnifiedDiff(diff);
+  assert.deepEqual(files.map((file) => file.path), ['src/foo bar.ts', 'src/é.ts']);
+  assert.ok(
+    scanDiff(diff).some(
+      (finding) =>
+        finding.path === 'src/foo bar.ts' &&
+        finding.signalId === 'speculative-abstraction',
+    ),
+  );
+});
+
 test('scanDiff: new-file gone; large-first-write still create-only', () => {
   return withTempDir((dir) => {
     const filePath = path.join(dir, 'solo.js');
@@ -190,6 +242,76 @@ test('scanFiles: exported-unused fires on orphan when siblings import elsewhere'
     fs.writeFileSync(path.join(dir, 'b.js'), 'import { shared } from "./a.js";\nshared();\n');
     const hits = scanFiles(collectFiles([dir]), { cwd: dir });
     assert.ok(hits.find((f) => f.signalId === 'exported-unused' && f.path.endsWith('a.js')));
+  });
+});
+
+test('scanFiles: speculative abstraction counts implementors across the audit corpus', () => {
+  return withTempDir((dir) => {
+    fs.writeFileSync(
+      path.join(dir, 'contract.ts'),
+      'export interface Store {}\nexport class MemoryStore implements Store {}\n',
+    );
+    fs.writeFileSync(
+      path.join(dir, 'disk.ts'),
+      'import type { Store } from "./contract.js";\nexport class DiskStore implements Store {}\n',
+    );
+    const hits = scanFiles(collectFiles([dir]), { cwd: dir });
+    assert.ok(
+      !hits.find(
+        (finding) =>
+          finding.signalId === 'speculative-abstraction' &&
+          finding.path.endsWith('contract.ts'),
+      ),
+      'audit ignored the second implementation in another file',
+    );
+  });
+});
+
+test('scanFiles: unrelated same-name interfaces do not hide a one-implementor abstraction', () => {
+  return withTempDir((dir) => {
+    fs.mkdirSync(path.join(dir, 'feature-a'));
+    fs.mkdirSync(path.join(dir, 'feature-b'));
+    fs.writeFileSync(
+      path.join(dir, 'feature-a', 'contract.ts'),
+      'export interface Store {}\nexport class MemoryStore implements Store {}\n',
+    );
+    fs.writeFileSync(
+      path.join(dir, 'feature-b', 'other.ts'),
+      'interface Store {}\nclass DiskStore implements Store {}\nclass CloudStore implements Store {}\n',
+    );
+    const hits = scanFiles(collectFiles([dir]), { cwd: dir });
+    assert.ok(
+      hits.find(
+        (finding) =>
+          finding.signalId === 'speculative-abstraction' &&
+          finding.path === 'feature-a/contract.ts',
+      ),
+      'unrelated Store declarations hid feature-a Store',
+    );
+  });
+});
+
+test('scanFiles: an unrelated same-name implementor does not create an abstraction finding', () => {
+  return withTempDir((dir) => {
+    fs.mkdirSync(path.join(dir, 'feature-a'));
+    fs.mkdirSync(path.join(dir, 'feature-b'));
+    fs.writeFileSync(
+      path.join(dir, 'feature-a', 'contract.ts'),
+      'export interface Store {}\n',
+    );
+    fs.writeFileSync(
+      path.join(dir, 'feature-b', 'other.ts'),
+      'interface Store {}\nclass DiskStore implements Store {}\n',
+    );
+    const hits = scanFiles(collectFiles([dir]), { cwd: dir });
+    assert.ok(
+      !hits.find(
+        (finding) =>
+          finding.signalId === 'speculative-abstraction' &&
+          finding.path === 'feature-a/contract.ts',
+      ),
+      'an unrelated Store implementor was attributed to feature-a Store',
+    );
   });
 });
 
@@ -283,7 +405,8 @@ test('formatFindings: empty and non-empty', () => {
     {
       path: 'a.js',
       signalId: 'exported-unused',
-      message: 'Offcut: exported symbol with no caller — did anyone ask for it?',
+      message:
+        'Offcut: exported symbol has no other reference in the scanned scope — did anyone ask for it?',
       phase: 'post',
     },
   ]);
@@ -293,19 +416,19 @@ test('formatFindings: empty and non-empty', () => {
 
 // --- UserPromptSubmit must not learn commands ---
 
-test('UserPromptSubmit parseModeCommand: no review/audit handling', () => {
+test('UserPromptSubmit parseOffcutCommand: no review/audit handling', () => {
   // Skill slash names are /offcut-review etc. The hook must not learn them —
   // it only skips the reminder for `/offcut …` (space) invocations / typos.
   // Hyphenated skill names are not mode commands and must not be parsed.
-  assert.equal(parseModeCommand('/offcut-review'), null);
-  assert.equal(parseModeCommand('/offcut-audit'), null);
-  assert.equal(parseModeCommand('/offcut-help'), null);
+  assert.equal(parseOffcutCommand('/offcut-review'), null);
+  assert.equal(parseOffcutCommand('/offcut-audit'), null);
+  assert.equal(parseOffcutCommand('/offcut-help'), null);
   // Spaced form is still a non-mode /offcut invocation → skip reminder only.
-  assert.deepEqual(parseModeCommand('/offcut review'), { type: 'command', message: null });
-  assert.deepEqual(parseModeCommand('/offcut audit'), { type: 'command', message: null });
-  assert.equal(parseModeCommand('/offcut full').type, 'set');
-  assert.equal(parseModeCommand('audit this repo for bloat'), null);
-  assert.equal(parseModeCommand('explain this function'), null);
+  assert.deepEqual(parseOffcutCommand('/offcut review'), { type: 'command', message: null });
+  assert.deepEqual(parseOffcutCommand('/offcut audit'), { type: 'command', message: null });
+  assert.equal(parseOffcutCommand('/offcut full').type, 'set');
+  assert.equal(parseOffcutCommand('audit this repo for bloat'), null);
+  assert.equal(parseOffcutCommand('explain this function'), null);
 });
 
 // --- skills frontmatter / shape ---
@@ -354,6 +477,39 @@ test('one copy of signal definitions: skills point at scan/signals, do not redef
       );
     }
   }
+});
+
+test('scanner docs state context and audit-scope limits honestly', () => {
+  const review = fs.readFileSync(
+    path.join(root, 'skills', 'offcut-review', 'SKILL.md'),
+    'utf8',
+  );
+  const audit = fs.readFileSync(
+    path.join(root, 'skills', 'offcut-audit', 'SKILL.md'),
+    'utf8',
+  );
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const reviewFrontmatter = review.slice(0, review.indexOf('\n---', 3));
+  const auditFrontmatter = audit.slice(0, audit.indexOf('\n---', 3));
+
+  assert.doesNotMatch(
+    reviewFrontmatter,
+    /unused exports/i,
+    'diff review must not advertise a repo-only signal',
+  );
+  assert.match(review, /exported-unused[^\n]*does not run in a diff review/i);
+  assert.doesNotMatch(auditFrontmatter, /config surface|wrappers/i);
+  assert.doesNotMatch(audit, /Treat its output as authoritative/i);
+  assert.match(audit, /callers outside that scope are invisible/i);
+  assert.match(
+    audit,
+    /large-first-write`, `new-dependency`, and `new-config-surface` do not run in[\s\S]*repository audits/i,
+  );
+  assert.match(
+    readme,
+    /exported-unused[^\n]*repository audits only; relative to the paths scanned/i,
+  );
+  assert.doesNotMatch(readme, /0\.3 ms per file/i);
 });
 
 // --- evals: command activation corpus ---

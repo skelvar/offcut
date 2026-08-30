@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { runHook, emit } from './host.js';
 import {
   readMode,
-  hasFiredSignal,
   markPendingSignal,
   confirmPendingSignals,
 } from './state.js';
@@ -50,9 +49,8 @@ export function decidePostWrite(norm, mode) {
 
   const hits = runSignals(POST_SIGNALS, view);
   for (const signal of hits) {
-    if (hasFiredSignal(norm.sessionId, `post:${signal.id}`)) continue;
     // Pending until the next UserPromptSubmit confirms the prior turn continued.
-    markPendingSignal(norm.sessionId, `post:${signal.id}`);
+    if (!markPendingSignal(norm.sessionId, `post:${signal.id}`)) continue;
     return signal.message;
   }
   return null;
@@ -60,7 +58,7 @@ export function decidePostWrite(norm, mode) {
 
 export async function handlePostWrite(norm) {
   if (!norm) return null;
-  const mode = readMode();
+  const mode = readMode(norm.sessionId);
   const message = decidePostWrite(norm, mode);
   if (!message) return null;
   return emit(norm.host, 'post_tool_use', message);

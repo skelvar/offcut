@@ -4,7 +4,7 @@ description: >
   One-shot Offcut review of a diff: run the deterministic signals through
   scripts/scan.mjs over the changed lines and report exactly what fired. Use
   when the user asks to review or check a diff for over-engineering, bloat,
-  speculative abstractions, unused exports, a new dependency or new config
+  speculative abstractions, a new dependency or new config
   surface, asks what Offcut flags in a change, or invokes /offcut-review. Do
   not use for mode switches (/offcut full|lite|strict|off), repository-wide
   scans (use offcut-audit), applying the fixes, explaining code, rename-only
@@ -50,6 +50,8 @@ a mode: do not change `~/.offcut/` or any Offcut state file.
 - **Do not write Offcut state.** Commands leave the mode exactly as found.
 - **Do not re-implement signals in prose.** `hooks/signals.js` via
   `scripts/scan.mjs` is the only definition.
-- `large-first-write` may appear for newly added files in the diff; it does
-  not run in a repo audit. `exported-unused` needs a cross-file corpus.
+- `large-first-write` may appear for newly added JS/TS files in the diff; it
+  does not run in a repo audit. `exported-unused` does not run in a diff review:
+  deciding whether a new public export is dead requires a repository audit and
+  a cross-file corpus.
 - No network. The scanner must not modify files.

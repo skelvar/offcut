@@ -157,6 +157,11 @@ export function writeMode(stateDir, mode) {
   fs.writeFileSync(path.join(stateDir, 'default'), `${mode}\n`, 'utf8');
 }
 
+export function writeStyle(stateDir, style) {
+  if (!['concise', 'normal'].includes(style)) throw new Error(`bad style: ${style}`);
+  fs.writeFileSync(path.join(stateDir, 'style'), `${style}\n`, 'utf8');
+}
+
 /** Phase 10: pin variant ruleset/reminder into the per-run state dir. */
 export function writeArmOverrides(stateDir, { rulesetPath = null, reminder = null } = {}) {
   if (rulesetPath) {

@@ -1,0 +1,57 @@
+diff --git a/src/components/editor/Toolbar.js b/src/components/editor/Toolbar.js
+index 72b0e63..fa202c2 100644
+--- a/src/components/editor/Toolbar.js
++++ b/src/components/editor/Toolbar.js
+@@ -1,11 +1,22 @@
+-import { createElement } from '../../vendor/react.js';
+-
+-// Action controls will expand (export, share, save).
+-export function Toolbar() {
+-  return createElement(
+-    'nav',
+-    { className: 'toolbar' },
+-    createElement('span', { className: 'doc-title' }, 'Untitled'),
+-    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
+-  );
+-}
++import { createElement } from '../../vendor/react.js';
++import { LoadingLabel } from '../ui/LoadingLabel.js';
++import { Pressable } from '../ui/Pressable.js';
++
++// Action controls will expand (export, share, save).
++export function Toolbar({ saving = false } = {}) {
++  return createElement(
++    'nav',
++    { className: 'toolbar' },
++    createElement('span', { className: 'doc-title' }, 'Untitled'),
++    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
++    createElement(Pressable, {
++      variant: 'primary',
++      disabled: saving,
++      children: createElement(LoadingLabel, {
++        loading: saving,
++        label: 'Save',
++        loadingLabel: 'Saving...',
++      }),
++    }),
++  );
++}
+diff --git a/src/components/ui/LoadingLabel.js b/src/components/ui/LoadingLabel.js
+new file mode 100644
+index 0000000..9c5e15d
+--- /dev/null
++++ b/src/components/ui/LoadingLabel.js
+@@ -0,0 +1,13 @@
++import { createElement } from '../../vendor/react.js';
++import { LoadingSpinner } from './LoadingSpinner.js';
++
++export function LoadingLabel({ loading = false, label = '', loadingLabel = '' } = {}) {
++  if (!loading) return label;
++
++  return createElement(
++    'span',
++    { className: 'loading-label' },
++    createElement(LoadingSpinner),
++    loadingLabel,
++  );
++}

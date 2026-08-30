@@ -327,7 +327,7 @@ test('change-signals do not run in repo audits', () => {
 
   const pkg = '{\n  "dependencies": {\n    "left-pad": "^1.0.0"\n  }\n}\n';
   const mk = (ctx) => ({
-    path: 'package.json', content: pkg, addedContent: pkg, shape: 'full',
+    path: 'package.json', content: pkg, addedContent: pkg, shape: 'fragment',
     pathExists: true, truncated: false, context: ctx, corpus: pkg,
   });
   assert.equal(
@@ -341,7 +341,7 @@ test('change-signals do not run in repo audits', () => {
   );
 });
 
-test('new-dependency: an npm script is not a dependency', () => {
+test('new-dependency: bare package lines stay silent without their parent object', () => {
   // Found auditing a real repo (sponsorsync f6a73e8): adding
   // "check:taxonomy": "node scripts/check-taxonomy.mjs" was reported as a new
   // dependency. A dependency value is a version spec; a script is a command.
@@ -356,12 +356,34 @@ test('new-dependency: an npm script is not a dependency', () => {
   assert.equal(fires('    "build": "vite build",\n'), false);
   assert.equal(fires('    "test": "node --test tests/*.test.js",\n'), false);
 
-  for (const real of [
+  for (const ambiguous of [
     '    "left-pad": "^1.0.0",\n',
     '    "zod": "3.22.4",\n',
     '    "pkg": "~2.1.0",\n',
     '    "internal": "workspace:*",\n',
+    '    "vscode": "^1.80.0",\n',
+    '    "port": "3000",\n',
   ]) {
-    assert.ok(fires(real), `stopped catching a real dependency: ${real.trim()}`);
+    assert.equal(
+      fires(ambiguous),
+      false,
+      `bare line was classified without its package.json parent: ${ambiguous.trim()}`,
+    );
   }
+
+  assert.equal(
+    fires('  "dependencies": {\n    "left-pad": "^1.0.0"\n  }\n'),
+    true,
+  );
+});
+
+test('host docs distinguish hook style state from persistent-instruction fallback', () => {
+  const hosts = fs.readFileSync(path.join(root, 'docs', 'development', 'HOSTS.md'), 'utf8');
+  assert.match(hosts, /Default concise delivery/);
+  assert.match(hosts, /Claude Code.*SessionStart.*Hook state/is);
+  assert.match(hosts, /Codex.*no `model_verbosity` edit/is);
+  assert.match(hosts, /Cursor local.*additional_context/is);
+  assert.match(hosts, /Cursor cloud.*SessionStart.*hook currently unsupported/is);
+  assert.match(hosts, /Grok Build.*AGENTS\.md.*fallback.*no claimed hook delivery/is);
+  assert.match(hosts, /Other AGENTS\/Skill hosts.*no host configuration mutation/is);
 });

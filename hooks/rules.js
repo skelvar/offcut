@@ -9,7 +9,7 @@ export const FALLBACK_RULESET = `OFFCUT — what is the cheapest thing that actu
 
 Before writing anything:
 1. Does this need to exist? What breaks if it is skipped?
-2. Does it already exist here? Search this repository before writing.
+2. Does it already exist here? Reuse files already open this turn; search only if that does not answer it.
 3. Can something else do it? Platform, database constraint, standard library, or an installed dependency — in that order.
 4. What is the cheapest thing that actually works — not the cheapest that looks complete?
 5. Where does it belong? Which boundary owns this responsibility?
@@ -19,12 +19,17 @@ After writing:
 
 Never cut: understanding the problem, input validation at trust boundaries, error handling that prevents data loss, security controls, accessibility basics, or anything explicitly requested.
 
-Mark deliberate shortcuts with an \`offcut:\` comment naming the ceiling and what to do when it is reached.`;
+Mark deliberate shortcuts with an \`offcut:\` comment naming the ceiling and what to do when it is reached.
+
+Response style:
+Offcut is concise by default. OFFCUT STYLE: normal disables only response styling; construction rules remain active. Lead with the result. Skip tool preambles, routine narration, repetition, generic reassurance, and ceremonial sign-offs. Keep the shortest answer that preserves the result, evidence, material caveat, verification, and next action. Use readable prose without a word cap.
+
+Never compress away exact errors, requested code or commands, security or privacy warnings, destructive-action confirmations, accessibility guidance, or material uncertainty. Concision never reduces engineering work, tests, tool use, or correctness.`;
 
 export const REMINDER = `OFFCUT ACTIVE — before you build: does it need to exist? does it already exist here? can the platform or stdlib do it? what is the cheapest thing that works? which boundary owns it?`;
 
 /** Framing-neutral session footer so cheap vs justify differs only in the ruleset body. */
-export const SESSION_FOOTER = `Answer the challenge before you build. Prefer the platform and standard library. Leave an \`offcut:\` comment when a deliberate shortcut knowingly cuts a corner.`;
+export const SESSION_FOOTER = `Answer the challenge in one line, then act. Prefer the platform and standard library. Leave an \`offcut:\` comment when a deliberate shortcut knowingly cuts a corner.`;
 
 /**
  * Strip YAML frontmatter from a markdown skill file.
@@ -114,11 +119,13 @@ export function reminderText() {
  * Full context block emitted at session start / subagent start.
  * @param {string} mode
  * @param {string} [root]
+ * @param {'concise' | 'normal'} [style]
  */
-export function sessionContext(mode, root = pluginRoot()) {
+export function sessionContext(mode, root = pluginRoot(), style = 'concise') {
   const { text } = loadRuleset(root);
   const footer =
     (process.env.OFFCUT_SESSION_FOOTER && String(process.env.OFFCUT_SESSION_FOOTER).trim()) ||
     SESSION_FOOTER;
-  return [`OFFCUT MODE: ${mode}`, '', text, '', footer].join('\n');
+  const stable = [`OFFCUT MODE: ${mode}`, '', text, '', footer].join('\n');
+  return style === 'normal' ? `${stable}\n\nOFFCUT STYLE: normal` : stable;
 }

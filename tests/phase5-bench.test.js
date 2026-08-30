@@ -113,6 +113,109 @@ test('invite elaborate stubs put target signals in the diff; control leans stay 
   }
 });
 
+test('dependency scoring distinguishes a new package from metadata and version changes', async () => {
+  const { detectSignalsInDiff } = await import('../bench/score.mjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-dep-score-'));
+  try {
+    const manifest = path.join(parent, 'package.json');
+    const cases = [
+      {
+        name: 'new package',
+        content: {
+          name: 'demo',
+          dependencies: { react: '19.0.0', 'left-pad': '1.0.0' },
+        },
+        diff: [
+          'diff --git a/package.json b/package.json',
+          '--- a/package.json',
+          '+++ b/package.json',
+          '@@ -3,5 +3,6 @@',
+          '   "dependencies": {',
+          '+    "left-pad": "1.0.0",',
+          '     "react": "19.0.0"',
+          '   }',
+        ].join('\n'),
+        expected: true,
+      },
+      {
+        name: 'version change',
+        content: { name: 'demo', dependencies: { react: '19.1.0' } },
+        diff: [
+          'diff --git a/package.json b/package.json',
+          '--- a/package.json',
+          '+++ b/package.json',
+          '@@ -3,5 +3,5 @@',
+          '   "dependencies": {',
+          '-    "react": "19.0.0"',
+          '+    "react": "19.1.0"',
+          '   }',
+        ].join('\n'),
+        expected: false,
+      },
+      {
+        name: 'metadata addition',
+        content: {
+          name: 'demo',
+          homepage: 'https://example.test',
+          dependencies: { react: '19.0.0' },
+        },
+        diff: [
+          'diff --git a/package.json b/package.json',
+          '--- a/package.json',
+          '+++ b/package.json',
+          '@@ -1,4 +1,5 @@',
+          ' {',
+          '   "name": "demo",',
+          '+  "homepage": "https://example.test",',
+          '   "dependencies": {',
+        ].join('\n'),
+        expected: false,
+      },
+    ];
+
+    for (const item of cases) {
+      fs.writeFileSync(manifest, JSON.stringify(item.content, null, 2) + '\n');
+      const found = detectSignalsInDiff(item.diff, parent).includes('new-dependency');
+      assert.equal(found, item.expected, item.name);
+    }
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('runOne honors a caller-owned run root', async () => {
+  const { runOne } = await import('../bench/run.mjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-run-root-'));
+  const runRoot = path.join(parent, 'live-runs');
+  let result;
+  try {
+    result = runOne({
+      task: 'config-fallback',
+      arm: 'off',
+      rep: 1,
+      stub: 'lean',
+      model: 'stub',
+      runRoot,
+      manifestPath: path.join(parent, 'manifest.jsonl'),
+      style: 'normal',
+      styleArm: 'normal',
+    });
+    assert.equal(path.dirname(result.runDir), runRoot);
+    assert.equal(fs.existsSync(result.runDir), true);
+    assert.equal(result.record.offcut_style, 'normal');
+    assert.equal(result.record.style_arm, 'normal');
+    const stateAfter = JSON.parse(
+      fs.readFileSync(path.join(result.runDir, 'state-after.json'), 'utf8'),
+    );
+    assert.equal(stateAfter.style.trim(), 'normal');
+  } finally {
+    if (result?.runDir && path.dirname(result.runDir) !== runRoot) {
+      fs.rmSync(result.runDir, { recursive: true, force: true });
+    }
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('premise schedule is one arm, three reps, four tasks', async () => {
   const {
     PREMISE_ARMS,
@@ -177,7 +280,12 @@ test('OFFCUT_RULESET_PATH loads justify variant; reminder override works', async
     const just = stripFrontmatter(
       await import('node:fs').then((fs) => fs.readFileSync(justifySkill, 'utf8')),
     );
-    assert.ok(Math.abs(just.length - cheap.length) / cheap.length <= 0.1);
+    assert.match(cheap, /## Response style/);
+    assert.doesNotMatch(
+      just,
+      /## Response style/,
+      'the frozen Phase 10 framing ruleset must not be rewritten with later product behavior',
+    );
   } finally {
     if (prevPath === undefined) delete process.env.OFFCUT_RULESET_PATH;
     else process.env.OFFCUT_RULESET_PATH = prevPath;
