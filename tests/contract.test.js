@@ -296,3 +296,23 @@ test('contract: no hook script outside host.js/adapters contains a host identifi
   }
   assert.deepEqual(offenders, [], `host names leaked into: ${offenders.join(', ')}`);
 });
+
+test('contract: CI runs the full suite on Windows, Ubuntu, and macOS', () => {
+  const workflow = fs.readFileSync(
+    path.join(root, '.github', 'workflows', 'test.yml'),
+    'utf8',
+  );
+
+  assert.match(workflow, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
+  assert.match(workflow, /fail-fast:\s*false/);
+  for (const os of ['windows-latest', 'ubuntu-latest', 'macos-latest']) {
+    assert.match(workflow, new RegExp(`\\b${os}\\b`));
+  }
+
+  const fullSuiteStep = workflow.match(
+    /- name: Unit and contract tests[\s\S]*?(?=\n\s+- name:|\s*$)/,
+  );
+  assert.ok(fullSuiteStep, 'full-suite CI step is missing');
+  assert.match(fullSuiteStep[0], /run:\s*node --test tests\/\*\.test\.js/);
+  assert.doesNotMatch(fullSuiteStep[0], /\n\s+if:/, 'full suite must run on every OS');
+});

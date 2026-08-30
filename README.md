@@ -315,8 +315,10 @@ files rather than every file walked.
 
 ### Host support
 
-Verified by observing a challenge in a real session, not by a successful
-install.
+Platform verification has two separate levels. The full automated suite runs
+on Windows, Ubuntu Linux, and macOS for every push and pull request. Real-harness
+E2E is Windows only today: a host counts as verified below only when a challenge
+was observed in a real session, not when installation merely succeeded.
 
 | Host | Mode | Commands |
 |---|---|---|

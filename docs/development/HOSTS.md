@@ -26,6 +26,14 @@ Synthetic suite: started at **75/75**, ended at **79+/79+** after Phase 3 tests
 Install path used for E2E: `node tools/install.mjs` (absolute single-string
 commands). Uninstall verified clean afterward.
 
+## Operating-system verification
+
+The full automated suite runs on Windows, Ubuntu Linux, and macOS for every push
+and pull request. Real-harness E2E is Windows only today. The CI matrix verifies
+portable paths, installers in isolated fake homes, hooks, statuslines, scanners,
+bench contracts, manifests, and generated artifacts; it does not claim a real
+Claude, Codex, Grok, or Cursor session on Ubuntu or macOS.
+
 ## Concise style delivery (2026-08-30)
 
 Offcut's concise contract now lives in `rules/offcut.md` and is generated into

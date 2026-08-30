@@ -387,3 +387,13 @@ test('host docs distinguish hook style state from persistent-instruction fallbac
   assert.match(hosts, /Grok Build.*AGENTS\.md.*fallback.*no claimed hook delivery/is);
   assert.match(hosts, /Other AGENTS\/Skill hosts.*no host configuration mutation/is);
 });
+
+test('support docs separate three-OS CI from Windows-only real-harness E2E', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const hosts = fs.readFileSync(path.join(root, 'docs', 'development', 'HOSTS.md'), 'utf8');
+
+  for (const document of [readme, hosts]) {
+    assert.match(document, /full automated suite.*Windows.*Ubuntu Linux.*macOS/is);
+    assert.match(document, /real-harness\s+E2E.*Windows only/is);
+  }
+});

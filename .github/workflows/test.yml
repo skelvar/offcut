@@ -6,7 +6,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -21,11 +25,13 @@ jobs:
         run: node --test tests/*.test.js
 
       - name: AGENTS.md must not be stale
+        if: matrix.os == 'ubuntu-latest'
         run: |
           node scripts/build-agents-md.js
           git diff --exit-code -- AGENTS.md
 
       - name: Versions must match
+        if: matrix.os == 'ubuntu-latest'
         run: |
           node -e '
             const fs = require("fs");
@@ -49,6 +55,7 @@ jobs:
           '
 
       - name: No host identifiers outside host.js and adapters/
+        if: matrix.os == 'ubuntu-latest'
         run: |
           if grep -RInE '\b(claude|codex|grok|cursor)\b' hooks \
             --exclude='host.js' \
@@ -60,6 +67,7 @@ jobs:
           ! grep -RInE '\b(claude|codex|grok|cursor)\b' hooks --exclude=host.js
 
       - name: Zero runtime dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
           if [ -f package.json ]; then
             node -e '
@@ -74,6 +82,7 @@ jobs:
           test ! -d node_modules || (echo "node_modules must not ship" && exit 1)
 
       - name: Adapter scripts exist
+        if: matrix.os == 'ubuntu-latest'
         run: |
           node -e '
             const fs = require("fs");
