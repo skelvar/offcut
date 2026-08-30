@@ -4,15 +4,17 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runHook, emit, gate } from './host.js';
+import { runHook, emit, gate, hasNativeGuidance } from './host.js';
 import { readMode, readStyle } from './state.js';
-import { sessionContext } from './rules.js';
+import { nativeSessionContext, sessionContext } from './rules.js';
 
-export async function handleSubagent(norm) {
+export async function handleSubagent(norm, opts = {}) {
   if (!norm) return null;
+  const native = opts.native ?? hasNativeGuidance(norm.host);
   const mode = readMode(norm.sessionId);
-  if (mode === 'off') return null;
-  const context = sessionContext(mode, undefined, readStyle(norm.sessionId));
+  if (mode === 'off' && !native) return null;
+  const style = readStyle(norm.sessionId);
+  const context = native ? nativeSessionContext(mode, style) : sessionContext(mode, undefined, style);
 
   if (norm.event === 'pre_tool_use' && norm.toolName === 'Subagent') {
     const input = norm.toolInput;

@@ -29,6 +29,7 @@ import {
   loadRuleset,
   stripFrontmatter,
   sessionContext,
+  nativeSessionContext,
   FALLBACK_RULESET,
   REMINDER,
   SESSION_FOOTER,
@@ -361,6 +362,19 @@ test('rules: default concise keeps a stable prefix and normal is a late override
   assert.doesNotMatch(normal, /^OFFCUT STYLE: concise$/m);
 });
 
+test('rules: native context carries only mode and style state', () => {
+  assert.equal(
+    nativeSessionContext('full', 'concise'),
+    'OFFCUT MODE: full\nOFFCUT STYLE: concise',
+  );
+  assert.equal(
+    nativeSessionContext('strict', 'normal'),
+    'OFFCUT MODE: strict\nOFFCUT STYLE: normal',
+  );
+  assert.match(nativeSessionContext('off', 'concise'), /ignore the installed Offcut kernel/i);
+  assert.doesNotMatch(nativeSessionContext('full', 'concise'), /cheapest thing/i);
+});
+
 // --- prompt commands ---
 
 test('parseOffcutCommand: mode switches', () => {
@@ -619,6 +633,7 @@ test('handleActivate: emits ruleset in full', async () => {
       normalize({ hook_event_name: 'SessionStart', source: 'startup', session_id: 's' }),
     );
     assert.match(out.hookSpecificOutput.additionalContext, /OFFCUT MODE: full/);
+    assert.match(out.hookSpecificOutput.additionalContext, /cheapest thing that actually works/i);
     assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
   });
 });
@@ -840,6 +855,71 @@ test('statusline.sh reflects mode', async (t) => {
     });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout.trim(), /offcut:strict/);
+  });
+});
+
+test('native guidance: activation and subagents emit state without duplicating the kernel', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('full');
+    clearMode();
+    const norm = normalize({
+      hook_event_name: 'SessionStart',
+      source: 'startup',
+      session_id: 'native',
+    });
+    const out = await handleActivate(norm, { native: true });
+    assert.equal(
+      out.hookSpecificOutput.additionalContext,
+      'OFFCUT MODE: full\nOFFCUT STYLE: concise',
+    );
+
+    const child = await handleSubagent(
+      normalize({
+        hook_event_name: 'SubagentStart',
+        session_id: 'native',
+        agent_id: 'child',
+      }),
+      { native: true },
+    );
+    assert.equal(
+      child.hookSpecificOutput.additionalContext,
+      'OFFCUT MODE: full\nOFFCUT STYLE: concise',
+    );
+  });
+});
+
+test('native guidance: off explicitly neutralizes persistence and reminders stay silent', async () => {
+  await withStateDir(async () => {
+    writeDefaultMode('off');
+    clearMode();
+    const activated = await handleActivate(
+      normalize({ hook_event_name: 'SessionStart', source: 'clear', session_id: 'native-off' }),
+      { native: true },
+    );
+    assert.match(activated.hookSpecificOutput.additionalContext, /^OFFCUT MODE: off/m);
+    assert.match(activated.hookSpecificOutput.additionalContext, /ignore the installed Offcut kernel/i);
+
+    writeMode('full', 'native-on');
+    const reminder = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-on',
+        prompt: 'build a parser',
+      }),
+      { native: true },
+    );
+    assert.equal(reminder, null);
+
+    const stopped = await handlePrompt(
+      normalize({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'native-on',
+        prompt: '/offcut off',
+      }),
+      { native: true },
+    );
+    assert.match(stopped.hookSpecificOutput.additionalContext, /^OFFCUT MODE: off/m);
+    assert.match(stopped.hookSpecificOutput.additionalContext, /ignore the installed Offcut kernel/i);
   });
 });
 

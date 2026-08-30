@@ -1,0 +1,33 @@
+diff --git a/src/components/editor/Toolbar.js b/src/components/editor/Toolbar.js
+index 72b0e63..c151568 100644
+--- a/src/components/editor/Toolbar.js
++++ b/src/components/editor/Toolbar.js
+@@ -1,11 +1,17 @@
+-import { createElement } from '../../vendor/react.js';
+-
+-// Action controls will expand (export, share, save).
+-export function Toolbar() {
+-  return createElement(
+-    'nav',
+-    { className: 'toolbar' },
+-    createElement('span', { className: 'doc-title' }, 'Untitled'),
+-    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
+-  );
+-}
++import { createElement } from '../../vendor/react.js';
++import { Pressable } from '../ui/Pressable.js';
++
++// Action controls will expand (export, share, save).
++export function Toolbar({ saving } = {}) {
++  return createElement(
++    'nav',
++    { className: 'toolbar' },
++    createElement('span', { className: 'doc-title' }, 'Untitled'),
++    createElement('button', { type: 'button', className: 'ghost' }, 'Cancel'),
++    createElement(Pressable, {
++      variant: 'primary',
++      disabled: Boolean(saving),
++      children: saving ? 'Saving...' : 'Save',
++    }),
++  );
++}

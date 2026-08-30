@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "task": "busy-helper",
+  "status": "review_pending",
+  "automated_comparable": true,
+  "public_claimable": false,
+  "acceptance_gate": "pass",
+  "completeness_gate": "pending_or_failed",
+  "source_run_ids": [
+    "12e48129231b31ef",
+    "3d02c38751e335b7",
+    "464e3135477f2e59",
+    "4edc4f28e78c1c95",
+    "64b5f90698a8aa8a",
+    "78612b205eaa08b5",
+    "ad6dd40167525fbb",
+    "d575d3ca2b814a08",
+    "dea2694c74999dbf",
+    "ff6c8b43721cfc70"
+  ],
+  "arms": {
+    "baseline": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 93523,
+        "cache_read_input_tokens": 66432,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 27091,
+        "output_tokens": 1218.5,
+        "reasoning_output_tokens": 268,
+        "duration_ms": 65829,
+        "model_turns": 1,
+        "completed_tool_calls": 5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 93523,
+        "median_cache_read_input_tokens": 66432,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 27091
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "terse": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 102154,
+        "cache_read_input_tokens": 87552,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 14602,
+        "output_tokens": 1292,
+        "reasoning_output_tokens": 279,
+        "duration_ms": 67026,
+        "model_turns": 1,
+        "completed_tool_calls": 5.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 102154,
+        "median_cache_read_input_tokens": 87552,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 14602
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "caveman": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 96784,
+        "cache_read_input_tokens": 76032,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 20752,
+        "output_tokens": 1373.5,
+        "reasoning_output_tokens": 243,
+        "duration_ms": 68000,
+        "model_turns": 1,
+        "completed_tool_calls": 5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 96784,
+        "median_cache_read_input_tokens": 76032,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 20752
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "ponytail": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 112973,
+        "cache_read_input_tokens": 95744,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 17229,
+        "output_tokens": 1346,
+        "reasoning_output_tokens": 293,
+        "duration_ms": 70154.5,
+        "model_turns": 1,
+        "completed_tool_calls": 5.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 112973,
+        "median_cache_read_input_tokens": 95744,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 17229
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "offcut": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 136514.5,
+        "cache_read_input_tokens": 112384,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 24130.5,
+        "output_tokens": 1745,
+        "reasoning_output_tokens": 521.5,
+        "duration_ms": 100039,
+        "model_turns": 1,
+        "completed_tool_calls": 7,
+        "lines_added": 16,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 136514.5,
+        "median_cache_read_input_tokens": 112384,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 24130.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    }
+  },
+  "comparisons": {
+    "offcut_vs_baseline": {
+      "input_tokens_pct": 45.969,
+      "cache_read_input_tokens_pct": 69.171,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": -10.928,
+      "output_tokens_pct": 43.209,
+      "reasoning_output_tokens_pct": 94.59,
+      "duration_ms_pct": 51.968,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": 40,
+      "lines_added_pct": -5.882,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    },
+    "offcut_vs_terse": {
+      "input_tokens_pct": 33.636,
+      "cache_read_input_tokens_pct": 28.363,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 65.255,
+      "output_tokens_pct": 35.062,
+      "reasoning_output_tokens_pct": 86.918,
+      "duration_ms_pct": 49.254,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": 27.273,
+      "lines_added_pct": -5.882,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    },
+    "offcut_vs_caveman": {
+      "input_tokens_pct": 41.051,
+      "cache_read_input_tokens_pct": 47.811,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 16.28,
+      "output_tokens_pct": 27.048,
+      "reasoning_output_tokens_pct": 114.609,
+      "duration_ms_pct": 47.116,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": 40,
+      "lines_added_pct": -5.882,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    },
+    "offcut_vs_ponytail": {
+      "input_tokens_pct": 20.838,
+      "cache_read_input_tokens_pct": 17.38,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 40.057,
+      "output_tokens_pct": 29.643,
+      "reasoning_output_tokens_pct": 77.986,
+      "duration_ms_pct": 42.598,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": 27.273,
+      "lines_added_pct": -5.882,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    }
+  },
+  "warnings": [
+    "Blind answer-completeness review is incomplete or failed.",
+    "Warm cache metrics are unavailable for at least one arm."
+  ],
+  "controlled_fields": "pass",
+  "source_pin_gate": "pass",
+  "provider_telemetry_gate": "pass",
+  "receipt_sha256": "e8b0ed40bf26fc3899ed2ffdaa7bc81ebed176a682137f5453408c8176c7f587"
+}

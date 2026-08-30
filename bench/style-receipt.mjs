@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildStyleReceipt, renderStyleReceipt } from './live-style-lib.mjs';
 
-function readJsonl(filePath) {
+export function readJsonl(filePath) {
   return fs
     .readFileSync(filePath, 'utf8')
     .split(/\r?\n/)
@@ -53,7 +53,7 @@ function parseArgs(argv) {
   };
 }
 
-function applyReviews(rows, reviews) {
+export function applyReviews(rows, reviews) {
   const byRunId = new Map();
   const resultRunIds = new Set(rows.map((row) => row?.run_id));
   for (const review of reviews) {

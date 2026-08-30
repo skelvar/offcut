@@ -16,8 +16,12 @@ import { loadRuleset } from './rules.js';
 import {
   pluginRoot,
   HOST_FACTS,
+  hasNativeGuidance,
+  hasShadowedNativeGuidance,
   installTargets,
   managedInstallTargets,
+  nativeInstallTargets,
+  NATIVE_MANAGED_START,
   resolveInstalledScript,
 } from './host.js';
 
@@ -229,17 +233,49 @@ export function runDoctor(opts = {}) {
     }
   }
 
+  // 4b. Stable model-facing guidance. Missing native guidance is a warning
+  // because plugin-only installs still have the complete hook fallback. A
+  // An override shadowing an installed fallback is a failure: the user
+  // asked for persistence, but the active file no longer contains it.
+  for (const target of nativeInstallTargets(opts.home)) {
+    if (!fs.existsSync(target.requiredDir)) continue;
+    let text = '';
+    try {
+      text = fs.readFileSync(target.file, 'utf8');
+    } catch {
+      // handled as missing below
+    }
+    const count = text.split(NATIVE_MANAGED_START).length - 1;
+    if (count === 1) {
+      record('ok', `native:${target.host}`, `active source — ${target.file}`);
+      continue;
+    }
+    if (count > 1) {
+      record('warn', `native:${target.host}`, `${count} managed blocks — ${target.file}`);
+      continue;
+    }
+
+    const shadowed = hasShadowedNativeGuidance(target);
+    record(
+      shadowed ? 'fail' : 'warn',
+      `native:${target.host}`,
+      shadowed
+        ? `active target ${target.file} shadows the installed AGENTS.md kernel`
+        : `missing from active target — ${target.file}; hooks will send the full fallback`,
+    );
+  }
+
   // 5. ruleset file readable
   const root = opts.root || pluginRoot();
   const ruleset = loadRuleset(root);
-  const skillPath = path.join(root, 'skills', 'offcut', 'SKILL.md');
+  const kernelPath = path.join(root, 'rules', 'offcut.md');
   if (ruleset.source === 'file') {
-    record('ok', 'ruleset', `readable — ${skillPath}`);
+    record('ok', 'ruleset', `readable — ${kernelPath}`);
   } else {
     record(
       'warn',
       'ruleset',
-      `unreadable — using hardcoded fallback (${skillPath})`,
+      `unreadable — using hardcoded fallback (${kernelPath})`,
     );
   }
 
@@ -282,7 +318,7 @@ export function runDoctor(opts = {}) {
   } else {
     let rulesetMtime = null;
     try {
-      rulesetMtime = fs.statSync(skillPath).mtime;
+      rulesetMtime = fs.statSync(kernelPath).mtime;
     } catch {
       // unreadable is check 5's business, not this one's
     }
@@ -294,7 +330,7 @@ export function runDoctor(opts = {}) {
       editedSince ? 'warn' : 'ok',
       'ruleset served',
       editedSince
-        ? `this root, but SKILL.md changed ${formatAge(rulesetMtime)} — after the last SessionStart, so the running session still holds the older text; restart to serve it`
+        ? `this root, but rules/offcut.md changed ${formatAge(rulesetMtime)} — after the last SessionStart, so the running session still holds the older text; restart to serve it`
         : `this root — ${served.root}`,
     );
   }

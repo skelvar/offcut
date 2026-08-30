@@ -1,0 +1,12 @@
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\Users\\bash\\AppData\\Local\\Temp\\" (codex_home: AbsolutePathBuf("C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-GU6raO"))
+Reading additional input from stdin...
+2026-08-30T17:34:46.570917Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell
+2026-08-30T17:34:59.592874Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:07.224958Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:15.206518Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:30.231330Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:39.847773Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:50.844191Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:35:57.343806Z  WARN codex_core::responses_retry: stream disconnected - retrying sampling request (1/1 in 180ms)... turn_id=01a053be-059c-7242-ad83-8d29d6ea340d retries=1 max_retries=1 sampling_error=stream disconnected before completion: failed to send websocket request: Connection closed normally
+2026-08-30T17:36:01.010558Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
+2026-08-30T17:36:09.563478Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.

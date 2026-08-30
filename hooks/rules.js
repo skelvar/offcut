@@ -79,7 +79,7 @@ function resolveReminderOverride() {
 }
 
 /**
- * Load the challenge body from SKILL.md, or the hardcoded fallback.
+ * Load the challenge body from the standalone kernel, or the hardcoded fallback.
  * Bench override: OFFCUT_RULESET_PATH or state-dir `ruleset-path` (Phase 10).
  * @param {string} [root]
  * @returns {{ text: string, source: 'file' | 'fallback' | 'env' }}
@@ -92,12 +92,12 @@ export function loadRuleset(root = pluginRoot()) {
       const body = stripFrontmatter(raw);
       if (body) return { text: body, source: 'env' };
     } catch {
-      // fall through to shipped skill
+      // fall through to shipped kernel
     }
   }
-  const skillPath = path.join(root, 'skills', 'offcut', 'SKILL.md');
+  const kernelPath = path.join(root, 'rules', 'offcut.md');
   try {
-    const raw = fs.readFileSync(skillPath, 'utf8');
+    const raw = fs.readFileSync(kernelPath, 'utf8');
     const body = stripFrontmatter(raw);
     if (body) return { text: body, source: 'file' };
   } catch {
@@ -128,4 +128,13 @@ export function sessionContext(mode, root = pluginRoot(), style = 'concise') {
     SESSION_FOOTER;
   const stable = [`OFFCUT MODE: ${mode}`, '', text, '', footer].join('\n');
   return style === 'normal' ? `${stable}\n\nOFFCUT STYLE: normal` : stable;
+}
+
+/** Compact lifecycle state when the complete kernel is already persistent. */
+export function nativeSessionContext(mode, style = 'concise') {
+  const effectiveStyle = style === 'normal' ? 'normal' : 'concise';
+  if (mode === 'off') {
+    return 'OFFCUT MODE: off\nIgnore the installed Offcut kernel for this session.';
+  }
+  return `OFFCUT MODE: ${mode}\nOFFCUT STYLE: ${effectiveStyle}`;
 }

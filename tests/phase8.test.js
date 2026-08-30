@@ -524,13 +524,9 @@ test('pruneOnSessionEnd is exported and safe on empty dir', () => {
 /** A second install root holding its own ruleset. */
 function makeCopy(body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-copy-'));
-  const skillDir = path.join(dir, 'skills', 'offcut');
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(skillDir, 'SKILL.md'),
-    `---\nname: offcut\nversion: "0.1.0"\n---\n\n${body}\n`,
-    'utf8',
-  );
+  const rulesDir = path.join(dir, 'rules');
+  fs.mkdirSync(rulesDir, { recursive: true });
+  fs.writeFileSync(path.join(rulesDir, 'offcut.md'), `${body}\n`, 'utf8');
   return dir;
 }
 
@@ -572,7 +568,7 @@ test('doctor: same copy served it and the ruleset is unchanged → ok', () => {
     writeMode('full');
     const copy = makeCopy('current');
     try {
-      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), -3600);
+      touch(path.join(copy, 'rules', 'offcut.md'), -3600);
       writeServedRoot(copy);
       const result = runDoctor({ silent: true, root: copy });
       const served = result.lines.find((l) => l.check === 'ruleset served');
@@ -585,14 +581,14 @@ test('doctor: same copy served it and the ruleset is unchanged → ok', () => {
 });
 
 test('doctor: ruleset edited after the last SessionStart → warn to restart', () => {
-  // Editing SKILL.md does not reach a session already running. CI checking that
+  // Editing rules/offcut.md does not reach a session already running. CI checking that
   // AGENTS.md is fresh says nothing about what the live session holds.
   return withStateDir(() => {
     writeMode('full');
     const copy = makeCopy('edited after activation');
     try {
       writeServedRoot(copy);
-      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), 120);
+      touch(path.join(copy, 'rules', 'offcut.md'), 120);
       const result = runDoctor({ silent: true, root: copy });
       const served = result.lines.find((l) => l.check === 'ruleset served');
       assert.equal(served.verdict, 'warn');
@@ -610,7 +606,7 @@ test('doctor: a mid-session mode switch does not mask an edited ruleset', () => 
     const copy = makeCopy('body');
     try {
       writeServedRoot(copy);
-      touch(path.join(copy, 'skills', 'offcut', 'SKILL.md'), 120);
+      touch(path.join(copy, 'rules', 'offcut.md'), 120);
       writeMode('lite');
       const result = runDoctor({ silent: true, root: copy });
       const served = result.lines.find((l) => l.check === 'ruleset served');

@@ -30,7 +30,7 @@ import {
   writeStyle,
 } from './lib.mjs';
 import { scoreRun } from './score.mjs';
-import { hookCommand } from '../tools/install.mjs';
+import { hookCommand, MANAGED_START, MANAGED_END } from '../tools/install.mjs';
 
 const LEGACY_ARMS = new Set(['off', 'full']);
 const JUSTIFY_ARMS = new Set(['off', 'cheap', 'justify']);
@@ -291,6 +291,7 @@ export function prepareCodexHome({
   authPath = path.join(os.homedir(), '.codex', 'auth.json'),
   parentDir = os.tmpdir(),
   profileInstructions = CODEX_PROFILE_INSTRUCTIONS,
+  nativeInstructions = null,
 }) {
   if (arm !== 'off' && arm !== 'full') throw new Error(`bad Codex efficacy arm: ${arm}`);
   if (!fs.existsSync(authPath)) throw new Error('Codex auth file missing');
@@ -308,12 +309,19 @@ export function prepareCodexHome({
       'utf8',
     );
     fs.writeFileSync(path.join(homeDir, 'hooks.json'), `${JSON.stringify(hooks, null, 2)}\n`, 'utf8');
+    let nativeInstructionsSha256 = null;
+    if (typeof nativeInstructions === 'string' && nativeInstructions.trim()) {
+      const nativeText = `${MANAGED_START}\n${nativeInstructions.trim()}\n${MANAGED_END}\n`;
+      fs.writeFileSync(path.join(homeDir, 'AGENTS.md'), nativeText, 'utf8');
+      nativeInstructionsSha256 = sha256(nativeInstructions.trim());
+    }
     return {
       homeDir,
       config_sha256: sha256(config),
       profile_config_sha256: sha256(profileConfig),
       role_sha256: null,
       hooks_sha256: sha256(`${JSON.stringify(hooks, null, 2)}\n`),
+      native_instructions_sha256: nativeInstructionsSha256,
     };
   } catch (error) {
     cleanupCodexHome(homeDir);
@@ -868,12 +876,14 @@ export function runCodex({
   now = () => performance.now(),
   envSource = process.env,
   profileInstructions = CODEX_PROFILE_INSTRUCTIONS,
+  nativeInstructions = null,
 }) {
   const isolated = prepareCodexHome({
     arm,
     authPath,
     parentDir: homeParentDir,
     profileInstructions,
+    nativeInstructions,
   });
   const args = buildCodexArgs({ workDir, prompt });
   const resolvedAuditPath =
@@ -896,6 +906,7 @@ export function runCodex({
     profile_config_sha256: isolated.profile_config_sha256,
     role_sha256: isolated.role_sha256,
     hooks_sha256: isolated.hooks_sha256,
+    native_instructions_sha256: isolated.native_instructions_sha256,
   });
   try {
     const login = verifyCodexChatGptLogin(spawnCodex, commonOptions);
@@ -1140,6 +1151,7 @@ export function runOne(opts) {
         auditPath: path.join(runDir, 'agent-audit.jsonl'),
         spawnCodex: opts.spawnCodex,
         profileInstructions: opts.profileInstructions,
+        nativeInstructions: opts.nativeInstructions,
       });
       record.model_id = agent.modelId;
       record.model_observation = agent.modelObservation;
@@ -1153,6 +1165,7 @@ export function runOne(opts) {
       record.config_sha256 = agent.config_sha256;
       record.profile_config_sha256 = agent.profile_config_sha256;
       record.hooks_sha256 = agent.hooks_sha256;
+      record.native_instructions_sha256 = agent.native_instructions_sha256;
       record.process_started = agent.processStarted;
       record.inference_started = agent.inferenceStarted;
       record.exit_code = agent.exitCode ?? null;

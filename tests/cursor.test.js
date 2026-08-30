@@ -12,6 +12,7 @@ import {
   gate,
   HOST_FACTS,
   installTargets,
+  nativeInstallTargets,
   normalize,
   pluginRoot,
 } from '../hooks/host.js';
@@ -289,7 +290,7 @@ test('cursor package: native manifest and adapter expose every required lifecycl
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.name, 'offcut');
-  assert.equal(manifest.version, '0.2.0');
+  assert.equal(manifest.version, '0.3.0');
   assert.equal(manifest.skills, './skills/');
   assert.equal(manifest.hooks, './adapters/cursor/hooks.json');
   assert.ok(fs.statSync(path.join(root, manifest.skills)).isDirectory());
@@ -402,6 +403,137 @@ test('cursor install: CLI merges native hooks and uninstall leaves foreign hooks
         beforeSubmitPrompt: [{ command: 'node "foreign.js"', timeout: 2 }],
       },
     });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('native install: persists one reversible kernel in every detected harness', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-native-install-'));
+  const dirs = ['.claude', '.codex', '.cursor', '.grok'];
+  for (const dir of dirs) fs.mkdirSync(path.join(home, dir), { recursive: true });
+
+  const originals = new Map([
+    [path.join(home, '.claude', 'CLAUDE.md'), '# Claude foreign\n'],
+    [path.join(home, '.codex', 'AGENTS.override.md'), '# Codex override foreign\n'],
+    [path.join(home, '.codex', 'AGENTS.md'), '# Codex fallback foreign\n'],
+    [path.join(home, '.cursor', 'rules', 'foreign.mdc'), '# Cursor foreign\n'],
+    [path.join(home, '.grok', 'AGENTS.md'), '# Grok foreign\n'],
+  ]);
+  for (const [file, text] of originals) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  }
+
+  const targets = nativeInstallTargets(home);
+  assert.deepEqual(
+    targets.map(({ host, file }) => [host, path.relative(home, file)]),
+    [
+      ['claude', path.join('.claude', 'CLAUDE.md')],
+      ['codex', path.join('.codex', 'AGENTS.override.md')],
+      ['cursor', path.join('.cursor', 'rules', 'offcut.mdc')],
+      ['grok', path.join('.grok', 'AGENTS.md')],
+    ],
+  );
+
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    for (let run = 0; run < 2; run += 1) {
+      const installed = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+        cwd: root,
+        env,
+        encoding: 'utf8',
+      });
+      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+    }
+
+    for (const { file } of targets) {
+      const text = fs.readFileSync(file, 'utf8');
+      assert.equal((text.match(/<!-- offcut:managed:start -->/g) || []).length, 1, file);
+      assert.match(text, /What is the cheapest thing that actually works/);
+      assert.equal(fs.existsSync(`${file}.offcut-backup`), true, file);
+    }
+    assert.equal(
+      fs.readFileSync(path.join(home, '.codex', 'AGENTS.md'), 'utf8'),
+      originals.get(path.join(home, '.codex', 'AGENTS.md')),
+      'non-active Codex fallback must remain untouched',
+    );
+
+    const removed = spawnSync(
+      process.execPath,
+      [path.join(root, 'tools', 'install.mjs'), '--uninstall'],
+      { cwd: root, env, encoding: 'utf8' },
+    );
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    for (const [file, text] of originals) {
+      assert.equal(fs.readFileSync(file, 'utf8'), text, file);
+    }
+    assert.equal(fs.existsSync(path.join(home, '.cursor', 'rules', 'offcut.mdc')), false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('native install: uninstall removes a managed file created from nothing', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-native-new-'));
+  fs.mkdirSync(path.join(home, '.grok'), { recursive: true });
+  const file = path.join(home, '.grok', 'AGENTS.md');
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    const installed = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+    assert.equal(fs.existsSync(file), true);
+
+    const removed = spawnSync(
+      process.execPath,
+      [path.join(root, 'tools', 'install.mjs'), '--uninstall'],
+      { cwd: root, env, encoding: 'utf8' },
+    );
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    assert.equal(fs.existsSync(file), false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('doctor: reports the active native source, duplicates, and Codex override shadowing', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-native-doctor-'));
+  const codexDir = path.join(home, '.codex');
+  fs.mkdirSync(codexDir, { recursive: true });
+  const env = {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    OFFCUT_STATE_DIR: path.join(home, '.offcut'),
+  };
+  const doctor = () => spawnSync(process.execPath, [path.join(root, 'hooks', 'doctor.js')], {
+    cwd: root,
+    env,
+    encoding: 'utf8',
+  });
+  try {
+    const installed = spawnSync(process.execPath, [path.join(root, 'tools', 'install.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+
+    const healthy = doctor();
+    assert.match(healthy.stdout, /OK\s+native:codex:.*\.codex[\\/]AGENTS\.md/i);
+
+    const agents = path.join(codexDir, 'AGENTS.md');
+    fs.appendFileSync(agents, '\n<!-- offcut:managed:start -->\nduplicate\n');
+    const duplicate = doctor();
+    assert.match(duplicate.stdout, /WARN\s+native:codex:.*2 managed blocks/i);
+
+    fs.writeFileSync(path.join(codexDir, 'AGENTS.override.md'), '# active foreign override\n');
+    const shadowed = doctor();
+    assert.match(shadowed.stdout, /FAIL\s+native:codex:.*active target.*AGENTS\.override\.md/i);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

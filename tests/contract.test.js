@@ -220,6 +220,9 @@ test('contract: adapters/claude/hooks.json wires SessionStart matcher and script
 
 test('contract: versions match across manifests and skill metadata', () => {
   const plugin = JSON.parse(fs.readFileSync(path.join(root, 'plugin.json'), 'utf8'));
+  const codexPlugin = JSON.parse(
+    fs.readFileSync(path.join(root, '.codex-plugin', 'plugin.json'), 'utf8'),
+  );
   const claudePlugin = JSON.parse(
     fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'),
   );
@@ -233,22 +236,51 @@ test('contract: versions match across manifests and skill metadata', () => {
   const ver = skill.match(/version:\s*"([^"]+)"/);
   assert.ok(ver);
   assert.equal(plugin.version, ver[1]);
+  assert.equal(codexPlugin.version, ver[1]);
   assert.equal(claudePlugin.version, ver[1]);
   assert.equal(cursorPlugin.version, ver[1]);
   assert.equal(market.plugins[0].version, ver[1]);
 });
 
-test('contract: AGENTS.md is not stale relative to SKILL.md', () => {
+test('contract: native Codex package uses the default hook entrypoint', () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(root, '.codex-plugin', 'plugin.json'), 'utf8'),
+  );
+  assert.equal(manifest.name, 'offcut');
+  assert.equal(manifest.hooks, undefined, 'default hooks/hooks.json needs no manifest override');
+
+  const hooks = JSON.parse(fs.readFileSync(path.join(root, 'hooks', 'hooks.json'), 'utf8'));
+  assert.deepEqual(hooks, JSON.parse(
+    fs.readFileSync(path.join(root, 'adapters', 'claude', 'hooks.json'), 'utf8'),
+  ));
+});
+
+test('contract: kernel owns generated AGENTS, skill, and Cursor rule artifacts', () => {
+  const kernel = fs.readFileSync(path.join(root, 'rules', 'offcut.md'), 'utf8').trim();
   const skill = fs.readFileSync(path.join(root, 'skills', 'offcut', 'SKILL.md'), 'utf8');
   const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
-  let body = skill;
+  const cursor = fs.readFileSync(path.join(root, 'rules', 'offcut.mdc'), 'utf8');
+  let skillBody = skill;
   if (skill.startsWith('---')) {
     const end = skill.indexOf('\n---', 3);
-    body = skill.slice(end + 4).replace(/^\r?\n/, '');
+    skillBody = skill.slice(end + 4).replace(/^\r?\n/, '');
   }
-  assert.ok(agents.includes(body.trim()), 'AGENTS.md missing SKILL.md body — run scripts/build-agents-md.js');
-  assert.match(agents, /Generated from/);
+
+  assert.equal(skillBody.trim(), kernel, 'SKILL.md is stale — run scripts/build-agents-md.js');
+  assert.match(agents, /Generated from `rules\/offcut\.md`/);
+  assert.equal(agents.slice(agents.indexOf('\n\n# Offcut') + 2).trim(), kernel);
+  assert.match(cursor, /^---\nalwaysApply: true\n---\n\n/);
+  assert.equal(cursor.slice(cursor.indexOf('\n\n') + 2).trim(), kernel);
   assert.match(agents, /## Response style/);
+});
+
+test('contract: native kernel is compact and cannot create Offcut ceremony', () => {
+  const kernel = fs.readFileSync(path.join(root, 'rules', 'offcut.md'), 'utf8');
+  const words = kernel.trim().split(/\s+/).length;
+  assert.ok(words <= 380, `native kernel is ${words} words; expected at most 380`);
+  assert.match(kernel, /apply (?:the checks|them) silently/i);
+  assert.match(kernel, /do not turn Offcut into an audit/i);
+  assert.match(kernel, /do not add .*checks.*because Offcut is active/i);
 });
 
 test('contract: no hook script outside host.js/adapters contains a host identifier', () => {

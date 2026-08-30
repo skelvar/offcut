@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "task": "busy-helper",
+  "status": "not_comparable",
+  "automated_comparable": false,
+  "public_claimable": false,
+  "acceptance_gate": "pass",
+  "completeness_gate": "pending_or_failed",
+  "source_run_ids": [
+    "12e48129231b31ef",
+    "464e3135477f2e59",
+    "4edc4f28e78c1c95",
+    "64b5f90698a8aa8a",
+    "78612b205eaa08b5",
+    "ad6dd40167525fbb",
+    "d575d3ca2b814a08",
+    "dea2694c74999dbf",
+    "e5190931df8d674e",
+    "ff6c8b43721cfc70"
+  ],
+  "arms": {
+    "baseline": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 93253,
+        "cache_read_input_tokens": 73472,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 19781,
+        "output_tokens": 1255,
+        "reasoning_output_tokens": 310,
+        "duration_ms": 69249.5,
+        "model_turns": 0.5,
+        "completed_tool_calls": 4.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 1,
+        "median_input_tokens": 93253,
+        "median_cache_read_input_tokens": 73472,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 19781
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "terse": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 102154,
+        "cache_read_input_tokens": 87552,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 14602,
+        "output_tokens": 1292,
+        "reasoning_output_tokens": 279,
+        "duration_ms": 67026,
+        "model_turns": 1,
+        "completed_tool_calls": 5.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 102154,
+        "median_cache_read_input_tokens": 87552,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 14602
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "caveman": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 96784,
+        "cache_read_input_tokens": 76032,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 20752,
+        "output_tokens": 1373.5,
+        "reasoning_output_tokens": 243,
+        "duration_ms": 68000,
+        "model_turns": 1,
+        "completed_tool_calls": 5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 96784,
+        "median_cache_read_input_tokens": 76032,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 20752
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "ponytail": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 112973,
+        "cache_read_input_tokens": 95744,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 17229,
+        "output_tokens": 1346,
+        "reasoning_output_tokens": 293,
+        "duration_ms": 70154.5,
+        "model_turns": 1,
+        "completed_tool_calls": 5.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 112973,
+        "median_cache_read_input_tokens": 95744,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 17229
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "offcut": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 136514.5,
+        "cache_read_input_tokens": 112384,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 24130.5,
+        "output_tokens": 1745,
+        "reasoning_output_tokens": 521.5,
+        "duration_ms": 100039,
+        "model_turns": 1,
+        "completed_tool_calls": 7,
+        "lines_added": 16,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 136514.5,
+        "median_cache_read_input_tokens": 112384,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 24130.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    }
+  },
+  "comparisons": {},
+  "warnings": [
+    "Blind answer-completeness review is incomplete or failed.",
+    "Warm cache metrics are unavailable for at least one arm.",
+    "Provider telemetry is missing or a run ended with a model failure."
+  ],
+  "controlled_fields": "pass",
+  "source_pin_gate": "pass",
+  "provider_telemetry_gate": "fail",
+  "receipt_sha256": "48eda6505c5ea0a7e042bf5feb7f8441ae66b6127533b7c7f76ae3b2a2b31cab"
+}

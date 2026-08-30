@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "task": "busy-helper",
+  "status": "claimable",
+  "automated_comparable": true,
+  "public_claimable": true,
+  "acceptance_gate": "pass",
+  "completeness_gate": "pass",
+  "source_run_ids": [
+    "06a66c52d73d046a",
+    "11ef8832fb84023c",
+    "20df64a2bf79786f",
+    "26e2cff53d36e282",
+    "61c439da37f1c7d0",
+    "7b6d2e2c2994ab52",
+    "b4d9a956a6ca0918",
+    "ccaa5c320806ee80",
+    "ce9a2c9cfed0442e",
+    "d26e096ecaa63b7d"
+  ],
+  "arms": {
+    "baseline": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 140091,
+        "cache_read_input_tokens": 120320,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 19771,
+        "output_tokens": 1890.5,
+        "reasoning_output_tokens": 572.5,
+        "duration_ms": 85793,
+        "model_turns": 1,
+        "completed_tool_calls": 7.5,
+        "lines_added": 11.5,
+        "lines_removed": 6,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 140091,
+        "median_cache_read_input_tokens": 120320,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 19771
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "terse": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 129062.5,
+        "cache_read_input_tokens": 110208,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 18854.5,
+        "output_tokens": 1760,
+        "reasoning_output_tokens": 473,
+        "duration_ms": 82283.5,
+        "model_turns": 1,
+        "completed_tool_calls": 7,
+        "lines_added": 12,
+        "lines_removed": 6,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 129062.5,
+        "median_cache_read_input_tokens": 110208,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 18854.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "caveman": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 122527,
+        "cache_read_input_tokens": 106240,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 16287,
+        "output_tokens": 1483.5,
+        "reasoning_output_tokens": 153.5,
+        "duration_ms": 70221,
+        "model_turns": 1,
+        "completed_tool_calls": 6.5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 122527,
+        "median_cache_read_input_tokens": 106240,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 16287
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "ponytail": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 120114.5,
+        "cache_read_input_tokens": 97792,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 22322.5,
+        "output_tokens": 1434.5,
+        "reasoning_output_tokens": 297,
+        "duration_ms": 66697,
+        "model_turns": 1,
+        "completed_tool_calls": 5.5,
+        "lines_added": 12,
+        "lines_removed": 7,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 120114.5,
+        "median_cache_read_input_tokens": 97792,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 22322.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "offcut": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 99450.5,
+        "cache_read_input_tokens": 75008,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 24442.5,
+        "output_tokens": 1228.5,
+        "reasoning_output_tokens": 267.5,
+        "duration_ms": 61216.5,
+        "model_turns": 1,
+        "completed_tool_calls": 5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 99450.5,
+        "median_cache_read_input_tokens": 75008,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 24442.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    }
+  },
+  "comparisons": {
+    "offcut_vs_baseline": {
+      "input_tokens_pct": -29.01,
+      "cache_read_input_tokens_pct": -37.66,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 23.628,
+      "output_tokens_pct": -35.017,
+      "reasoning_output_tokens_pct": -53.275,
+      "duration_ms_pct": -28.646,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": -33.333,
+      "lines_added_pct": 47.826,
+      "lines_removed_pct": 83.333,
+      "files_created_pct": null
+    },
+    "offcut_vs_terse": {
+      "input_tokens_pct": -22.944,
+      "cache_read_input_tokens_pct": -31.94,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 29.637,
+      "output_tokens_pct": -30.199,
+      "reasoning_output_tokens_pct": -43.446,
+      "duration_ms_pct": -25.603,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": -28.571,
+      "lines_added_pct": 41.667,
+      "lines_removed_pct": 83.333,
+      "files_created_pct": null
+    },
+    "offcut_vs_caveman": {
+      "input_tokens_pct": -18.834,
+      "cache_read_input_tokens_pct": -29.398,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 50.074,
+      "output_tokens_pct": -17.189,
+      "reasoning_output_tokens_pct": 74.267,
+      "duration_ms_pct": -12.823,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": -23.077,
+      "lines_added_pct": 0,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    },
+    "offcut_vs_ponytail": {
+      "input_tokens_pct": -17.204,
+      "cache_read_input_tokens_pct": -23.298,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": 9.497,
+      "output_tokens_pct": -14.36,
+      "reasoning_output_tokens_pct": -9.933,
+      "duration_ms_pct": -8.217,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": -9.091,
+      "lines_added_pct": 41.667,
+      "lines_removed_pct": 57.143,
+      "files_created_pct": null
+    }
+  },
+  "warnings": [
+    "Warm cache metrics are unavailable for at least one arm."
+  ],
+  "instruction_sources": {
+    "baseline": {
+      "source": "none",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "terse": {
+      "source": "literal:Be terse.",
+      "sha256": "28c7339ead79c720e67160d2f681384ad23a59bf8514c3c2e01d09a4d701441f"
+    },
+    "caveman": {
+      "source": "C:/Users/bash/.agents/skills/caveman/SKILL.md",
+      "sha256": "72969a0f6215f92bdd1766957ca6df28352234a8e91e9eb4b1c821625489f9d6"
+    },
+    "ponytail": {
+      "source": "C:/Users/bash/.agents/skills/ponytail/SKILL.md",
+      "sha256": "a0ff69829e9c80109a17e25adeace231027ffa556d3f131363300f8442c629f9"
+    },
+    "offcut": {
+      "source": "rules/offcut.md",
+      "sha256": "79e24727802b4e91feaf45c62bf810bf821122feb980e55dee3c235b4fcfd699"
+    }
+  },
+  "controlled_fields": "pass",
+  "source_pin_gate": "pass",
+  "provider_telemetry_gate": "pass",
+  "receipt_sha256": "07cdebcf042ea8327dc0cb334e49342fcfab85f22279aeb88d8e473087c48097"
+}

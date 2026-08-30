@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "task": "busy-helper",
+  "status": "claimable",
+  "automated_comparable": true,
+  "public_claimable": true,
+  "acceptance_gate": "pass",
+  "completeness_gate": "pass",
+  "source_run_ids": [
+    "5800d58dae7cecc2",
+    "a07f3a17fd0793ff",
+    "aafbe5ce8fc838ca",
+    "c54780aca5ae197e",
+    "f0b787412cb4a17e",
+    "fad13a2c94aaf0a8"
+  ],
+  "arms": {
+    "normal": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 99234,
+        "cache_read_input_tokens": 62976,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 36258,
+        "output_tokens": 1044.5,
+        "reasoning_output_tokens": 90,
+        "duration_ms": 54973.5,
+        "model_turns": 1,
+        "completed_tool_calls": 5,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 99234,
+        "median_cache_read_input_tokens": 62976,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 36258
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "terse": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 145647.5,
+        "cache_read_input_tokens": 118912,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 26735.5,
+        "output_tokens": 1725,
+        "reasoning_output_tokens": 445,
+        "duration_ms": 92358.5,
+        "model_turns": 1,
+        "completed_tool_calls": 7.5,
+        "lines_added": 11.5,
+        "lines_removed": 6,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 145647.5,
+        "median_cache_read_input_tokens": 118912,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 26735.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    },
+    "concise": {
+      "runs": 2,
+      "passed": 2,
+      "medians": {
+        "input_tokens": 117981.5,
+        "cache_read_input_tokens": 101632,
+        "cache_creation_input_tokens": 0,
+        "noncached_input_tokens": 16349.5,
+        "output_tokens": 1265,
+        "reasoning_output_tokens": 184.5,
+        "duration_ms": 66409.5,
+        "model_turns": 1,
+        "completed_tool_calls": 6,
+        "lines_added": 17,
+        "lines_removed": 11,
+        "files_created": 0
+      },
+      "cold_cache": {
+        "turns": 2,
+        "median_input_tokens": 117981.5,
+        "median_cache_read_input_tokens": 101632,
+        "median_cache_creation_input_tokens": 0,
+        "median_noncached_input_tokens": 16349.5
+      },
+      "warm_cache": {
+        "turns": 0,
+        "median_input_tokens": null,
+        "median_cache_read_input_tokens": null,
+        "median_cache_creation_input_tokens": null,
+        "median_noncached_input_tokens": null
+      }
+    }
+  },
+  "comparisons": {
+    "concise_vs_normal": {
+      "input_tokens_pct": 18.892,
+      "cache_read_input_tokens_pct": 61.382,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": -54.908,
+      "output_tokens_pct": 21.111,
+      "reasoning_output_tokens_pct": 105,
+      "duration_ms_pct": 20.803,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": 20,
+      "lines_added_pct": 0,
+      "lines_removed_pct": 0,
+      "files_created_pct": null
+    },
+    "concise_vs_terse": {
+      "input_tokens_pct": -18.995,
+      "cache_read_input_tokens_pct": -14.532,
+      "cache_creation_input_tokens_pct": null,
+      "noncached_input_tokens_pct": -38.847,
+      "output_tokens_pct": -26.667,
+      "reasoning_output_tokens_pct": -58.539,
+      "duration_ms_pct": -28.096,
+      "model_turns_pct": 0,
+      "completed_tool_calls_pct": -20,
+      "lines_added_pct": 47.826,
+      "lines_removed_pct": 83.333,
+      "files_created_pct": null
+    }
+  },
+  "warnings": [
+    "Warm cache metrics are unavailable for at least one arm."
+  ],
+  "receipt_sha256": "22f324d1b94984f262313695b7fb3f0ab2c2a52d1ad01173b544aff9ba9a39c9"
+}

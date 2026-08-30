@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/agent-plugins/main/schemas/plugin.schema.json",
   "name": "offcut",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Persistent mode that asks what the cheapest working solution is, before the code lands.",
   "author": {
     "name": "xyzbk"

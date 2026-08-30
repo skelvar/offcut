@@ -28,19 +28,31 @@ commands). Uninstall verified clean afterward.
 
 ## Concise style delivery (2026-08-30)
 
-Offcut's concise contract lives in the generated persistent instructions. The
-default adds no dynamic style marker; `OFFCUT STYLE: normal` is appended only
-when the user disables concise responses for a session. No path below edits a
-host's native verbosity or output-style configuration.
+Offcut's concise contract now lives in `rules/offcut.md` and is generated into
+repository, skill, and Cursor artifacts. `tools/install.mjs` writes that kernel
+once to each detected host's native global instruction file. When the managed
+kernel is present, SessionStart and subagent hooks send only the two-line mode
+and style state; hook-only/plugin-only installs retain the complete ruleset
+fallback. `/offcut off` emits an explicit session override so a persistent
+kernel can be disabled without deleting it. No path edits a host's native
+verbosity or output-style configuration.
 
 | Host path | Default concise delivery | Session switch |
 |---|---|---|
-| Claude Code | Persistent skill plus SessionStart and subagent hook context | Hook state; applies to the command turn and later context |
-| Codex | Persistent skill plus SessionStart and subagent hook context | Hook state; no `model_verbosity` edit |
-| Cursor local | Persistent instructions plus native `additional_context` and subagent rewrite | Hook state |
+| Claude Code | `~/.claude/CLAUDE.md`; state-only SessionStart/subagent context | Hook state; applies to the command turn and later context |
+| Codex | active global `AGENTS.override.md`, otherwise `AGENTS.md`; state-only hooks | Hook state; no `model_verbosity` edit |
+| Cursor local | `~/.cursor/rules/offcut.mdc`; state-only `additional_context` and subagent rewrite | Hook state |
 | Cursor cloud | Persistent project instructions; `SessionStart` hook currently unsupported | Explicit user command in conversation; no claimed persisted SessionStart state |
-| Grok Build | `AGENTS.md` fallback because required hook stdout is discarded | Explicit user command in conversation; no claimed hook delivery |
+| Grok Build | `~/.grok/AGENTS.md`; Claude-compatible plugin packaging; most hook stdout discarded | Persistent kernel plus any honored state/write events |
 | Other AGENTS/Skill hosts | Canonical Markdown contract | Explicit user instruction; no host configuration mutation |
+
+The native paths and managed-block behavior are covered in fake-home install,
+idempotence, Codex-override, and uninstall tests. That verifies packaging and
+filesystem behavior; the historical host E2E measurements below remain the
+evidence for hook delivery.
+
+On Grok Build, `AGENTS.md` is the fallback for model-facing persistence and
+there is no claimed hook delivery for context that Grok discards.
 
 Cursor's current cloud hook matrix documents project command hooks but lists
 `sessionStart` as unavailable:

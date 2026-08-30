@@ -93,6 +93,27 @@ export function turnUsageFromJsonl(text) {
   return turns;
 }
 
+/** Last completed agent message in a Codex JSONL transcript. */
+export function finalAnswerFromJsonl(text) {
+  let answer = null;
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (
+        event?.type === 'item.completed' &&
+        event?.item?.type === 'agent_message' &&
+        typeof event.item.text === 'string'
+      ) {
+        answer = event.item.text;
+      }
+    } catch {
+      // Ignore non-JSON diagnostic lines.
+    }
+  }
+  return answer;
+}
+
 const RECEIPT_METRICS = [
   'input_tokens',
   'cache_read_input_tokens',
@@ -160,9 +181,9 @@ function compareArms(candidate, baseline) {
   );
 }
 
-export function buildStyleReceipt(rows) {
+export function buildReceipt(rows, config) {
   const cleanRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
-  const armNames = ['normal', 'terse', 'concise'];
+  const armNames = config.armNames;
   const byArm = Object.fromEntries(
     armNames.map((arm) => [arm, cleanRows.filter((row) => row.style_arm === arm)]),
   );
@@ -229,13 +250,15 @@ export function buildStyleReceipt(rows) {
     source_run_ids: cleanRows.map((row) => row.run_id).filter(Boolean).sort(),
     arms,
     comparisons: automatedComparable
-      ? {
-          concise_vs_normal: compareArms(arms.concise, arms.normal),
-          concise_vs_terse: compareArms(arms.concise, arms.terse),
-        }
+      ? Object.fromEntries(
+          config.comparisons.map(({ name, candidate, baseline }) => [
+            name,
+            compareArms(arms[candidate], arms[baseline]),
+          ]),
+        )
       : {},
     warnings: [
-      ...(scheduleComplete ? [] : ['The three-arm schedule is incomplete or unbalanced.']),
+      ...(scheduleComplete ? [] : [`The ${config.scheduleLabel} schedule is incomplete or unbalanced.`]),
       ...(allAccepted ? [] : ['At least one arm failed task acceptance.']),
       ...(reviewComplete ? [] : ['Blind answer-completeness review is incomplete or failed.']),
       ...(armNames.every((arm) => arms[arm].warm_cache.turns > 0)
@@ -249,14 +272,122 @@ export function buildStyleReceipt(rows) {
   };
 }
 
+export function buildStyleReceipt(rows) {
+  return buildReceipt(rows, {
+    armNames: ['normal', 'terse', 'concise'],
+    scheduleLabel: 'three-arm',
+    comparisons: [
+      { name: 'concise_vs_normal', candidate: 'concise', baseline: 'normal' },
+      { name: 'concise_vs_terse', candidate: 'concise', baseline: 'terse' },
+    ],
+  });
+}
+
+export function buildCompetitiveReceipt(rows) {
+  const cleanRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  const armNames = ['baseline', 'terse', 'caveman', 'ponytail', 'offcut'];
+  const base = buildReceipt(cleanRows, {
+    armNames,
+    scheduleLabel: 'five-arm',
+    comparisons: armNames
+      .filter((arm) => arm !== 'offcut')
+      .map((arm) => ({
+        name: `offcut_vs_${arm}`,
+        candidate: 'offcut',
+        baseline: arm,
+      })),
+  });
+  const controlledFields = ['model_requested', 'host', 'host_version', 'effort', 'prompt_sha256'];
+  const controlled =
+    cleanRows.length > 0 &&
+    controlledFields.every((field) => {
+      const values = cleanRows.map((row) => row[field]);
+      return values.every((value) => value !== null && value !== undefined && value !== '') &&
+        new Set(values).size === 1;
+    });
+  const sourcesPinned =
+    cleanRows.length > 0 &&
+    cleanRows.every(
+      (row) =>
+        typeof row.instruction_source === 'string' &&
+        row.instruction_source.length > 0 &&
+        /^[a-f0-9]{64}$/.test(String(row.instruction_sha256 || '')),
+    ) &&
+    armNames.every((arm) => {
+      const rowsForArm = cleanRows.filter((row) => row.style_arm === arm);
+      return rowsForArm.length > 0 && new Set(rowsForArm.map((row) => row.instruction_sha256)).size === 1;
+    });
+  const telemetryFields = [
+    'input_tokens',
+    'cache_read_input_tokens',
+    'cache_creation_input_tokens',
+    'output_tokens',
+    'reasoning_output_tokens',
+    'duration_ms',
+    'model_turns',
+    'completed_tool_calls',
+  ];
+  const telemetryComplete = cleanRows.every(
+    (row) =>
+      !row.failure_kind &&
+      telemetryFields.every(
+        (field) => typeof row[field] === 'number' && Number.isFinite(row[field]) && row[field] >= 0,
+      ) &&
+      row.model_turns > 0,
+  );
+  const automatedComparable =
+    base.automated_comparable && controlled && sourcesPinned && telemetryComplete;
+  const publicClaimable = automatedComparable && base.completeness_gate === 'pass';
+  const instructionSources = sourcesPinned
+    ? Object.fromEntries(
+        armNames.map((arm) => {
+          const row = cleanRows.find((candidate) => candidate.style_arm === arm);
+          return [
+            arm,
+            {
+              source: row.instruction_source,
+              sha256: row.instruction_sha256,
+            },
+          ];
+        }),
+      )
+    : {};
+  const { receipt_sha256: _oldHash, ...baseWithoutHash } = base;
+  const receipt = {
+    ...baseWithoutHash,
+    status: !automatedComparable
+      ? 'not_comparable'
+      : publicClaimable
+        ? 'claimable'
+        : 'review_pending',
+    automated_comparable: automatedComparable,
+    public_claimable: publicClaimable,
+    comparisons: automatedComparable ? base.comparisons : {},
+    instruction_sources: instructionSources,
+    controlled_fields: controlled ? 'pass' : 'fail',
+    source_pin_gate: sourcesPinned ? 'pass' : 'fail',
+    provider_telemetry_gate: telemetryComplete ? 'pass' : 'fail',
+    warnings: [
+      ...base.warnings,
+      ...(controlled ? [] : ['Model and controlled fields are mixed or missing.']),
+      ...(sourcesPinned ? [] : ['Instruction sources are missing, invalid, or changed within an arm.']),
+      ...(telemetryComplete ? [] : ['Provider telemetry is missing or a run ended with a model failure.']),
+    ],
+  };
+  return {
+    ...receipt,
+    receipt_sha256: sha256(JSON.stringify(receipt)),
+  };
+}
+
 function display(value) {
   return typeof value === 'number' ? String(value) : 'unavailable';
 }
 
-export function renderStyleReceipt(receipt) {
+function renderReceipt(receipt, title, armNames) {
   const claim = receipt.public_claimable ? 'CLAIMABLE' : 'NOT CLAIMABLE';
   const lines = [
-    '# Offcut style receipt',
+    `# ${title}`,
     '',
     `Status: **${claim}** (${receipt.status})`,
     '',
@@ -266,11 +397,18 @@ export function renderStyleReceipt(receipt) {
     '| Arm | Runs passed | Output tokens | Noncached input | Lines added |',
     '|---|---:|---:|---:|---:|',
   ];
-  for (const arm of ['normal', 'terse', 'concise']) {
+  for (const arm of armNames) {
     const summary = receipt.arms[arm];
     lines.push(
       `| ${arm} | ${summary.passed}/${summary.runs} | ${display(summary.medians.output_tokens)} | ${display(summary.medians.noncached_input_tokens)} | ${display(summary.medians.lines_added)} |`,
     );
+  }
+  if (receipt.instruction_sources && Object.keys(receipt.instruction_sources).length > 0) {
+    lines.push('', '## Pinned instructions', '');
+    for (const arm of armNames) {
+      const source = receipt.instruction_sources[arm];
+      lines.push(`- ${arm}: \`${source.sha256}\` (${source.source})`);
+    }
   }
   lines.push(
     '',
@@ -279,7 +417,7 @@ export function renderStyleReceipt(receipt) {
     '| Arm | Cold cache write | Warm cache read | Warm noncached input |',
     '|---|---:|---:|---:|',
   );
-  for (const arm of ['normal', 'terse', 'concise']) {
+  for (const arm of armNames) {
     const summary = receipt.arms[arm];
     lines.push(
       `| ${arm} | ${display(summary.cold_cache.median_cache_creation_input_tokens)} | ${display(summary.warm_cache.median_cache_read_input_tokens)} | ${display(summary.warm_cache.median_noncached_input_tokens)} |`,
@@ -291,4 +429,18 @@ export function renderStyleReceipt(receipt) {
   }
   lines.push('', `Receipt SHA-256: \`${receipt.receipt_sha256}\``, '');
   return lines.join('\n');
+}
+
+export function renderStyleReceipt(receipt) {
+  return renderReceipt(receipt, 'Offcut style receipt', ['normal', 'terse', 'concise']);
+}
+
+export function renderCompetitiveReceipt(receipt) {
+  return renderReceipt(receipt, 'Offcut competitive receipt', [
+    'baseline',
+    'terse',
+    'caveman',
+    'ponytail',
+    'offcut',
+  ]);
 }

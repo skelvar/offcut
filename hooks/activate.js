@@ -3,7 +3,7 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runHook, emit, pluginRoot } from './host.js';
+import { runHook, emit, pluginRoot, hasNativeGuidance } from './host.js';
 import {
   activateSession,
   readStyle,
@@ -12,10 +12,12 @@ import {
   writeServedRoot,
   CONTEXT_WIPING_SOURCES,
 } from './state.js';
-import { sessionContext } from './rules.js';
+import { nativeSessionContext, sessionContext } from './rules.js';
 
-export async function handleActivate(norm) {
+export async function handleActivate(norm, opts = {}) {
   if (!norm) return null;
+
+  const native = opts.native ?? hasNativeGuidance(norm.host);
 
   const mode = activateSession(norm.sessionId, norm.source);
   resetTurn(norm.sessionId);
@@ -32,11 +34,17 @@ export async function handleActivate(norm) {
   const root = pluginRoot();
   writeServedRoot(root, norm.host, mode !== 'off');
 
-  if (mode === 'off') return null;
+  if (mode === 'off') {
+    return native
+      ? emit(norm.host, 'session_start', nativeSessionContext(mode, readStyle(norm.sessionId)))
+      : null;
+  }
 
   // Same root for the record and the emission, so what doctor reads is what the
   // model got — not a second guess at which copy this is.
-  return emit(norm.host, 'session_start', sessionContext(mode, root, readStyle(norm.sessionId)));
+  const style = readStyle(norm.sessionId);
+  const context = native ? nativeSessionContext(mode, style) : sessionContext(mode, root, style);
+  return emit(norm.host, 'session_start', context);
 }
 
 const isMain =

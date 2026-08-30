@@ -33,26 +33,68 @@ the checkout being scanned rather than extrapolated from ours.
 
 ## Install
 
-### Claude Code
-
-```bash
-/plugin marketplace add xyzbk/offcut
-/plugin install offcut@offcut
-```
-
-### Codex
+### Native default on every detected harness
 
 ```bash
 git clone https://github.com/xyzbk/offcut ~/.offcut-src
 node ~/.offcut-src/tools/install.mjs
 ```
 
+That one command installs both layers without changing model settings:
+
+- the stable Offcut kernel in the host's native global instruction file; and
+- lifecycle hooks for modes, session style, subagents, diagnostics, and
+  write-time checks.
+
+It installs only into harness directories that already exist:
+
+| Harness | Persistent native source | Hook source |
+|---|---|---|
+| Codex | active `~/.codex/AGENTS.override.md`, otherwise `AGENTS.md` | `~/.codex/hooks.json` |
+| Claude Code | `~/.claude/CLAUDE.md` | `~/.claude/settings.json` |
+| Cursor | `~/.cursor/rules/offcut.mdc` | `~/.cursor/hooks.json` |
+| Grok Build | `~/.grok/AGENTS.md` | `~/.grok/hooks/offcut-hooks.json` |
+
+Existing files are backed up once as `*.offcut-backup`. Offcut owns one marked
+block; reinstall replaces that block, and uninstall removes only that block and
+Offcut's tagged hooks. Foreign content and handlers are preserved.
+
+Open a new session after installation. Run `node hooks/doctor.js` to see the
+active native source, hook source, duplicates, and a shadowing Codex override.
+
+### Native plugin packages
+
+Offcut also ships native manifests for managed installation:
+
+- Codex: `.codex-plugin/plugin.json` with the default `hooks/hooks.json` path;
+- Claude Code and current Grok Build: `.claude-plugin/plugin.json` (Grok
+  documents Claude-plugin compatibility); and
+- Cursor: `.cursor-plugin/plugin.json`.
+
+Managed plugin installation supplies hooks and the skill fallback. Run the
+universal installer above when you want the kernel to be a global native
+default rather than depending on skill activation or full hook context.
+
+Claude Code marketplace install remains available:
+
+```bash
+/plugin marketplace add xyzbk/offcut
+/plugin install offcut@offcut
+```
+
+Cursor's documented local-plugin checkout remains available:
+
+```bash
+git clone https://github.com/xyzbk/offcut ~/.cursor/plugins/local/offcut
+```
+
+### Host notes
+
 Codex headless runs need trusted hooks, or write hooks stay silent — grant
 trust, or pass `--dangerously-bypass-hook-trust`.
 
-`install.mjs` installs lifecycle hooks only. To add the three one-shot command
-skills globally, ask Codex's built-in `$skill-installer` to install these GitHub
-folders, then restart Codex:
+The three one-shot review/audit/help skills remain optional. They are not
+required for Offcut's persistent construction and response behavior:
 
 ```text
 https://github.com/xyzbk/offcut/tree/main/skills/offcut-review
@@ -60,34 +102,10 @@ https://github.com/xyzbk/offcut/tree/main/skills/offcut-audit
 https://github.com/xyzbk/offcut/tree/main/skills/offcut-help
 ```
 
-### Cursor
-
-```bash
-git clone https://github.com/xyzbk/offcut ~/.cursor/plugins/local/offcut
-```
-
-That is Cursor's [documented local-plugin path](https://cursor.com/docs/plugins)
-and loads the hooks and all four skills from `.cursor-plugin/plugin.json`. Open
-a new chat after installing.
-Alternatively, `node tools/install.mjs` merges only the native hooks into
-`~/.cursor/hooks.json`; existing handlers and version-only files are preserved,
-while malformed configs are left untouched with a non-zero exit. Verified end
-to end on Cursor 3.17.19 (Windows, 2026-08-27), including a delivered write
-challenge, mode switches, subagent inheritance, and uninstall/reinstall.
-
-### Grok Build
-
-Grok runs hooks but discards their output by design — a hook there can block a
-tool call, not speak to the model. Use the generated ruleset and the skills:
-
-```bash
-cp ~/.offcut-src/AGENTS.md .              # always-on ruleset
-mkdir -p .grok/skills
-ln -s ~/.offcut-src/skills/offcut        .grok/skills/offcut
-ln -s ~/.offcut-src/skills/offcut-review .grok/skills/offcut-review
-ln -s ~/.offcut-src/skills/offcut-audit  .grok/skills/offcut-audit
-ln -s ~/.offcut-src/skills/offcut-help   .grok/skills/offcut-help
-```
+Grok runs hooks but discards most hook output by design. The global
+`~/.grok/AGENTS.md` kernel therefore owns the persistent behavior; hooks retain
+state and write-time support where Grok honors the event. No undocumented
+Grok-only manifest or output-style setting is used.
 
 ### Anything else
 
@@ -104,14 +122,14 @@ claude plugin uninstall offcut@offcut
 claude plugin marketplace remove offcut
 ```
 
-Hooks installed by `tools/install.mjs`:
+Universal native install:
 
 ```bash
 node ~/.offcut-src/tools/install.mjs --uninstall
 ```
 
-Removes only Offcut's entries. Other plugins' hooks are preserved, verified
-against configs holding foreign handlers. Delete
+Removes only Offcut's managed rule blocks and tagged hook entries. Other
+plugins and foreign file content are preserved. Delete
 `~/.cursor/plugins/local/offcut` to remove the Cursor local-plugin install.
 The optional state directory `~/.offcut/` is deliberately retained; delete it
 only if you also want to discard the persisted mode and diagnostics.
@@ -131,20 +149,26 @@ caveats, verification, exact errors, and safety-critical content.
 
 This does not edit Claude `outputStyle`, Codex `model_verbosity`, Cursor,
 Gemini, or other harness settings. `/offcut off` remains the separate command
-that disables Offcut itself. Token savings are not claimed until the guarded
-live comparison passes both cost and answer-completeness gates.
+that disables Offcut itself.
+
+The v0.3 guarded receipt is complete, but deliberately task-scoped. On two
+accepted `busy-helper` replicates, concise used 26.667% fewer output tokens than
+`Be terse.`, while using 21.111% more than normal prose. The five-arm run put
+Offcut 17.189% below Caveman and 14.36% below Ponytail on median output tokens,
+but Offcut used more noncached input than both. This is not a general token,
+cost, LOC, or cache-savings claim.
 
 The local benchmark is plan-only by default:
 
 ```powershell
 node bench/live-style.mjs busy-helper --reps 2
+node bench/live-competitive.mjs busy-helper --reps 2
 ```
 
-Its three arms are normal prose, the one-line `Be terse.` control, and Offcut
-concise. Paid execution requires two explicit flags; generated receipts remain
-**NOT CLAIMABLE** until every arm passes task acceptance and an explicit blind
-answer-completeness review. Cold and warm cache evidence is reported separately.
-See [the response-style benchmark protocol](docs/development/STYLE-BENCHMARK.md).
+Paid execution requires two explicit usage flags. Receipts fail closed until
+every arm passes task acceptance and an explicit blind answer-completeness
+review. Exact measurements, source hashes, receipts, and the missing warm-cache
+boundary are in [the response-efficiency benchmark](docs/development/STYLE-BENCHMARK.md).
 
 ### Review and audit
 
@@ -298,20 +322,20 @@ install.
 |---|---|---|
 | Claude Code | full | yes |
 | Codex | full | yes |
-| Grok Build | `AGENTS.md` only | yes |
+| Grok Build | native `AGENTS.md`; hook output limited | yes |
 | ChatGPT, other skill hosts | no | yes |
 | Cursor 3.17.19 | full | yes |
 
-### No competitor win claim
+### Task-scoped competitive result
 
-Offcut has not been benchmarked against Caveman, Ponytail, or anything similar.
-The response-style harness now defines the controls and claim gates needed
-before publishing a percentage, but competitor arms remain deferred. Caveman
-compresses prose while Ponytail governs construction, so treating them as one
-token leaderboard would measure different products as if they were equivalent.
-The [benchmark protocol](docs/development/STYLE-BENCHMARK.md) defines the source,
-license, acceptance, completeness, and cache controls a future comparison must
-meet. The numbers go here whichever way they fall.
+The current five-arm receipt is claimable for `busy-helper`: 10/10 runs passed
+task acceptance and blinded answer completeness. Offcut had the lowest median
+gross input, output, tool count, and duration. It did not have the lowest
+noncached input or LOC. In particular, it did **not** reproduce Ponytail's
+published aggregate claim of 54% fewer LOC and 20% lower cost; the subscription
+run exposed no priced cost, and Offcut added 17 median lines versus Ponytail's
+12 on this ticket. The [benchmark report](docs/development/STYLE-BENCHMARK.md)
+contains the exact limits and immutable receipt hashes.
 
 Two confounds were found and removed while establishing that, so nobody has to
 rediscover them. Ponytail's source sits in the plugin cache that feeds the

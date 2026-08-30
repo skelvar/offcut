@@ -9,6 +9,9 @@ import { claimHookDelivery } from './state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export const NATIVE_MANAGED_START = '<!-- offcut:managed:start -->';
+export const NATIVE_MANAGED_END = '<!-- offcut:managed:end -->';
+
 /** @typedef {'claude' | 'codex' | 'cursor' | 'grok'} Host */
 
 const EVENT_CANONICAL = {
@@ -269,6 +272,78 @@ export function installTargets(home = os.homedir()) {
       requiredDir: path.join(home, '.grok'),
     },
   ];
+}
+
+/**
+ * Host-native persistent instruction destinations. Codex loads a non-empty
+ * global override instead of AGENTS.md, so the installer writes to the active
+ * file rather than creating a second, ignored copy.
+ * @param {string} [home]
+ */
+export function nativeInstallTargets(home = os.homedir()) {
+  const codexDir = path.join(home, '.codex');
+  const codexOverride = path.join(codexDir, 'AGENTS.override.md');
+  let codexFile = path.join(codexDir, 'AGENTS.md');
+  try {
+    if (fs.readFileSync(codexOverride, 'utf8').trim()) codexFile = codexOverride;
+  } catch {
+    // Missing or unreadable override: AGENTS.md remains the active target.
+  }
+
+  return [
+    {
+      host: 'claude',
+      file: path.join(home, '.claude', 'CLAUDE.md'),
+      requiredDir: path.join(home, '.claude'),
+    },
+    { host: 'codex', file: codexFile, requiredDir: codexDir },
+    {
+      host: 'cursor',
+      file: path.join(home, '.cursor', 'rules', 'offcut.mdc'),
+      requiredDir: path.join(home, '.cursor'),
+    },
+    {
+      host: 'grok',
+      file: path.join(home, '.grok', 'AGENTS.md'),
+      requiredDir: path.join(home, '.grok'),
+    },
+  ];
+}
+
+/** True only when the active native instruction file contains our managed block. */
+export function hasNativeGuidance(host, home = os.homedir()) {
+  let target = nativeInstallTargets(home).find((candidate) => candidate.host === host);
+  if (host === 'codex' && process.env.CODEX_HOME) {
+    const codexHome = path.resolve(process.env.CODEX_HOME);
+    const override = path.join(codexHome, 'AGENTS.override.md');
+    let file = path.join(codexHome, 'AGENTS.md');
+    try {
+      if (fs.readFileSync(override, 'utf8').trim()) file = override;
+    } catch {
+      // No active override.
+    }
+    target = { host, file };
+  }
+  if (!target) return false;
+  try {
+    return fs.readFileSync(target.file, 'utf8').includes(NATIVE_MANAGED_START);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether an active override hides a managed fallback instruction file. */
+export function hasShadowedNativeGuidance(target) {
+  if (target?.host !== 'codex' || path.basename(target.file) !== 'AGENTS.override.md') {
+    return false;
+  }
+  try {
+    return fs
+      .readFileSync(path.join(target.requiredDir, 'AGENTS.md'), 'utf8')
+      .includes(NATIVE_MANAGED_START);
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -13,11 +13,12 @@ import {
   CODEX_MODEL_ID,
   runOne,
 } from './run.mjs';
-import { appendManifest } from './lib.mjs';
+import { appendManifest, sha256 } from './lib.mjs';
 import {
   parseStyleArgs,
   styleArm,
   styleSchedule,
+  finalAnswerFromJsonl,
   turnUsageFromJsonl,
 } from './live-style-lib.mjs';
 import { writeReceiptArtifacts } from './style-receipt.mjs';
@@ -28,14 +29,15 @@ const LIVE_RUNS = path.join(BENCH, 'live-runs');
 export const LIVE_STYLE_PROFILE =
   'Implement the maintenance ticket in the current repository. Inspect the files, make the required changes, and run relevant checks. Do not commit or edit .codex.';
 
-function resultSummary(task, job, result) {
+export function resultSummary(task, job, result, extra = {}) {
   const record = result.record;
   const input = record.input_tokens;
   const cacheRead = record.cache_read_input_tokens;
   const transcriptPath = path.join(result.runDir, 'transcript.jsonl');
-  const turnUsage = fs.existsSync(transcriptPath)
-    ? turnUsageFromJsonl(fs.readFileSync(transcriptPath, 'utf8'))
-    : [];
+  const transcript = fs.existsSync(transcriptPath)
+    ? fs.readFileSync(transcriptPath, 'utf8')
+    : '';
+  const turnUsage = turnUsageFromJsonl(transcript);
   return {
     task,
     style_arm: job.arm,
@@ -61,12 +63,23 @@ function resultSummary(task, job, result) {
     reviewer_blinded: false,
     turn_usage: turnUsage,
     failure_kind: record.failure_kind,
+    model_id: record.model_id,
+    model_requested: record.model_requested,
+    model_observation: record.model_observation,
+    host: record.host,
+    host_version: record.host_version,
+    effort: record.effort,
+    prompt_sha256: record.prompt_sha256,
+    final_answer: finalAnswerFromJsonl(transcript),
+    ...extra,
   };
 }
 
 export function main(argv = process.argv.slice(2)) {
   const options = parseStyleArgs(argv);
   const schedule = styleSchedule(options.task, options.arms, options.reps);
+  const nativeKernel = fs.readFileSync(path.join(BENCH, '..', 'rules', 'offcut.md'), 'utf8').trim();
+  const nativeKernelSha256 = sha256(nativeKernel);
 
   if (!options.execute) {
     console.log(
@@ -74,6 +87,7 @@ export function main(argv = process.argv.slice(2)) {
         {
           ...options,
           jobs: schedule.map(({ arm, rep }) => ({ arm, rep })),
+          native_kernel_sha256: nativeKernelSha256,
           note: 'Plan only; no model calls. Add both paid-run confirmation flags to execute.',
         },
         null,
@@ -84,8 +98,9 @@ export function main(argv = process.argv.slice(2)) {
   }
 
   fs.mkdirSync(LIVE_RUNS, { recursive: true });
-  const rawManifestPath = path.join(BENCH, `live-style-runs-${options.task}.jsonl`);
-  const resultsPath = path.join(BENCH, `live-style-${options.task}.jsonl`);
+  const batch = nativeKernelSha256.slice(0, 8);
+  const rawManifestPath = path.join(BENCH, `live-style-runs-${options.task}-${batch}.jsonl`);
+  const resultsPath = path.join(BENCH, `live-style-${options.task}-${batch}.jsonl`);
   const rows = [];
   for (const job of schedule) {
     const mapping = styleArm(job.arm);
@@ -107,13 +122,17 @@ export function main(argv = process.argv.slice(2)) {
       style: mapping.offcutStyle,
       styleArm: job.arm,
       profileInstructions,
+      nativeInstructions: nativeKernel,
     });
-    const row = resultSummary(options.task, job, result);
+    const row = resultSummary(options.task, job, result, {
+      instruction_source: 'rules/offcut.md',
+      instruction_sha256: nativeKernelSha256,
+    });
     rows.push(row);
     appendManifest(row, resultsPath);
     console.log(JSON.stringify(row));
   }
-  const receiptPrefix = path.join(BENCH, `live-style-${options.task}-receipt`);
+  const receiptPrefix = path.join(BENCH, `live-style-${options.task}-${batch}-receipt`);
   const { receipt, jsonPath, markdownPath } = writeReceiptArtifacts(rows, receiptPrefix);
   console.log(
     JSON.stringify({

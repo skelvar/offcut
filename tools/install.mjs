@@ -21,11 +21,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import {
+  nativeInstallTargets,
+  NATIVE_MANAGED_START,
+  NATIVE_MANAGED_END,
+} from '../hooks/host.js';
 
 const HOME = os.homedir();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TAG = 'offcut-hooks';
+export const MANAGED_START = NATIVE_MANAGED_START;
+export const MANAGED_END = NATIVE_MANAGED_END;
 const uninstall = process.argv.includes('--uninstall');
+const KERNEL = fs.readFileSync(path.join(ROOT, 'rules', 'offcut.md'), 'utf8').trim();
+const CURSOR_FRONTMATTER = '---\nalwaysApply: true\n---\n';
 
 const SCRIPTS = {
   SessionStart: 'hooks/activate.js',
@@ -177,6 +186,36 @@ export function mergeHooks(target, spec, opts = {}) {
   return target;
 }
 
+/**
+ * Add, replace, or remove Offcut's bounded instruction block without touching
+ * any foreign bytes. The leading separator belongs to the managed fragment, so
+ * uninstall restores the exact prior content.
+ * @param {string} current
+ * @param {string} kernel
+ * @param {{ uninstall?: boolean }} [opts]
+ * @returns {string}
+ */
+export function mergeManagedText(current, kernel, opts = {}) {
+  let text = String(current ?? '');
+  const startAtZero = text.startsWith(MANAGED_START) ? 0 : -1;
+  const separatedStart = text.indexOf(`\n${MANAGED_START}`);
+  const start = startAtZero === 0 ? 0 : separatedStart;
+  if (start !== -1) {
+    const markerStart = start === 0 ? 0 : start + 1;
+    const end = text.indexOf(MANAGED_END, markerStart);
+    if (end !== -1) {
+      let after = end + MANAGED_END.length;
+      if (text[after] === '\r' && text[after + 1] === '\n') after += 2;
+      else if (text[after] === '\n') after += 1;
+      text = text.slice(0, start) + text.slice(after);
+    }
+  }
+  if (opts.uninstall) return text;
+
+  const block = `${MANAGED_START}\n${String(kernel).trim()}\n${MANAGED_END}\n`;
+  return text ? `${text}\n${block}` : block;
+}
+
 const results = [];
 let failed = false;
 
@@ -206,6 +245,43 @@ function apply(name, file, mutate, requiredDir, validate = () => true) {
       return;
     }
     fs.writeFileSync(file, JSON.stringify(out, null, 2));
+    results.push([name, uninstall ? `cleaned (${state})` : `installed (${state})`, file]);
+  } catch (error) {
+    failed = true;
+    const kind = error?.code ? `filesystem error (${error.code})` : 'install error';
+    results.push([name, `failed — ${kind}`, file]);
+  }
+}
+
+function applyNative(target) {
+  const { host, file, requiredDir } = target;
+  const name = `${host} rules`;
+  if (!fs.existsSync(requiredDir)) {
+    results.push([name, 'skipped — harness not installed', file]);
+    return;
+  }
+  if (uninstall && !fs.existsSync(file)) {
+    results.push([name, 'skipped — nothing to remove', file]);
+    return;
+  }
+
+  try {
+    const exists = fs.existsSync(file);
+    const state = backup(file);
+    const current = exists
+      ? fs.readFileSync(file, 'utf8')
+      : host === 'cursor'
+        ? CURSOR_FRONTMATTER
+        : '';
+    let out = mergeManagedText(current, KERNEL, { uninstall });
+    if (host === 'cursor' && out === CURSOR_FRONTMATTER) out = '';
+    if (!out) {
+      if (exists) fs.rmSync(file);
+      results.push([name, 'removed', file]);
+      return;
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, out, 'utf8');
     results.push([name, uninstall ? `cleaned (${state})` : `installed (${state})`, file]);
   } catch (error) {
     failed = true;
@@ -265,6 +341,8 @@ function main() {
     },
     path.join(HOME, '.grok'),
   );
+
+  for (const target of nativeInstallTargets(HOME)) applyNative(target);
 
   const w = Math.max(...results.map(([n]) => n.length), 4);
   for (const [n, s, f] of results) {

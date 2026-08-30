@@ -4,9 +4,10 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runHook, emit } from './host.js';
+import { runHook, emit, hasNativeGuidance } from './host.js';
 import {
   readMode,
+  readStyle,
   writeStyle,
   writeMode,
   writeDefaultMode,
@@ -15,7 +16,7 @@ import {
   confirmPendingSignals,
   clearPendingSignals,
 } from './state.js';
-import { reminderText } from './rules.js';
+import { nativeSessionContext, reminderText } from './rules.js';
 
 export { reminderText };
 
@@ -92,8 +93,9 @@ export function shouldRemind(mode, command, sessionId = null, bump = bumpTurn) {
   return true;
 }
 
-export async function handlePrompt(norm) {
+export async function handlePrompt(norm, opts = {}) {
   if (!norm) return null;
+  const native = opts.native ?? hasNativeGuidance(norm.host);
   const prompt = norm.prompt ?? '';
   const command = parseOffcutCommand(prompt);
 
@@ -105,18 +107,27 @@ export async function handlePrompt(norm) {
 
   if (command?.type === 'set' && command.mode) {
     writeMode(command.mode, norm.sessionId);
-    return emit(norm.host, 'user_prompt_submit', command.message || `Offcut mode: ${command.mode}.`);
+    const context = native
+      ? nativeSessionContext(command.mode, readStyle(norm.sessionId))
+      : command.message || `Offcut mode: ${command.mode}.`;
+    return emit(norm.host, 'user_prompt_submit', context);
   }
 
   if (command?.type === 'default' && command.mode) {
     writeDefaultMode(command.mode);
     writeMode(command.mode, norm.sessionId);
-    return emit(norm.host, 'user_prompt_submit', command.message || `Offcut default: ${command.mode}.`);
+    const context = native
+      ? nativeSessionContext(command.mode, readStyle(norm.sessionId))
+      : command.message || `Offcut default: ${command.mode}.`;
+    return emit(norm.host, 'user_prompt_submit', context);
   }
 
   if (command?.type === 'style' && command.style) {
     writeStyle(command.style, norm.sessionId);
-    return emit(norm.host, 'user_prompt_submit', command.message);
+    const context = native
+      ? nativeSessionContext(readMode(norm.sessionId), command.style)
+      : command.message;
+    return emit(norm.host, 'user_prompt_submit', context);
   }
 
   if (command?.type === 'command') {
@@ -124,6 +135,7 @@ export async function handlePrompt(norm) {
   }
 
   const mode = readMode(norm.sessionId);
+  if (native) return null;
   if (!shouldRemind(mode, null, norm.sessionId)) return null;
 
   return emit(norm.host, 'user_prompt_submit', reminderText());
