@@ -39,6 +39,7 @@ import {
 } from './run.mjs';
 import { hasFiredSignal } from '../hooks/state.js';
 import { POST_SIGNALS, PRE_SIGNALS } from '../hooks/signals.js';
+import { replaceTextPreservingNewlines } from './efficacy-fixture-lib.mjs';
 
 export const EFFICACY_SEED = 'offcut-efficacy-2026-08-27';
 export const EFFICACY_BUDGET_USD = 35;
@@ -246,11 +247,11 @@ function applyOperation(workDir, operation) {
   }
   if (operation.tool_name === 'Edit') {
     const current = fs.readFileSync(target, 'utf8');
-    const oldString = String(input.old_string ?? '');
-    if (!oldString || !current.includes(oldString)) {
+    const updated = replaceTextPreservingNewlines(current, input.old_string, input.new_string);
+    if (updated === null) {
       throw new Error(`stub Edit old_string not found: ${relativePath}`);
     }
-    fs.writeFileSync(target, current.replace(oldString, String(input.new_string ?? '')), 'utf8');
+    fs.writeFileSync(target, updated, 'utf8');
     return;
   }
   throw new Error(`stub operation must use Write or Edit: ${operation.tool_name}`);

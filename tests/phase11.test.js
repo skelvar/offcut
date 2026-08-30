@@ -1268,21 +1268,30 @@ test('event normalizer documents every accepted mapping and output convention', 
   assert.match(readme, /must not modify the input event or its `data` object/);
 });
 
-test('fixture Edit applies LF instructions to a CRLF checkout', () => {
+test('fixture Edit applies and replays LF instructions in a CRLF checkout', async () => {
+  const { copyTree, initGitRepo } = await import('../bench/lib.mjs');
+  const { assertOperationIntegrity } = await import('../bench/efficacy.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-crlf-edit-'));
+  const repo = path.join(root, 'repo');
+  const work = path.join(root, 'work');
   const stub = fileURLToPath(
     new URL('../bench/efficacy-tasks/csv-summary/stubs/target.mjs', import.meta.url),
   );
   try {
+    fs.mkdirSync(repo);
     fs.writeFileSync(
-      path.join(root, 'package.json'),
+      path.join(repo, 'package.json'),
       '{\r\n  "private": true,\r\n  "type": "module"\r\n}\r\n',
       'utf8',
     );
-    const run = spawnSync(process.execPath, [stub, root], { encoding: 'utf8' });
+    copyTree(repo, work);
+    initGitRepo(work);
+    const run = spawnSync(process.execPath, [stub, work], { encoding: 'utf8' });
     assert.equal(run.status, 0, run.stderr);
 
-    const updated = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
+    const operations = JSON.parse(run.stdout).operations;
+    assert.doesNotThrow(() => assertOperationIntegrity(repo, work, operations));
+    const updated = fs.readFileSync(path.join(work, 'package.json'), 'utf8');
     assert.match(updated, /"csv-parse": "7\.0\.2"/);
     assert.doesNotMatch(updated, /(^|[^\r])\n/, 'Edit must preserve CRLF line endings');
   } finally {

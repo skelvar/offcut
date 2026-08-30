@@ -31,6 +31,13 @@ export function runModuleProbe(root, relative, body) {
   if (result.error) fail(result.error.message);
   if (result.status !== 0) fail((result.stderr || result.stdout || `probe exited ${result.status}`).trim());
 }
+export function replaceTextPreservingNewlines(current, oldValue, newValue) {
+  const newline = current.includes('\r\n') ? '\r\n' : '\n';
+  const adapt = (value) => String(value ?? '').replace(/\r?\n/g, newline);
+  const oldString = adapt(oldValue);
+  if (!oldString || !current.includes(oldString)) return null;
+  return current.replace(oldString, adapt(newValue));
+}
 export function applyStub(argv, operations) {
   const root = oneDirectoryArg(argv, 'stub');
   if (!Array.isArray(operations) || operations.length === 0) fail('stub operations required');
@@ -45,11 +52,9 @@ export function applyStub(argv, operations) {
     if (operation.tool_name === 'Edit') {
       if (!fs.existsSync(target)) fail(`cannot edit missing ${input.file_path}`);
       const current = fs.readFileSync(target, 'utf8');
-      const newline = current.includes('\r\n') ? '\r\n' : '\n';
-      const adaptNewlines = (value) => String(value ?? '').replace(/\r?\n/g, newline);
-      const oldString = adaptNewlines(input.old_string);
-      if (!oldString || !current.includes(oldString)) fail(`edit text missing in ${input.file_path}`);
-      fs.writeFileSync(target, current.replace(oldString, adaptNewlines(input.new_string)), 'utf8');
+      const updated = replaceTextPreservingNewlines(current, input.old_string, input.new_string);
+      if (updated === null) fail(`edit text missing in ${input.file_path}`);
+      fs.writeFileSync(target, updated, 'utf8');
       continue;
     }
     fail(`unsupported operation: ${operation.tool_name}`);
