@@ -256,10 +256,12 @@ test('contract: native Codex package uses the default hook entrypoint', () => {
 });
 
 test('contract: kernel owns generated AGENTS, skill, and Cursor rule artifacts', () => {
-  const kernel = fs.readFileSync(path.join(root, 'rules', 'offcut.md'), 'utf8').trim();
-  const skill = fs.readFileSync(path.join(root, 'skills', 'offcut', 'SKILL.md'), 'utf8');
-  const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
-  const cursor = fs.readFileSync(path.join(root, 'rules', 'offcut.mdc'), 'utf8');
+  const readPortable = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8')
+    .replace(/\r\n/g, '\n');
+  const kernel = readPortable('rules', 'offcut.md').trim();
+  const skill = readPortable('skills', 'offcut', 'SKILL.md');
+  const agents = readPortable('AGENTS.md');
+  const cursor = readPortable('rules', 'offcut.mdc');
   let skillBody = skill;
   if (skill.startsWith('---')) {
     const end = skill.indexOf('\n---', 3);

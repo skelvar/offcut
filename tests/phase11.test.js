@@ -1268,6 +1268,28 @@ test('event normalizer documents every accepted mapping and output convention', 
   assert.match(readme, /must not modify the input event or its `data` object/);
 });
 
+test('fixture Edit applies LF instructions to a CRLF checkout', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-p11-crlf-edit-'));
+  const stub = fileURLToPath(
+    new URL('../bench/efficacy-tasks/csv-summary/stubs/target.mjs', import.meta.url),
+  );
+  try {
+    fs.writeFileSync(
+      path.join(root, 'package.json'),
+      '{\r\n  "private": true,\r\n  "type": "module"\r\n}\r\n',
+      'utf8',
+    );
+    const run = spawnSync(process.execPath, [stub, root], { encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+
+    const updated = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
+    assert.match(updated, /"csv-parse": "7\.0\.2"/);
+    assert.doesNotMatch(updated, /(^|[^\r])\n/, 'Edit must preserve CRLF line endings');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('dependency target stubs use their optional package with a fallback', async () => {
   const { copyTree, initGitRepo } = await import('../bench/lib.mjs');
   const { loadEfficacyTasks } = await import('../bench/efficacy.mjs');

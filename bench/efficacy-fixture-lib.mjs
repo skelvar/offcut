@@ -45,9 +45,11 @@ export function applyStub(argv, operations) {
     if (operation.tool_name === 'Edit') {
       if (!fs.existsSync(target)) fail(`cannot edit missing ${input.file_path}`);
       const current = fs.readFileSync(target, 'utf8');
-      const oldString = String(input.old_string ?? '');
+      const newline = current.includes('\r\n') ? '\r\n' : '\n';
+      const adaptNewlines = (value) => String(value ?? '').replace(/\r?\n/g, newline);
+      const oldString = adaptNewlines(input.old_string);
       if (!oldString || !current.includes(oldString)) fail(`edit text missing in ${input.file_path}`);
-      fs.writeFileSync(target, current.replace(oldString, String(input.new_string ?? '')), 'utf8');
+      fs.writeFileSync(target, current.replace(oldString, adaptNewlines(input.new_string)), 'utf8');
       continue;
     }
     fail(`unsupported operation: ${operation.tool_name}`);
