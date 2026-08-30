@@ -3,21 +3,15 @@ node_modules/
 .env.*
 
 .worktrees/
-
-# agent tooling artifacts
 .superpowers/
 .remember/
 
-# Phase 5 bench. The evidence is published so RESULTS.md is auditable:
-# manifest (arm mapping), diffs, metrics, state-after, transcripts. Only the
-# redundant working trees and scratch logs are ignored — the diff already
-# captures what the agent produced.
+# Benchmark evidence is tracked; redundant worktrees and local run state are not.
 bench/runs/*/work/
 bench/manifest.jsonl.*.bak
 bench/schedule-last.json
 bench/paid-schedule.log
 bench/paid-resume.log
 
-# scratch produced by host probes and worktrees — never part of the product
+# Local host-probe scratch.
 .phase*-*
-.worktrees/

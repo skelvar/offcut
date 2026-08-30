@@ -1,0 +1,24 @@
+{
+  "name": "offcut",
+  "version": "0.3.0",
+  "description": "Persistent construction discipline and concise output for coding agents.",
+  "license": "MIT",
+  "author": {
+    "name": "xyzbk"
+  },
+  "interface": {
+    "displayName": "Offcut",
+    "shortDescription": "Build the cheapest correct thing in the right place.",
+    "longDescription": "Persistent construction discipline and concise output for coding agents, with reversible native defaults and lifecycle controls.",
+    "developerName": "xyzbk",
+    "category": "Developer Tools",
+    "capabilities": [
+      "persistent project guidance",
+      "concise response style",
+      "write-time construction checks"
+    ],
+    "defaultPrompt": [
+      "Use Offcut while implementing this change."
+    ]
+  }
+}

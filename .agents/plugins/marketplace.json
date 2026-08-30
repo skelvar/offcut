@@ -1,0 +1,20 @@
+{
+  "name": "skelvar",
+  "interface": {
+    "displayName": "Skelvar"
+  },
+  "plugins": [
+    {
+      "name": "offcut",
+      "source": {
+        "source": "local",
+        "path": "./plugins/offcut"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

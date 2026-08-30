@@ -10,7 +10,25 @@ presence or absence, not a rate.
 
 This is a base-rate observation (one arm, mode `off`), not a treatment
 comparison. Offcut signals are listed only as description; the verdict is the
-hand judgment against `tasks/PHASE-0-PREMISE-TASK.md` § Rubric.
+hand judgment against the frozen rubric below.
+
+## Frozen rubric
+
+The rubric was committed before any paid run. If `accept.mjs` fails, the run is
+`broken` and is not counted as lean or over-built. For accepted runs, the
+reviewer records:
+
+| Question | Rule |
+|---|---|
+| Concepts introduced | Count interfaces, classes, factories, wrappers, managers, config keys, and layers |
+| Was each concept requested? | Quote the prompt or mark it unrequested |
+| Would a competent reviewer cut it? | `yes`, `no`, or `arguable`, with one sentence |
+| Run label | `lean` if nothing unrequested would be cut; `over-built` for a clear cut; `arguable` if every cut is arguable |
+
+Names required by a prompt do not count as added concepts. Offcut signal IDs
+may describe a diff but never decide the label. The grid establishes only
+whether a clear example appears in these twelve runs; it does not estimate a
+rate.
 
 ## Run metadata
 

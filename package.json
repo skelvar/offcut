@@ -1,0 +1,50 @@
+{
+  "name": "@skelvar/offcut",
+  "version": "0.3.0",
+  "description": "Build the cheapest correct thing in the right place.",
+  "type": "module",
+  "bin": {
+    "offcut": "./tools/bootstrap.mjs"
+  },
+  "files": [
+    ".claude-plugin/plugin.json",
+    ".codex-plugin/plugin.json",
+    ".cursor-plugin/plugin.json",
+    "adapters/",
+    "hooks/",
+    "rules/",
+    "scripts/scan.mjs",
+    "skills/",
+    "tools/bootstrap.mjs",
+    "tools/install.mjs",
+    "AGENTS.md",
+    "LICENSE",
+    "README.md",
+    "plugin.json"
+  ],
+  "scripts": {
+    "build:plugin": "node scripts/build-plugin-package.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xyzbk/offcut.git"
+  },
+  "homepage": "https://github.com/xyzbk/offcut#readme",
+  "license": "MIT",
+  "author": "xyzbk",
+  "keywords": [
+    "coding-agent",
+    "codex",
+    "claude-code",
+    "cursor",
+    "grok",
+    "over-engineering"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

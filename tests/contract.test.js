@@ -232,6 +232,10 @@ test('contract: versions match across manifests and skill metadata', () => {
   const market = JSON.parse(
     fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8'),
   );
+  const cursorMarket = JSON.parse(
+    fs.readFileSync(path.join(root, '.cursor-plugin', 'marketplace.json'), 'utf8'),
+  );
+  const npmPackage = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const skill = fs.readFileSync(path.join(root, 'skills', 'offcut', 'SKILL.md'), 'utf8');
   const ver = skill.match(/version:\s*"([^"]+)"/);
   assert.ok(ver);
@@ -240,6 +244,8 @@ test('contract: versions match across manifests and skill metadata', () => {
   assert.equal(claudePlugin.version, ver[1]);
   assert.equal(cursorPlugin.version, ver[1]);
   assert.equal(market.plugins[0].version, ver[1]);
+  assert.equal(cursorMarket.plugins[0].version, ver[1]);
+  assert.equal(npmPackage.version, ver[1]);
 });
 
 test('contract: native Codex package uses the default hook entrypoint', () => {

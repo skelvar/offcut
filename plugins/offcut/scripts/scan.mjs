@@ -1,0 +1,536 @@
+#!/usr/bin/env node
+// Apply hooks/signals.js to a diff or a file set.
+// Zero runtime deps. No network, no file writes, no subprocesses, no state.
+//
+//   node scripts/scan.mjs --diff [file|-]
+//   node scripts/scan.mjs <file-or-dir> [file-or-dir...]
+//
+// Walks all text extensions so audits can cover a tree, but language-specific
+// signals declare `extensions` and runSignals skips non-matching paths
+// (JSON/Markdown never see export/function/interface checks).
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
+
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  '.hg',
+  '.svn',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.turbo',
+]);
+
+const TEXT_EXT = new Set([
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.tsx',
+  '.jsx',
+  '.json',
+  '.md',
+  '.txt',
+  '.toml',
+  '.yaml',
+  '.yml',
+  '.css',
+  '.html',
+  '.py',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.swift',
+  '.rb',
+  '.php',
+  '.sh',
+  '.ps1',
+  '.sql',
+  '.env',
+  '',
+]);
+
+/**
+ * @typedef {{
+ *   path: string,
+ *   signalId: string,
+ *   message: string,
+ *   phase: string,
+ * }} Finding
+ */
+
+/**
+ * Parse a unified diff into per-file added-content views.
+ * @param {string} text
+ * @returns {Array<{
+ *   path: string,
+ *   content: string,
+ *   addedContent: string,
+ *   removedContent: string,
+ *   pathExists: boolean,
+ *   shape: 'full' | 'fragment',
+ * }>}
+ */
+function takeGitPathToken(text) {
+  const source = String(text || '').trimStart();
+  if (!source) return { token: '', rest: '' };
+  if (source[0] !== '"') {
+    const end = source.search(/\s/);
+    return end === -1
+      ? { token: source, rest: '' }
+      : { token: source.slice(0, end), rest: source.slice(end) };
+  }
+
+  let escaped = false;
+  for (let index = 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      return {
+        token: source.slice(0, index + 1),
+        rest: source.slice(index + 1),
+      };
+    }
+  }
+  return { token: source, rest: '' };
+}
+
+function decodeGitPathToken(token) {
+  const source = String(token || '');
+  if (!(source.startsWith('"') && source.endsWith('"'))) return source;
+
+  const bytes = [];
+  const pushText = (value) => bytes.push(...Buffer.from(value, 'utf8'));
+  const escapes = {
+    a: '\x07',
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t',
+    v: '\x0b',
+    '\\': '\\',
+    '"': '"',
+  };
+
+  for (let index = 1; index < source.length - 1; index += 1) {
+    const char = source[index];
+    if (char !== '\\') {
+      const codePoint = source.codePointAt(index);
+      const value = String.fromCodePoint(codePoint);
+      pushText(value);
+      index += value.length - 1;
+      continue;
+    }
+
+    const octal = source.slice(index + 1, index + 4);
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(Number.parseInt(octal, 8));
+      index += 3;
+      continue;
+    }
+
+    const escaped = source[index + 1];
+    if (escaped === undefined) break;
+    pushText(escapes[escaped] ?? escaped);
+    index += 1;
+  }
+
+  return Buffer.from(bytes).toString('utf8');
+}
+
+function normalizeDiffPath(token) {
+  const decoded = decodeGitPathToken(token);
+  return decoded.replace(/^[ab]\//, '');
+}
+
+function gitHeaderPath(line) {
+  if (!line.startsWith('diff --git ')) return null;
+  const body = line.slice('diff --git '.length);
+  if (!body.startsWith('"')) {
+    // Git leaves ordinary spaces unquoted (`a/foo bar.js b/foo bar.js`). The
+    // destination prefix is the last ` b/`; the later +++ marker remains the
+    // authoritative path when an exotic filename itself contains that text.
+    const split = body.lastIndexOf(' b/');
+    return split === -1 ? null : normalizeDiffPath(body.slice(split + 1));
+  }
+  const first = takeGitPathToken(body);
+  const second = takeGitPathToken(first.rest);
+  return second.token ? normalizeDiffPath(second.token) : null;
+}
+
+function markerPath(line, marker) {
+  if (!line.startsWith(`${marker} `)) return null;
+  const body = line.slice(marker.length + 1);
+  const token = body.startsWith('"')
+    ? takeGitPathToken(body).token
+    : body.split('\t', 1)[0].trimEnd();
+  if (!token) return null;
+  const decoded = decodeGitPathToken(token);
+  if (decoded === '/dev/null') return '/dev/null';
+  return decoded.replace(/^[ab]\//, '');
+}
+
+export function parseUnifiedDiff(text) {
+  const files = [];
+  /** @type {{ path: string, added: string[], removed: string[], visible: string[], isNew: boolean } | null} */
+  let current = null;
+
+  const push = () => {
+    if (!current) return;
+    const added = current.added.join('\n');
+    const removed = current.removed.join('\n');
+    files.push({
+      path: current.path,
+      content: current.isNew ? added : current.visible.join('\n'),
+      addedContent: added,
+      removedContent: removed,
+      pathExists: current.isNew ? false : true,
+      // New files are whole-file creates; edits are fragments.
+      shape: current.isNew ? /** @type {const} */ ('full') : /** @type {const} */ ('fragment'),
+    });
+    current = null;
+  };
+
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const gitPath = gitHeaderPath(line);
+    if (gitPath) {
+      push();
+      current = { path: gitPath, added: [], removed: [], visible: [], isNew: false };
+      continue;
+    }
+    if (!current) {
+      // Bare ---/+++ without diff --git (rare); start a file on +++.
+      const plusPlus = markerPath(line, '+++');
+      if (plusPlus && plusPlus !== '/dev/null') {
+        current = { path: plusPlus, added: [], removed: [], visible: [], isNew: false };
+      }
+      continue;
+    }
+    if (line.startsWith('new file mode') || markerPath(line, '---') === '/dev/null') {
+      current.isNew = true;
+    }
+    const plusPlus = markerPath(line, '+++');
+    if (plusPlus && plusPlus !== '/dev/null') {
+      current.path = plusPlus;
+    }
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      current.added.push(line.slice(1));
+      current.visible.push(line.slice(1));
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      current.removed.push(line.slice(1));
+    } else if (line.startsWith(' ')) {
+      current.visible.push(line.slice(1));
+    }
+  }
+  push();
+  return files;
+}
+
+/**
+ * @param {string} root
+ * @param {string[]} out
+ */
+function walkDir(root, out) {
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (ent.name.startsWith('.') && ent.name !== '.env') {
+      if (ent.isDirectory()) continue;
+    }
+    const full = path.join(root, ent.name);
+    if (ent.isDirectory()) {
+      if (SKIP_DIRS.has(ent.name)) continue;
+      walkDir(full, out);
+      continue;
+    }
+    if (!ent.isFile()) continue;
+    const ext = path.extname(ent.name).toLowerCase();
+    if (!TEXT_EXT.has(ext) && ent.name !== 'Dockerfile' && ent.name !== 'Makefile') {
+      continue;
+    }
+    out.push(full);
+  }
+}
+
+/**
+ * Expand CLI paths into a flat file list. Directories are walked; no subprocess.
+ * @param {string[]} inputs
+ * @returns {string[]}
+ */
+export function collectFiles(inputs, missing = []) {
+  const out = [];
+  for (const raw of inputs) {
+    const p = path.resolve(raw);
+    let st;
+    try {
+      st = fs.statSync(p);
+    } catch {
+      // Unreadable input is reported, never skipped. A scan that silently
+      // covers nothing prints "No findings", which reads as "you are clean".
+      missing.push(raw);
+      continue;
+    }
+    if (st.isDirectory()) walkDir(p, out);
+    else if (st.isFile()) out.push(p);
+    else missing.push(raw);
+  }
+  return [...new Set(out)].sort();
+}
+
+/**
+ * Read a UTF-8 text file; return null for missing/binary/unreadable.
+ * @param {string} filePath
+ * @returns {string | null}
+ */
+export function readTextFile(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.includes(0)) return null;
+    return buf.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {object} viewPartial
+ * @param {string | null} corpus
+ * @param {'diff' | 'repo'} context
+ */
+function toView(viewPartial, corpus, context, corpusFiles = null) {
+  return {
+    path: viewPartial.path ?? null,
+    content: viewPartial.content ?? '',
+    addedContent: viewPartial.addedContent ?? viewPartial.content ?? '',
+    removedContent: viewPartial.removedContent ?? '',
+    shape: viewPartial.shape ?? 'full',
+    pathExists: viewPartial.pathExists ?? true,
+    truncated: false,
+    context,
+    corpus,
+    corpusFiles,
+  };
+}
+
+/**
+ * Scan a list of files (repo audit). Ranked by finding count descending.
+ * @param {string[]} filePaths
+ * @param {{ signals?: typeof ALL_SIGNALS, cwd?: string }} [opts]
+ * @returns {Finding[]}
+ */
+export function scanFiles(filePaths, opts = {}) {
+  const signals = opts.signals || ALL_SIGNALS;
+  const cwd = opts.cwd || process.cwd();
+  /** @type {Array<{ path: string, content: string }>} */
+  const loaded = [];
+  for (const fp of filePaths) {
+    const content = readTextFile(fp);
+    if (content == null) continue;
+    const rel = path.relative(cwd, fp).replace(/\\/g, '/') || path.basename(fp);
+    loaded.push({ path: rel, content });
+  }
+  const corpus = loaded.map((f) => f.content).join('\n');
+  /** @type {Finding[]} */
+  const findings = [];
+  for (const file of loaded) {
+    const view = toView(
+      {
+        path: file.path,
+        content: file.content,
+        addedContent: file.content,
+        shape: 'full',
+        pathExists: true,
+      },
+      corpus,
+      'repo',
+      loaded,
+    );
+    for (const signal of runSignals(signals, view)) {
+      findings.push({
+        path: file.path,
+        signalId: signal.id,
+        message: signal.message,
+        phase: signal.phase,
+      });
+    }
+  }
+  return rankFindings(findings);
+}
+
+/**
+ * Scan a unified diff (review).
+ * @param {string} diffText
+ * @param {{ signals?: typeof ALL_SIGNALS }} [opts]
+ * @returns {Finding[]}
+ */
+export function scanDiff(diffText, opts = {}) {
+  const signals = opts.signals || ALL_SIGNALS;
+  const files = parseUnifiedDiff(diffText);
+  const corpus = files.map((f) => f.content).join('\n');
+  /** @type {Finding[]} */
+  const findings = [];
+  for (const file of files) {
+    const view = toView(file, corpus, 'diff', files);
+    for (const signal of runSignals(signals, view)) {
+      findings.push({
+        path: file.path,
+        signalId: signal.id,
+        message: signal.message,
+        phase: signal.phase,
+      });
+    }
+  }
+  return rankFindings(findings);
+}
+
+/**
+ * Rank: more findings per path first, then path, then signal definition order.
+ * @param {Finding[]} findings
+ * @returns {Finding[]}
+ */
+export function rankFindings(findings) {
+  const counts = new Map();
+  for (const f of findings) {
+    counts.set(f.path, (counts.get(f.path) || 0) + 1);
+  }
+  const order = new Map(ALL_SIGNALS.map((s, i) => [s.id, i]));
+  return [...findings].sort((a, b) => {
+    const ca = counts.get(a.path) || 0;
+    const cb = counts.get(b.path) || 0;
+    if (cb !== ca) return cb - ca;
+    if (a.path !== b.path) return a.path < b.path ? -1 : 1;
+    return (order.get(a.signalId) ?? 0) - (order.get(b.signalId) ?? 0);
+  });
+}
+
+/**
+ * @param {Finding[]} findings
+ * @returns {string}
+ */
+export function formatFindings(findings) {
+  if (!findings.length) return 'No Offcut findings.\n';
+  const byPath = new Map();
+  for (const f of findings) {
+    if (!byPath.has(f.path)) byPath.set(f.path, []);
+    byPath.get(f.path).push(f);
+  }
+  const lines = [];
+  for (const [p, list] of byPath) {
+    lines.push(`${p} (${list.length})`);
+    for (const f of list) {
+      lines.push(`  [${f.signalId}] ${f.message}`);
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * `filesScanned` is 0 for the diff and help paths — only a tree scan has a file
+ * count to divide wall time by.
+ *
+ * @param {string[]} argv
+ * @param {{ stdin?: string, cwd?: string }} [io]
+ * @returns {{ code: number, stdout: string, stderr: string, findings: Finding[], filesScanned: number }}
+ */
+export function runScanCli(argv, io = {}) {
+  const args = argv.slice();
+  const cwd = io.cwd || process.cwd();
+  let stdout = '';
+  let stderr = '';
+
+  const diffIdx = args.indexOf('--diff');
+  if (diffIdx !== -1) {
+    const target = args[diffIdx + 1];
+    if (!target) {
+      stderr = 'usage: node scripts/scan.mjs --diff <file|->\n';
+      return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
+    }
+    let text = '';
+    if (target === '-') {
+      text = io.stdin != null ? String(io.stdin) : fs.readFileSync(0, 'utf8');
+    } else {
+      try {
+        text = fs.readFileSync(path.resolve(cwd, target), 'utf8');
+      } catch (err) {
+        stderr = `scan: cannot read diff: ${err instanceof Error ? err.message : String(err)}\n`;
+        return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
+      }
+    }
+    const findings = scanDiff(text);
+    stdout = formatFindings(findings);
+    return { code: 0, stdout, stderr, findings, filesScanned: 0 };
+  }
+
+  if (args.includes('--help') || args.includes('-h')) {
+    stdout =
+      'Offcut scanner - applies the shared signal set to files or a diff.\n' +
+      '\n' +
+      'usage:\n' +
+      '  node scripts/scan.mjs <file-or-dir>...   scan files (repo context)\n' +
+      '  node scripts/scan.mjs --diff <file|->    scan a unified diff\n' +
+      '  node scripts/scan.mjs --help             this message\n' +
+      '\n' +
+      'Reads only. No network, no file writes, no subprocesses, no Offcut state.\n' +
+      'Exit 0 = scanned successfully, 2 = bad arguments or unreadable input.\n';
+    return { code: 0, stdout, stderr, findings: [], filesScanned: 0 };
+  }
+
+  const paths = args.filter((a) => a !== '--');
+  if (!paths.length) {
+    stderr =
+      'usage: node scripts/scan.mjs --diff [file|-]\n' +
+      '       node scripts/scan.mjs <file-or-dir>...\n';
+    return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
+  }
+
+  const missing = [];
+  const files = collectFiles(paths.map((p) => path.resolve(cwd, p)), missing);
+  if (missing.length) {
+    stderr = missing.map((m) => `scan: no such file or directory: ${m}\n`).join('');
+    return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
+  }
+  const findings = scanFiles(files, { cwd });
+  stdout = formatFindings(findings);
+  return { code: 0, stdout, stderr, findings, filesScanned: files.length };
+}
+
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMain) {
+  const startedAt = performance.now();
+  const result = runScanCli(process.argv.slice(2));
+  const elapsedMs = performance.now() - startedAt;
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  // The measurement behind the per-file cost quoted in the README. On stdout,
+  // not stderr: PowerShell surfaces a native command's stderr as an error
+  // record, which would make every clean scan look like a failure on Windows.
+  if (result.code === 0 && result.filesScanned > 0) {
+    const perFile = elapsedMs / result.filesScanned;
+    process.stdout.write(
+      `scanned ${result.filesScanned} files in ${elapsedMs.toFixed(0)} ms (${perFile.toFixed(3)} ms/file)\n`,
+    );
+  }
+  process.exit(result.code);
+}

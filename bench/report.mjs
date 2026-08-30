@@ -254,7 +254,7 @@ function buildMarkdown(runs) {
   lines.push('## Findings (process)');
   lines.push('');
   lines.push(
-    '- Real `~/.offcut/` can accumulate many `fired-*` / `turn-*` files; this bench always uses a fresh `OFFCUT_STATE_DIR` and never touches the real state dir. Pruning is owned by Phase 8 (`tasks/PHASE-8-TASK.md` §5).',
+    '- Real `~/.offcut/` can accumulate many `fired-*` / `turn-*` files; this bench always uses a fresh `OFFCUT_STATE_DIR` and never touches the real state dir. Runtime pruning is implemented in `hooks/state.js`.',
   );
   lines.push(
     '- Phase 5 undercounted challenges by keeping only the first per phase in analysis; this report records the full fired set per run as a column.',

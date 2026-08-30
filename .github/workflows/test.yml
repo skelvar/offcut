@@ -30,18 +30,30 @@ jobs:
           node scripts/build-agents-md.js
           git diff --exit-code -- AGENTS.md
 
+      - name: Marketplace package must not be stale
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          node scripts/build-plugin-package.mjs
+          git diff --exit-code -- plugins/offcut
+
       - name: Versions must match
         if: matrix.os == 'ubuntu-latest'
         run: |
           node -e '
             const fs = require("fs");
             const ver = JSON.parse(fs.readFileSync("plugin.json","utf8")).version;
+            const npmPackage = JSON.parse(fs.readFileSync("package.json","utf8"));
+            const codex = JSON.parse(fs.readFileSync(".codex-plugin/plugin.json","utf8"));
             const cp = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8"));
             const cursor = JSON.parse(fs.readFileSync(".cursor-plugin/plugin.json","utf8"));
             const m = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8"));
+            const cursorMarketplace = JSON.parse(fs.readFileSync(".cursor-plugin/marketplace.json","utf8"));
+            if (npmPackage.version !== ver) throw new Error("package.json mismatch");
+            if (codex.version !== ver) throw new Error(".codex-plugin/plugin.json mismatch");
             if (cp.version !== ver) throw new Error(".claude-plugin/plugin.json mismatch");
             if (cursor.version !== ver) throw new Error(".cursor-plugin/plugin.json mismatch");
             if (m.plugins[0].version !== ver) throw new Error("marketplace mismatch");
+            if (cursorMarketplace.plugins[0].version !== ver) throw new Error("Cursor marketplace mismatch");
             // Every directory under skills/ is auto-discovered and installed, so
             // checking only skills/offcut let the command skills drift to 0.3.0.
             const skills = fs.readdirSync("skills", { withFileTypes: true }).filter((e) => e.isDirectory());
