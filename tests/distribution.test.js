@@ -24,17 +24,17 @@ test('universal package exposes a zero-dependency offcut installer', () => {
 
 test('bootstrap installs a durable runtime before wiring every detected harness', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-bootstrap-home-'));
-  const ambientHome = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-ambient-home-'));
-  const runtime = path.join(home, '.offcut', 'runtime');
+  const homeAlias = `${home}-alias`;
+  fs.symlinkSync(home, homeAlias, process.platform === 'win32' ? 'junction' : 'dir');
+  const runtime = path.join(homeAlias, '.offcut', 'runtime');
   for (const dir of ['.claude', '.codex', '.cursor', '.grok']) {
     fs.mkdirSync(path.join(home, dir), { recursive: true });
   }
 
   const env = {
     ...process.env,
-    HOME: ambientHome,
-    USERPROFILE: ambientHome,
-    OFFCUT_HOME: home,
+    HOME: home,
+    USERPROFILE: home,
     OFFCUT_INSTALL_DIR: runtime,
   };
 
@@ -72,8 +72,8 @@ test('bootstrap installs a durable runtime before wiring every detected harness'
     assert.equal(removed.status, 0, removed.stderr || removed.stdout);
     assert.equal(fs.existsSync(runtime), false, 'uninstall removes the reproducible runtime');
   } finally {
+    fs.rmSync(homeAlias, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
-    fs.rmSync(ambientHome, { recursive: true, force: true });
   }
 });
 

@@ -27,7 +27,7 @@ import {
   NATIVE_MANAGED_END,
 } from '../hooks/host.js';
 
-const HOME = path.resolve(process.env.OFFCUT_HOME || os.homedir());
+const HOME = os.homedir();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TAG = 'offcut-hooks';
 export const MANAGED_START = NATIVE_MANAGED_START;
@@ -358,5 +358,5 @@ function main() {
 
 const isMain =
   process.argv[1] &&
-  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+  fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
 if (isMain) main();
