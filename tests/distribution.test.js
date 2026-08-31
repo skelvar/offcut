@@ -19,7 +19,33 @@ test('universal package exposes a zero-dependency offcut installer', () => {
   assert.deepEqual(manifest.dependencies || {}, {});
   assert.match(manifest.engines?.node || '', />=20/);
   assert.ok(manifest.files.includes('scripts/scan.mjs'));
+  assert.ok(manifest.files.includes('assets/'));
   assert.equal(manifest.files.includes('scripts/'), false, 'build scripts must not ship to npm');
+});
+
+test('public packages expose the Offcut mark through supported native fields', () => {
+  const mark = path.join(root, 'assets', 'offcut-mark.svg');
+  const markDark = path.join(root, 'assets', 'offcut-mark-dark.svg');
+  assert.ok(fs.existsSync(mark));
+  assert.ok(fs.existsSync(markDark));
+
+  const svg = fs.readFileSync(mark, 'utf8');
+  assert.match(svg, /viewBox="0 0 1024 1024"/);
+  assert.doesNotMatch(svg, /gradient|filter|<text/i);
+
+  const codex = JSON.parse(fs.readFileSync(
+    path.join(root, '.codex-plugin', 'plugin.json'),
+    'utf8',
+  ));
+  assert.equal(codex.interface.composerIcon, './assets/offcut-mark.svg');
+  assert.equal(codex.interface.logo, './assets/offcut-mark.svg');
+  assert.equal(codex.interface.logoDark, './assets/offcut-mark-dark.svg');
+
+  const cursor = JSON.parse(fs.readFileSync(
+    path.join(root, '.cursor-plugin', 'plugin.json'),
+    'utf8',
+  ));
+  assert.equal(cursor.logo, 'assets/offcut-mark.svg');
 });
 
 test('bootstrap installs a durable runtime before wiring every detected harness', () => {
@@ -118,6 +144,8 @@ test('marketplaces ship a generated plugin package that matches runtime source',
     '.claude-plugin/plugin.json',
     '.codex-plugin/plugin.json',
     '.cursor-plugin/plugin.json',
+    'assets/offcut-mark.svg',
+    'assets/offcut-mark-dark.svg',
     'hooks/activate.js',
     'hooks/hooks.json',
     'rules/offcut.md',
@@ -147,6 +175,7 @@ test('marketplaces ship a generated plugin package that matches runtime source',
 
 test('README leads with the universal installer and accurate marketplace names', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.match(readme, /assets\/offcut-mark\.svg/);
   assert.match(readme, /npx --yes github:skelvar\/offcut/);
   assert.match(readme, /codex plugin marketplace add skelvar\/offcut/);
   assert.match(readme, /codex plugin add offcut@skelvar/);

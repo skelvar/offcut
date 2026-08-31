@@ -7,6 +7,7 @@
   },
   "homepage": "https://github.com/skelvar/offcut",
   "repository": "https://github.com/skelvar/offcut",
+  "logo": "assets/offcut-mark.svg",
   "license": "MIT",
   "keywords": [
     "hooks",

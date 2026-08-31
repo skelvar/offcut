@@ -9,6 +9,7 @@ const OUTPUT = path.join(ROOT, 'plugins', 'offcut');
 const EXPECTED_OUTPUT = path.resolve(ROOT, 'plugins', 'offcut');
 
 const PATHS = [
+  'assets',
   '.claude-plugin/plugin.json',
   '.codex-plugin/plugin.json',
   '.cursor-plugin/plugin.json',

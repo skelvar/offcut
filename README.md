@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/offcut-mark.svg" width="104" alt="Offcut logo">
+
 # Offcut
 
 **Build the cheapest correct thing in the right place.**

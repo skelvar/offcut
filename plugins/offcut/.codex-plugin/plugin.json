@@ -19,6 +19,9 @@
     ],
     "defaultPrompt": [
       "Use Offcut while implementing this change."
-    ]
+    ],
+    "composerIcon": "./assets/offcut-mark.svg",
+    "logo": "./assets/offcut-mark.svg",
+    "logoDark": "./assets/offcut-mark-dark.svg"
   }
 }
