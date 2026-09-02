@@ -19,13 +19,16 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        base="${INPUT_BASE:-origin/${PR_BASE_REF}}"
-        if [ -z "${PR_BASE_REF}" ] && [ -z "${INPUT_BASE}" ]; then
-          echo "::notice::Offcut scan runs on pull_request events or with an explicit base input; nothing to diff." 
+        ref="${INPUT_BASE:-${PR_BASE_REF}}"
+        ref="${ref#origin/}"
+        if [ -z "${ref}" ]; then
+          echo "::notice::Offcut scan runs on pull_request events or with an explicit base input; nothing to diff."
           exit 0
         fi
-        git fetch --no-tags --quiet origin "${base#origin/}" || true
-        diff="$(git diff --merge-base "$base" HEAD || git diff "$base" HEAD)"
+        # FETCH_HEAD is materialized even in a detached or shallow checkout; a bare
+        # branch name like `main` is not.
+        git fetch --no-tags --quiet origin "${ref}"
+        diff="$(git diff --merge-base FETCH_HEAD HEAD 2>/dev/null || git diff FETCH_HEAD HEAD)"
         out="$(printf '%s' "$diff" | node "$ACTION_PATH/scripts/scan.mjs" --diff - --format github)"
         printf '%s\n' "$out"
         {
