@@ -1,10 +1,10 @@
 {
   "name": "@skelvar/offcut",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Build the cheapest correct thing in the right place.",
   "type": "module",
   "bin": {
-    "offcut": "./tools/bootstrap.mjs"
+    "offcut": "tools/bootstrap.mjs"
   },
   "files": [
     "assets/",

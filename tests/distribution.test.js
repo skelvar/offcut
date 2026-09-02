@@ -15,7 +15,8 @@ test('universal package exposes a zero-dependency offcut installer', () => {
   const manifest = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
   assert.equal(manifest.name, '@skelvar/offcut');
   assert.equal(manifest.type, 'module');
-  assert.equal(manifest.bin?.offcut, './tools/bootstrap.mjs');
+  // npm 11.15+ drops bin entries whose path starts with "./" instead of cleaning them.
+  assert.equal(manifest.bin?.offcut, 'tools/bootstrap.mjs');
   assert.deepEqual(manifest.dependencies || {}, {});
   assert.match(manifest.engines?.node || '', />=20/);
   assert.ok(manifest.files.includes('scripts/scan.mjs'));

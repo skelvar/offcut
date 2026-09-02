@@ -16,12 +16,25 @@ jobs:
         with:
           node-version: '22'
           registry-url: https://registry.npmjs.org
+      # Node 22 bundles npm 10; OIDC trusted publishing needs npm 11.5.1+.
+      - run: npm install -g npm@latest
       - name: Tag must match package.json
         run: |
           tag="${{ github.event.release.tag_name }}"
           ver="$(node -p "require('./package.json').version")"
           test "$tag" = "v$ver" || { echo "tag $tag != package.json v$ver"; exit 1; }
       - run: node --test tests/*.test.js
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Skip if this version is already on the registry
+        id: check
+        run: |
+          ver="$(node -p "require('./package.json').version")"
+          if npm view "@skelvar/offcut@$ver" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::@skelvar/offcut@$ver is already published; nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      # No token: authentication is the OIDC trusted publisher configured on npmjs
+      # for this repository and this workflow file.
+      - if: steps.check.outputs.exists != 'true'
+        run: npm publish --provenance --access public

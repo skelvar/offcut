@@ -12,7 +12,7 @@ compatibility: >
   Grok Build). Native persistent instructions are supported on all four hosts;
   the skill remains a compatibility fallback.
 metadata:
-  version: "0.4.1"
+  version: "0.4.2"
   author: skelvar
 ---
 

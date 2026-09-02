@@ -17,7 +17,8 @@ no dependencies.
 git diff | npx --yes github:skelvar/offcut scan --diff -
 ```
 
-Pin a version with `npx --yes github:skelvar/offcut#v0.4.0 scan --diff -`; marketplace installs accept the same tag as `--ref v0.4.0`.
+The same command from npm: `git diff | npx --yes @skelvar/offcut scan --diff -`.
+Pin a version with `npx --yes @skelvar/offcut@0.4.2` or `npx --yes github:skelvar/offcut#v0.4.2`; marketplace installs accept the same tag as `--ref v0.4.2`.
 
 ```text
 src/phone.js (1)
@@ -143,7 +144,7 @@ Harness notes and benchmark receipts: [docs/development](docs/development/README
 
    The Releases page is not updated by the version fields; this step is what updates it.
 
-4. Publishing the release triggers `.github/workflows/publish.yml`, which publishes `@skelvar/offcut` to npmjs with provenance. It needs a repository secret `NPM_TOKEN` (an npm granular access token with publish rights on the `@skelvar` scope).
+4. Publishing the release triggers `.github/workflows/publish.yml`, which publishes `@skelvar/offcut` to npmjs with provenance. Authentication is npm's trusted publisher for this repository and workflow file (configured once with `npm trust github @skelvar/offcut --repo skelvar/offcut --file publish.yml --allow-publish`); no token is stored. If the version is already on the registry, the workflow exits without publishing.
 
 ## License
 
