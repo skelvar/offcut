@@ -143,6 +143,8 @@ Harness notes and benchmark receipts: [docs/development](docs/development/README
 
    The Releases page is not updated by the version fields; this step is what updates it.
 
+4. Publishing the release triggers `.github/workflows/publish.yml`, which publishes `@skelvar/offcut` to npmjs with provenance. It needs a repository secret `NPM_TOKEN` (an npm granular access token with publish rights on the `@skelvar` scope).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
