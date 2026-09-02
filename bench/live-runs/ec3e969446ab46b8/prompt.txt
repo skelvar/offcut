@@ -1,3 +1,0 @@
-Add a save control to the editor toolbar: primary action, "Save" / "Saving...", disabled while saving. We need a loading-label pattern we can reuse for any async action in the editor, not a one-off.
-
-Keep Cancel. Export Toolbar({ saving }) from src/components/editor/Toolbar.js. `saving` is passed in by the shell.

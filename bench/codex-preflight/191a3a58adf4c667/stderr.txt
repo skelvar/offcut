@@ -1,6 +1,0 @@
-WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\Users\\bash\\AppData\\Local\\Temp\\" (codex_home: AbsolutePathBuf("C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-E1YHWa"))
-Reading additional input from stdin...
-2026-08-27T18:23:01.030914Z ERROR codex_core::tools::router: error=collab spawn failed: no thread with id: 01a04475-d3df-7832-abe8-7a01845c4586
-2026-08-27T18:23:05.392417Z ERROR codex_core::tools::router: error=collab spawn failed: no thread with id: 01a04475-d3df-7832-abe8-7a01845c4586
-2026-08-27T18:23:17.653835Z ERROR codex_core::tools::router: error=exec_command failed for `"C:\\Users\\bash\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe" -Command "Get-Content -Raw 'C:\\Users\\bash\\.agents\\skills\\using-superpowers\\SKILL.md'"`: CreateProcess { message: "Rejected(\"`\\\"C:\\\\\\\\Users\\\\\\\\bash\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Microsoft\\\\\\\\WindowsApps\\\\\\\\pwsh.exe\\\" -Command \\\"Get-Content -Raw 'C:\\\\\\\\Users\\\\\\\\bash\\\\\\\\.agents\\\\\\\\skills\\\\\\\\using-superpowers\\\\\\\\SKILL.md'\\\"` rejected: blocked by policy\")" }
-2026-08-27T18:23:21.057433Z ERROR codex_core::tools::router: error=patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings

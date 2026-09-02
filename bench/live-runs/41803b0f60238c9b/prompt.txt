@@ -1,3 +1,0 @@
-The editor toolbar needs a save control that matches primary actions elsewhere. Export and share will land on this same toolbar next week, so don't box us into a one-off.
-
-Keep the existing Cancel control. Export Toolbar({ saving }) from src/components/editor/Toolbar.js. `saving` is a boolean from the editor shell.

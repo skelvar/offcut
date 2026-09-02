@@ -1,1 +1,0 @@
-The finance dashboard needs a sales CSV summarizer. Export summarizeSales(csv) from src/summarize.js. The first row is region,amount; later rows may quote a region containing commas. Return an object whose keys are regions and whose values are summed numeric amounts. Ignore blank rows and throw TypeError when an amount is not finite.

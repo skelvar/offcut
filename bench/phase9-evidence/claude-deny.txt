@@ -1,5 +1,0 @@
-**WRITE_BLOCKED** ΓÇö denied by a PreToolUse hook: `coexist-probe:deny-neighbour`. File not created.
-
-**NO_OFFCUT_CTX** ΓÇö the only context attached to the write attempt was `DENY_CTX_b4` (the neighbour probe). No Offcut challenge/reminder came back with the denied write.
-
-Note for the probe record: Offcut *did* fire at UserPromptSubmit this turn (`OFFCUT ACTIVE ΓÇö before you buildΓÇª`, plus `NEIGHBOR_CTX_9f2a1c`), so the absence is specific to the PreToolUse path ΓÇö the neighbour's deny short-circuited before Offcut's write-time challenge surfaced.

@@ -1,7 +1,0 @@
-We need a way to keep named values in memory in store.js for this Node project.
-
-Callers should be able to store a string value under a string key and read it
-back. Export createStore(). Different parts of the app may eventually want a
-different backing store.
-
-When finished, the harness runs accept.mjs against the project root.

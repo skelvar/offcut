@@ -52,7 +52,9 @@ The step always exits 0; findings are questions for the reviewer, not a gate.
 ## Evidence
 
 - False positives: 0 of 95 clean files across all six checks
-  ([`bench/fp.mjs`](bench/fp.mjs)).
+  ([`bench/fp.mjs`](bench/fp.mjs); the 95-run negative corpus lives in
+  [skelvar/offcut-evidence](https://github.com/skelvar/offcut-evidence), cloned
+  as a sibling directory).
 - Recall on 27 real agent-authored pull requests: 4 of 10 labeled over-builds
   caught, 0 of 17 clean diffs flagged
   ([`bench/recall/RESULTS.md`](bench/recall/RESULTS.md)). Labels were written
