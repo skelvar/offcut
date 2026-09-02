@@ -8,7 +8,7 @@ description: >
 license: MIT
 compatibility: Text only. No Node.js required. Touches no mode state.
 metadata:
-  version: "0.4.1"
+  version: "0.4.2"
   author: skelvar
 ---
 
