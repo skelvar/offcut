@@ -1,0 +1,27 @@
+name: publish
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+      - name: Tag must match package.json
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          ver="$(node -p "require('./package.json').version")"
+          test "$tag" = "v$ver" || { echo "tag $tag != package.json v$ver"; exit 1; }
+      - run: node --test tests/*.test.js
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
