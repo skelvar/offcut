@@ -17,6 +17,8 @@ no dependencies.
 git diff | npx --yes github:skelvar/offcut scan --diff -
 ```
 
+Pin a version with `npx --yes github:skelvar/offcut#v0.4.0 scan --diff -`; marketplace installs accept the same tag as `--ref v0.4.0`.
+
 ```text
 src/phone.js (1)
   [new-dependency] Offcut: new dependency — what does this replace that four lines could not do?
@@ -123,6 +125,23 @@ node scripts/build-agents-md.js   # AGENTS.md is generated from rules/offcut.md
 ```
 
 Harness notes and benchmark receipts: [docs/development](docs/development/README.md).
+
+### Release
+
+1. Bump every version field (`package.json`, `plugin.json`, the three plugin manifests, the two `marketplace.json` files, `scripts/build-agents-md.js`, `skills/offcut-{review,audit,help}/SKILL.md`), then run:
+
+   ```bash
+   node scripts/build-agents-md.js
+   node scripts/build-plugin-package.mjs
+   ```
+
+2. Merge the bump to main through a pull request (CI checks version parity and the generated files).
+
+3. ```bash
+   gh release create vX.Y.Z --target main --title "Offcut vX.Y.Z" --notes-file notes.md --latest
+   ```
+
+   The Releases page is not updated by the version fields; this step is what updates it.
 
 ## License
 
