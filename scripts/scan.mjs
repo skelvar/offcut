@@ -443,6 +443,32 @@ export function formatFindings(findings) {
   return lines.join('\n');
 }
 
+// GitHub workflow-command escaping: % → %25, \r → %0D, \n → %0A in messages;
+// properties additionally escape , and : .
+function escapeGithubData(value) {
+  return String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+function escapeGithubProperty(value) {
+  return escapeGithubData(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+}
+
+/**
+ * One `::warning` per finding so GitHub renders file annotations on the PR.
+ * @param {Finding[]} findings
+ * @returns {string}
+ */
+// offcut: file-level annotations; add line ranges to signals if reviewers need inline placement
+export function formatGithub(findings) {
+  if (!findings.length) return 'No Offcut findings.\n';
+  const lines = findings.map(
+    (f) =>
+      `::warning file=${escapeGithubProperty(f.path)},title=${escapeGithubProperty(`Offcut ${f.signalId}`)}::${escapeGithubData(f.message)}`,
+  );
+  lines.push(`${findings.length} Offcut finding${findings.length === 1 ? '' : 's'}.`, '');
+  return lines.join('\n');
+}
+
 /**
  * `filesScanned` is 0 for the diff and help paths — only a tree scan has a file
  * count to divide wall time by.
@@ -456,6 +482,18 @@ export function runScanCli(argv, io = {}) {
   const cwd = io.cwd || process.cwd();
   let stdout = '';
   let stderr = '';
+
+  let format = 'text';
+  const formatIdx = args.indexOf('--format');
+  if (formatIdx !== -1) {
+    format = args[formatIdx + 1];
+    if (format !== 'text' && format !== 'github') {
+      stderr = 'scan: --format must be text or github\n';
+      return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
+    }
+    args.splice(formatIdx, 2);
+  }
+  const render = format === 'github' ? formatGithub : formatFindings;
 
   const diffIdx = args.indexOf('--diff');
   if (diffIdx !== -1) {
@@ -476,7 +514,7 @@ export function runScanCli(argv, io = {}) {
       }
     }
     const findings = scanDiff(text);
-    stdout = formatFindings(findings);
+    stdout = render(findings);
     return { code: 0, stdout, stderr, findings, filesScanned: 0 };
   }
 
@@ -487,6 +525,7 @@ export function runScanCli(argv, io = {}) {
       'usage:\n' +
       '  node scripts/scan.mjs <file-or-dir>...   scan files (repo context)\n' +
       '  node scripts/scan.mjs --diff <file|->    scan a unified diff\n' +
+      '  --format text|github                     output style (github = PR annotations)\n' +
       '  node scripts/scan.mjs --help             this message\n' +
       '\n' +
       'Reads only. No network, no file writes, no subprocesses, no Offcut state.\n' +
@@ -509,7 +548,7 @@ export function runScanCli(argv, io = {}) {
     return { code: 2, stdout, stderr, findings: [], filesScanned: 0 };
   }
   const findings = scanFiles(files, { cwd });
-  stdout = formatFindings(findings);
+  stdout = render(findings);
   return { code: 0, stdout, stderr, findings, filesScanned: files.length };
 }
 

@@ -14,6 +14,7 @@ import {
   scanFiles,
   collectFiles,
   formatFindings,
+  formatGithub,
   runScanCli,
 } from '../scripts/scan.mjs';
 
@@ -558,4 +559,35 @@ test('scan: --help exits 0 and does not scan', () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /usage:/);
   assert.equal(r.findings.length, 0);
+});
+
+test('formatGithub: one workflow command per finding, message-safe', () => {
+  const text = formatGithub([
+    { path: 'src/a.js', signalId: 'new-dependency', message: 'Offcut: new dependency\nsecond line', phase: 'pre' },
+  ]);
+  assert.match(text, /^::warning file=src\/a\.js,title=Offcut new-dependency::Offcut: new dependency%0Asecond line$/m);
+  assert.equal(formatGithub([]), 'No Offcut findings.\n');
+});
+
+test('runScanCli --format github routes diff output through formatGithub', () => {
+  const diff = [
+    'diff --git a/package.json b/package.json',
+    '--- a/package.json',
+    '+++ b/package.json',
+    '@@ -1,3 +1,4 @@',
+    ' {',
+    '+  "dependencies": { "left-pad": "^1.0.0" },',
+    '   "name": "x"',
+    ' }',
+    '',
+  ].join('\n');
+  const r = runScanCli(['--diff', '-', '--format', 'github'], { stdin: diff });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^::warning file=package\.json,title=Offcut new-dependency::/m);
+});
+
+test('runScanCli --format rejects unknown values', () => {
+  const r = runScanCli(['--diff', '-', '--format', 'xml'], { stdin: '' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /--format must be text or github/);
 });
