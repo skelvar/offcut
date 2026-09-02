@@ -18,7 +18,9 @@ git diff | npx --yes github:skelvar/offcut scan --diff -
 ```
 
 The same command from npm: `git diff | npx --yes @skelvar/offcut scan --diff -`.
-Pin a version with `npx --yes @skelvar/offcut@0.4.2` or `npx --yes github:skelvar/offcut#v0.4.2`; marketplace installs accept the same tag as `--ref v0.4.2`.
+Pin a version with `npx --yes @skelvar/offcut@0.4.2 scan --diff -` or
+`npx --yes github:skelvar/offcut#v0.4.2 scan --diff -`; marketplace installs
+accept the same tag as `--ref v0.4.2`.
 
 ```text
 src/phone.js (1)
