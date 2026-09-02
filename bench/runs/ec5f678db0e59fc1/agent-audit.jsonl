@@ -1,8 +1,0 @@
-{"hook_event_name":"PreToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-0be66635-cd04-4bfc-ad3a-ab957b853dfc"}
-{"hook_event_name":"PostToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-0be66635-cd04-4bfc-ad3a-ab957b853dfc"}
-{"hook_event_name":"PreToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-0b17fab8-6972-47d5-9d3f-fa53d047c8bf"}
-{"hook_event_name":"PostToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-0b17fab8-6972-47d5-9d3f-fa53d047c8bf"}
-{"hook_event_name":"PreToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"apply_patch","tool_use_id":"exec-a60a9101-3c68-4066-9725-588a1acacc44"}
-{"hook_event_name":"PostToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"apply_patch","tool_use_id":"exec-a60a9101-3c68-4066-9725-588a1acacc44"}
-{"hook_event_name":"PreToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-d30ae04c-5e96-4011-a5a9-ac07e5bd1079"}
-{"hook_event_name":"PostToolUse","session_id":"01a044b1-47cc-7860-8ec8-cb44c48fd7d6","turn_id":"01a044b1-4804-7371-8962-a2359970ae4a","tool_name":"Bash","tool_use_id":"exec-d30ae04c-5e96-4011-a5a9-ac07e5bd1079"}

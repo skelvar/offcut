@@ -209,3 +209,27 @@ test('public distribution identity is consistently Skelvar', () => {
     );
   }
 });
+
+test('bootstrap: `scan` dispatches to the scanner without installing', () => {
+  const diff = [
+    'diff --git a/package.json b/package.json',
+    '--- a/package.json',
+    '+++ b/package.json',
+    '@@ -1,3 +1,4 @@',
+    ' {',
+    '+  "dependencies": { "left-pad": "^1.0.0" },',
+    '   "name": "x"',
+    ' }',
+    '',
+  ].join('\n');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'offcut-scan-home-'));
+  const r = spawnSync(
+    process.execPath,
+    [path.join(root, 'tools', 'bootstrap.mjs'), 'scan', '--diff', '-', '--format', 'github'],
+    { input: diff, encoding: 'utf8', env: { ...process.env, OFFCUT_INSTALL_DIR: path.join(home, 'runtime') } },
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /::warning file=package\.json,title=Offcut new-dependency::/);
+  assert.equal(fs.existsSync(path.join(home, 'runtime')), false, 'scan must not install a runtime');
+  fs.rmSync(home, { recursive: true, force: true });
+});

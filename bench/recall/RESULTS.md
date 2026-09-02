@@ -1,0 +1,43 @@
+# Scanner recall on agent-authored PR diffs
+
+Date: 2026-09-02. Corpus: `manifest.jsonl` (27 diffs; labels written before scanning by one agent; not an independent rater). Scanner: `scripts/scan.mjs` at commit `27482d4` (signal code unchanged since `4e7e910`). Reproduce: `node bench/recall.mjs`.
+
+| id | label | fired |
+|---|---|---|
+| 01 | overbuilt | - |
+| 02 | overbuilt | large-first-write |
+| 03 | overbuilt | large-first-write |
+| 04 | overbuilt | - |
+| 05 | overbuilt | - |
+| 06 | overbuilt | large-first-write |
+| 07 | overbuilt | - |
+| 08 | clean | - |
+| 09 | overbuilt | new-dependency |
+| 10 | overbuilt | - |
+| 11 | overbuilt | - |
+| 12 | clean | - |
+| 13 | clean | - |
+| 14 | clean | - |
+| 15 | clean | - |
+| 16 | clean | - |
+| 17 | clean | - |
+| 18 | clean | - |
+| 19 | clean | - |
+| 20 | clean | - |
+| 21 | clean | - |
+| 22 | clean | - |
+| 23 | clean | - |
+| 24 | clean | - |
+| 25 | clean | - |
+| 26 | clean | - |
+| 27 | clean | - |
+
+overbuilt: 4/10 caught (recall 40.0%)
+clean: 0/17 flagged (fp 0.0%)
+
+| signal | diffs fired |
+|---|---:|
+| large-first-write | 3 |
+| new-dependency | 1 |
+
+Missed over-builds (input for any future signal decision, not a claim): 01 one-caller modal wrapper; 04 console.error ring buffer; 05 single-integer config key with reducer and selector; 07 duplicated command with a process controller; 10 one-line domain wrapper; 11 lifecycle helper plus hardcoded route set.

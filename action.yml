@@ -1,0 +1,40 @@
+name: Offcut scan
+description: Deterministic over-engineering check on a pull request diff. No model, no network, no dependencies.
+branding:
+  icon: scissors
+  color: gray-dark
+inputs:
+  base:
+    description: Git ref to diff against. Defaults to the pull request base branch.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Scan pull request diff
+      shell: bash
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        PR_BASE_REF: ${{ github.base_ref }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        ref="${INPUT_BASE:-${PR_BASE_REF}}"
+        ref="${ref#origin/}"
+        if [ -z "${ref}" ]; then
+          echo "::notice::Offcut scan runs on pull_request events or with an explicit base input; nothing to diff."
+          exit 0
+        fi
+        # FETCH_HEAD is materialized even in a detached or shallow checkout; a bare
+        # branch name like `main` is not.
+        git fetch --no-tags --quiet origin "${ref}"
+        diff="$(git diff --merge-base FETCH_HEAD HEAD 2>/dev/null || git diff FETCH_HEAD HEAD)"
+        out="$(printf '%s' "$diff" | node "$ACTION_PATH/scripts/scan.mjs" --diff - --format github)"
+        printf '%s\n' "$out"
+        {
+          echo "## Offcut scan"
+          echo
+          echo '```'
+          printf '%s' "$diff" | node "$ACTION_PATH/scripts/scan.mjs" --diff -
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"

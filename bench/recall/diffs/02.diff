@@ -1,0 +1,914 @@
+diff --git a/README.md b/README.md
+index 1c2dea2..5c6a931 100644
+--- a/README.md
++++ b/README.md
+@@ -36,6 +36,9 @@ Restoran ve kafelerin mevcut PDF veya g├╢rsel men├╝lerini yapay zek├ó ile okuyup
+ - Men├╝lerin SQLite veritaban─▒na otomatik kayd─▒
+ - DashboardΓÇÖdan men├╝ a├ºma, ba─ƒlant─▒ kopyalama ve silme
+ - G├╝nl├╝k QR men├╝ a├º─▒l─▒┼ƒlar─▒n─▒ g├╢steren 7, 14 ve 30 g├╝nl├╝k analitik ekran─▒
++- QR kod, do─ƒrudan ba─ƒlant─▒ ve sosyal y├╢nlendirmeleri ay─▒ran trafik kayna─ƒ─▒ analizi
++- Mobil, tablet ve masa├╝st├╝ cihazlarla T├╝rk├ºe/─░ngilizce men├╝ kullan─▒m da─ƒ─▒l─▒mlar─▒
++- Ham IP veya taray─▒c─▒ bilgisi saklamayan ve bilinen botlar─▒ saymayan gizlilik odakl─▒ ├╢l├º├╝m
+ - Men├╝ bazl─▒ g├╢r├╝nt├╝lenme s─▒ralamas─▒ ve mobil dashboard navigasyonu
+ - QR kod, ba─ƒlant─▒ kopyalama, payla┼ƒma ve SVG indirme
+ - Yay─▒nlanan men├╝ler i├ºin masa kart─▒, sticker ve poster ┼ƒablonlu QR Bask─▒ Merkezi
+@@ -89,7 +92,7 @@ npm start          # ├╝retim sunucusu
+ - `app/dashboard` ve `components/Dashboard.tsx`: korumal─▒ i┼ƒletme paneli
+ - `app/dashboard/menus` ve `components/MenusDashboard.tsx`: men├╝ arama, filtreleme ve y├╢netim sayfas─▒
+ - `app/dashboard/menus/[id]/qr` ve `components/QrCenter.tsx`: QR indirme, payla┼ƒma ve bask─▒ ┼ƒablonlar─▒
+-- `app/dashboard/analytics`, `components/AnalyticsDashboard.tsx` ve `lib/analytics.ts`: g├╝nl├╝k a├º─▒l─▒┼ƒ trendi ve men├╝ performans─▒
++- `app/dashboard/analytics`, `components/AnalyticsDashboard.tsx` ve `lib/analytics.ts`: g├╝nl├╝k a├º─▒l─▒┼ƒ trendi, trafik kayna─ƒ─▒, cihaz, dil ve men├╝ performans─▒
+ - `app/dashboard/settings` ve `components/SettingsDashboard.tsx`: profil ve hesap g├╝venli─ƒi ayarlar─▒
+ - `app/api/menus/*`: men├╝ olu┼ƒturma, okuma, g├╝ncelleme, yay─▒nlama ve silme
+ - `app/m/[slug]`: herkese a├º─▒k, kal─▒c─▒ m├╝┼ƒteri men├╝s├╝
+@@ -100,6 +103,7 @@ npm start          # ├╝retim sunucusu
+ - `app/giris` ve `app/kayit`: kullan─▒c─▒ eri┼ƒim ekranlar─▒
+ - `lib/auth.ts` ve `lib/db.ts`: oturum ve SQLite altyap─▒s─▒
+ - `lib/ai-cache.ts`: s├╝reli, boyut kontroll├╝ ve s├╝r├╝ml├╝ AI sonu├º ├╢nbelle─ƒi
++- `lib/menu-tracking.ts`: ki┼ƒisel veri saklamadan kaynak, cihaz, dil ve bot s─▒n─▒fland─▒rmas─▒
+ - `lib/menu.ts` ve `lib/menus.ts`: men├╝ veri modeli ve kal─▒c─▒ men├╝ i┼ƒlemleri
+ - `components/MenuPreview.tsx`: iki dilli m├╝┼ƒteri men├╝s├╝, g├╝venli ileti┼ƒim ba─ƒlant─▒lar─▒ ve canl─▒ ├ºal─▒┼ƒma saati hesab─▒
+ - `app/globals.css`: responsive tasar─▒m sistemi
+@@ -111,7 +115,7 @@ Kullan─▒c─▒lar, oturumlar, taslaklar ve yay─▒nlanan men├╝ler yerel SQLite verita
+ 1. ├£retim ortam─▒ i├ºin PostgreSQL ile i┼ƒletme, men├╝, kategori ve ├╝r├╝n tablolar─▒
+ 2. E-posta do─ƒrulama, ┼ƒifre s─▒f─▒rlama ve ├ºoklu i┼ƒletme deste─ƒi
+ 3. ─░ngilizce d─▒┼ƒ─▒ndaki ek hedef diller ve i┼ƒletmeye ├╢zel dil se├ºimi
+-4. Trafik kayna─ƒ─▒, cihaz t├╝r├╝ ve anonim tekil ziyaret├ºi analiti─ƒi
++4. Anonim tekil ziyaret├ºi ve kampanya d├╢n├╝┼ƒ├╝m analiti─ƒi
+ 5. Ekip rolleri, ├ºoklu ┼ƒube ve abonelik planlar─▒
+ 
+ ## G├╝venlik
+@@ -131,5 +135,6 @@ Kullan─▒c─▒lar, oturumlar, taslaklar ve yay─▒nlanan men├╝ler yerel SQLite verita
+ - Gizli ├╝r├╝nler herkese a├º─▒k m├╝┼ƒteri bile┼ƒenine g├╢nderilmeden ├╢nce sunucuda filtrelenir.
+ - Alerjenler AI taraf─▒ndan tahmin edilmez; i┼ƒletme taraf─▒ndan do─ƒrulanarak girilir ve m├╝┼ƒteri men├╝s├╝nde ├ºapraz bula┼ƒma uyar─▒s─▒ g├╢sterilir.
+ - Men├╝ aramas─▒ ve filtreler tamamen taray─▒c─▒da ├ºal─▒┼ƒ─▒r; arama metni sunucuya g├╢nderilmez. Alerjen filtresi yaln─▒zca i┼ƒletmenin beyan etti─ƒi verileri esas al─▒r.
++- Analitik kay─▒tlar─▒nda yaln─▒zca s─▒n─▒fland─▒r─▒lm─▒┼ƒ kaynak, cihaz t├╝r├╝ ve g├╢sterilen dil tutulur; ham IP, user-agent ve y├╢nlendiren adres saklanmaz. Bilinen bot istekleri g├╢r├╝nt├╝lenmeye eklenmez.
+ - M├╝┼ƒteri men├╝s├╝ndeki harita, WhatsApp ve Instagram ba─ƒlant─▒lar─▒ yaln─▒zca izin verilen HTTPS alan adlar─▒na y├╢nlendirilir; ├ºal─▒┼ƒma saatleri se├ºilen saat diliminde taray─▒c─▒da hesaplan─▒r.
+ - ├£retimde da─ƒ─▒t─▒k rate limiting, PostgreSQL, e-posta do─ƒrulama, kal─▒c─▒ dosya politikas─▒ ve k├╢t├╝ ama├ºl─▒ dosya taramas─▒ eklenmelidir.
+diff --git a/app/globals.css b/app/globals.css
+index e151c39..d3cd2b4 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -6182,6 +6182,140 @@ a {
+ .analytics-chart-footer > span i { width: 8px; height: 8px; background: var(--orange); border-radius: 3px; }
+ .analytics-chart-footer strong { color: #42473f; }
+ 
++.analytics-breakdown-grid {
++  display: grid;
++  margin-top: 18px;
++  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
++  gap: 12px;
++}
++
++.analytics-breakdown-card {
++  min-height: 275px;
++  padding: 21px;
++  background: #fff;
++  border: 1px solid #e3e2dc;
++  border-radius: 15px;
++  box-shadow: 0 5px 18px rgba(35, 37, 32, 0.035);
++}
++
++.analytics-breakdown-card > header {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++}
++
++.analytics-breakdown-card > header > div {
++  display: grid;
++  width: 40px;
++  height: 40px;
++  flex: 0 0 auto;
++  place-items: center;
++  color: #d6572c;
++  background: #fff0e8;
++  border-radius: 11px;
++}
++
++.analytics-breakdown-card > header > span {
++  display: grid;
++  gap: 3px;
++}
++
++.analytics-breakdown-card > header small {
++  color: #969b93;
++  font-size: 10px;
++  font-weight: 750;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.analytics-breakdown-card > header strong {
++  color: #30352f;
++  font-size: 14px;
++}
++
++.analytics-breakdown-list {
++  display: grid;
++  margin-top: 20px;
++  gap: 14px;
++}
++
++.analytics-breakdown-row {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  align-items: center;
++  gap: 7px 12px;
++}
++
++.analytics-breakdown-row > span {
++  display: flex;
++  min-width: 0;
++  align-items: center;
++  gap: 8px;
++  color: #5f655d;
++  font-size: 12px;
++  font-weight: 650;
++}
++
++.analytics-breakdown-row > span i {
++  width: 8px;
++  height: 8px;
++  flex: 0 0 auto;
++  border-radius: 99px;
++}
++
++.analytics-breakdown-row > strong {
++  color: #343a33;
++  font-size: 12px;
++  font-weight: 800;
++}
++
++.analytics-breakdown-row > strong small {
++  margin-left: 3px;
++  color: #989d95;
++  font-size: 10px;
++  font-weight: 600;
++}
++
++.analytics-breakdown-row > div {
++  height: 6px;
++  grid-column: 1 / -1;
++  overflow: hidden;
++  background: #f0f0eb;
++  border-radius: 99px;
++}
++
++.analytics-breakdown-row > div i {
++  display: block;
++  height: 100%;
++  border-radius: inherit;
++  transition: width 240ms ease;
++}
++
++.analytics-breakdown-empty {
++  display: grid;
++  min-height: 165px;
++  margin: 0;
++  place-items: center;
++  color: #939890;
++  font-size: 12px;
++  text-align: center;
++}
++
++.analytics-privacy-note {
++  display: flex;
++  margin: 11px 3px 0;
++  align-items: center;
++  gap: 7px;
++  color: #7f857d;
++  font-size: 11px;
++  line-height: 1.5;
++}
++
++.analytics-privacy-note svg {
++  flex: 0 0 auto;
++  color: #698250;
++}
++
+ .analytics-chart-empty {
+   display: flex;
+   min-height: 285px;
+@@ -6536,6 +6670,9 @@ a {
+   .menus-filters { overflow-x: auto; }
+   .menus-page-card { grid-template-columns: 150px minmax(0, 1fr); }
+   .analytics-chart-card { padding: 20px 16px 17px; }
++  .analytics-breakdown-grid { grid-template-columns: 1fr; }
++  .analytics-breakdown-card { min-height: 0; }
++  .analytics-privacy-note { align-items: flex-start; }
+   .analytics-card-heading { align-items: flex-start; }
+   .analytics-chart-wrap { min-height: 255px; }
+   .analytics-ranking-list article { grid-template-columns: 27px minmax(110px, 1fr) minmax(95px, auto) 28px; gap: 8px; }
+diff --git a/app/m/[slug]/page.tsx b/app/m/[slug]/page.tsx
+index 087090a..39fba42 100644
+--- a/app/m/[slug]/page.tsx
++++ b/app/m/[slug]/page.tsx
+@@ -8,11 +8,15 @@ import {
+   type MenuData,
+   type MenuLanguage,
+ } from "@/lib/menu";
++import { resolveMenuDeviceType, resolveMenuTrafficSource } from "@/lib/menu-tracking";
+ import { getPublishedMenu, recordMenuView } from "@/lib/menus";
+ 
+ export const dynamic = "force-dynamic";
+ 
+-type PublicMenuPageProps = { params: Promise<{ slug: string }> };
++type PublicMenuPageProps = {
++  params: Promise<{ slug: string }>;
++  searchParams: Promise<{ src?: string | string[] }>;
++};
+ 
+ function resolveInitialLanguage(
+   acceptLanguage: string | null,
+@@ -51,17 +55,32 @@ export async function generateMetadata({ params }: PublicMenuPageProps): Promise
+   };
+ }
+ 
+-export default async function PublicMenuPage({ params }: PublicMenuPageProps) {
++export default async function PublicMenuPage({ params, searchParams }: PublicMenuPageProps) {
+   const { slug } = await params;
+   const storedMenu = getPublishedMenu(slug);
+   if (!storedMenu) notFound();
+-  recordMenuView(storedMenu.id);
+   const visibleMenu = getVisibleMenu(storedMenu.menu);
+-  const requestHeaders = await headers();
++  const [requestHeaders, query] = await Promise.all([headers(), searchParams]);
+   const initialLanguage = resolveInitialLanguage(
+     requestHeaders.get("accept-language"),
+     visibleMenu,
+   );
++  const sourceParameter = Array.isArray(query.src) ? query.src[0] : query.src;
++  const requestHost = (requestHeaders.get("x-forwarded-host") || requestHeaders.get("host"))
++    ?.split(",")[0]
++    .trim() || null;
++  recordMenuView(storedMenu.id, {
++    deviceType: resolveMenuDeviceType(
++      requestHeaders.get("user-agent"),
++      requestHeaders.get("sec-ch-ua-mobile"),
++    ),
++    language: initialLanguage,
++    source: resolveMenuTrafficSource(
++      sourceParameter,
++      requestHeaders.get("referer"),
++      requestHost,
++    ),
++  });
+   return (
+     <PublicMenu
+       menu={visibleMenu}
+diff --git a/components/AnalyticsDashboard.tsx b/components/AnalyticsDashboard.tsx
+index b2aa974..fbc2002 100644
+--- a/components/AnalyticsDashboard.tsx
++++ b/components/AnalyticsDashboard.tsx
+@@ -6,21 +6,57 @@ import {
+   BookOpen,
+   CalendarDays,
+   Eye,
++  Languages,
++  MonitorSmartphone,
+   Plus,
+   QrCode,
++  ScanLine,
++  ShieldCheck,
+   Sparkles,
+   TrendingDown,
+   TrendingUp,
+ } from "lucide-react";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+-import { useMemo, useState } from "react";
+-import type { UserAnalytics } from "@/lib/analytics";
++import { useMemo, useState, type ReactNode } from "react";
++import type { DailyMenuViews, UserAnalytics } from "@/lib/analytics";
+ import type { SessionUser } from "@/lib/auth";
+ import { DashboardMobileNav } from "@/components/DashboardMobileNav";
+ import { DashboardMobileHeader, DashboardSidebar } from "@/components/DashboardSidebar";
+ 
+ type Period = 7 | 14 | 30;
++type BreakdownField = "devices" | "languages" | "sources";
++type BreakdownItem = {
++  color: string;
++  key: string;
++  label: string;
++  views: number;
++};
++type BreakdownMeta = Omit<BreakdownItem, "views">;
++
++const sourceMeta: BreakdownMeta[] = [
++  { key: "qr", label: "QR kod", color: "#e85c2f" },
++  { key: "direct", label: "Do─ƒrudan ba─ƒlant─▒", color: "#788965" },
++  { key: "instagram", label: "Instagram", color: "#c44c86" },
++  { key: "google", label: "Google", color: "#4f77bd" },
++  { key: "facebook", label: "Facebook", color: "#5872a7" },
++  { key: "whatsapp", label: "WhatsApp", color: "#4c9870" },
++  { key: "other", label: "Di─ƒer siteler", color: "#9b806c" },
++  { key: "unknown", label: "Eski kay─▒tlar", color: "#a7aaa3" },
++];
++
++const deviceMeta: BreakdownMeta[] = [
++  { key: "mobile", label: "Mobil", color: "#e85c2f" },
++  { key: "tablet", label: "Tablet", color: "#9b6cb2" },
++  { key: "desktop", label: "Masa├╝st├╝", color: "#5d829d" },
++  { key: "unknown", label: "Bilinmeyen", color: "#a7aaa3" },
++];
++
++const languageMeta: BreakdownMeta[] = [
++  { key: "tr", label: "T├╝rk├ºe", color: "#c94e2a" },
++  { key: "en", label: "─░ngilizce", color: "#557f9e" },
++  { key: "unknown", label: "Eski kay─▒tlar", color: "#a7aaa3" },
++];
+ 
+ function formatDay(date: string, withMonth = true) {
+   return new Date(`${date}T12:00:00.000Z`).toLocaleDateString("tr-TR", {
+@@ -30,6 +66,64 @@ function formatDay(date: string, withMonth = true) {
+   });
+ }
+ 
++function buildBreakdown(
++  days: DailyMenuViews[],
++  field: BreakdownField,
++  metadata: BreakdownMeta[],
++) {
++  return metadata
++    .map((item) => ({
++      ...item,
++      views: days.reduce(
++        (total, day) => total + ((day[field] as Record<string, number>)[item.key] || 0),
++        0,
++      ),
++    }))
++    .filter((item) => item.views > 0)
++    .sort((first, second) => second.views - first.views);
++}
++
++function AnalyticsBreakdownCard({
++  eyebrow,
++  icon,
++  items,
++  title,
++}: {
++  eyebrow: string;
++  icon: ReactNode;
++  items: BreakdownItem[];
++  title: string;
++}) {
++  const total = items.reduce((sum, item) => sum + item.views, 0);
++
++  return (
++    <article className="analytics-breakdown-card">
++      <header>
++        <div>{icon}</div>
++        <span><small>{eyebrow}</small><strong>{title}</strong></span>
++      </header>
++      {total === 0 ? (
++        <p className="analytics-breakdown-empty">Bu d├╢nem i├ºin hen├╝z veri yok.</p>
++      ) : (
++        <div className="analytics-breakdown-list">
++          {items.map((item) => {
++            const percentage = Math.round((item.views / total) * 100);
++            return (
++              <div className="analytics-breakdown-row" key={item.key}>
++                <span><i style={{ backgroundColor: item.color }} />{item.label}</span>
++                <strong>{item.views.toLocaleString("tr-TR")} <small>%{percentage}</small></strong>
++                <div aria-label={`${item.label}: y├╝zde ${percentage}`} role="img">
++                  <i style={{ backgroundColor: item.color, width: `${Math.max(percentage, 3)}%` }} />
++                </div>
++              </div>
++            );
++          })}
++        </div>
++      )}
++    </article>
++  );
++}
++
+ export function AnalyticsDashboard({ user, analytics }: { user: SessionUser; analytics: UserAnalytics }) {
+   const router = useRouter();
+   const [period, setPeriod] = useState<Period>(14);
+@@ -44,6 +138,20 @@ export function AnalyticsDashboard({ user, analytics }: { user: SessionUser; ana
+   const todayViews = analytics.dailyViews.at(-1)?.views || 0;
+   const maxViews = Math.max(...periodData.map((point) => point.views), 1);
+   const averageViews = periodViews / period;
++  const sourceBreakdown = useMemo(
++    () => buildBreakdown(periodData, "sources", sourceMeta),
++    [periodData],
++  );
++  const deviceBreakdown = useMemo(
++    () => buildBreakdown(periodData, "devices", deviceMeta),
++    [periodData],
++  );
++  const languageBreakdown = useMemo(
++    () => buildBreakdown(periodData, "languages", languageMeta),
++    [periodData],
++  );
++  const dominantSource = sourceBreakdown.find((item) => item.key !== "unknown") || null;
++  const dominantDevice = deviceBreakdown.find((item) => item.key !== "unknown") || null;
+   const topMenu = analytics.menus[0] || null;
+   const busiestDay = periodData.reduce(
+     (best, point) => point.views > best.views ? point : best,
+@@ -75,13 +183,13 @@ export function AnalyticsDashboard({ user, analytics }: { user: SessionUser; ana
+           <section className="analytics-summary-grid">
+             <article><div className="analytics-metric-icon orange"><Eye size={20} /></div><span>T├╝m zamanlar</span><strong>{analytics.totalViews.toLocaleString("tr-TR")}</strong><small>Toplam men├╝ a├º─▒l─▒┼ƒ─▒</small></article>
+             <article><div className="analytics-metric-icon green"><CalendarDays size={20} /></div><span>Son {period} g├╝n</span><strong>{periodViews.toLocaleString("tr-TR")}</strong><small className={change !== null && change < 0 ? "negative" : "positive"}>{change === null ? <><Sparkles size={12} /> Yeni trafik</> : change < 0 ? <><TrendingDown size={12} /> %{Math.abs(change)} ├╢nceki d├╢neme g├╢re</> : <><TrendingUp size={12} /> %{change} ├╢nceki d├╢neme g├╢re</>}</small></article>
+-            <article><div className="analytics-metric-icon purple"><QrCode size={20} /></div><span>Bug├╝n</span><strong>{todayViews.toLocaleString("tr-TR")}</strong><small>QR men├╝ a├º─▒l─▒┼ƒ─▒</small></article>
++            <article><div className="analytics-metric-icon purple"><QrCode size={20} /></div><span>Bug├╝n</span><strong>{todayViews.toLocaleString("tr-TR")}</strong><small>Men├╝ a├º─▒l─▒┼ƒ─▒</small></article>
+             <article><div className="analytics-metric-icon blue"><BookOpen size={20} /></div><span>Yay─▒ndaki men├╝</span><strong>{analytics.publishedMenus}</strong><small>{analytics.menus.length} toplam men├╝den</small></article>
+           </section>
+ 
+           <section className="analytics-chart-card">
+             <div className="analytics-card-heading">
+-              <div><span>G├╢r├╝nt├╝lenme trendi</span><h2>QR men├╝ a├º─▒l─▒┼ƒlar─▒</h2></div>
++              <div><span>G├╢r├╝nt├╝lenme trendi</span><h2>Men├╝ a├º─▒l─▒┼ƒlar─▒</h2></div>
+               <div className="analytics-periods" aria-label="Analitik zaman aral─▒─ƒ─▒">
+                 {([7, 14, 30] as Period[]).map((option) => <button key={option} aria-pressed={period === option} className={period === option ? "active" : ""} onClick={() => setPeriod(option)}>{option} g├╝n</button>)}
+               </div>
+@@ -107,6 +215,29 @@ export function AnalyticsDashboard({ user, analytics }: { user: SessionUser; ana
+             <div className="analytics-chart-footer"><span><i /> G├╝nl├╝k a├º─▒l─▒┼ƒ</span><small>G├╝nde ortalama <strong>{averageViews.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}</strong> g├╢r├╝nt├╝lenme</small></div>
+           </section>
+ 
++          <section className="analytics-breakdown-grid" aria-label="Ziyaret├ºi da─ƒ─▒l─▒mlar─▒">
++            <AnalyticsBreakdownCard
++              eyebrow={`Son ${period} g├╝n`}
++              icon={<ScanLine size={20} />}
++              items={sourceBreakdown}
++              title="Trafik kaynaklar─▒"
++            />
++            <AnalyticsBreakdownCard
++              eyebrow="Cihaz da─ƒ─▒l─▒m─▒"
++              icon={<MonitorSmartphone size={20} />}
++              items={deviceBreakdown}
++              title="M├╝┼ƒteriler nas─▒l bak─▒yor?"
++            />
++            <AnalyticsBreakdownCard
++              eyebrow="Men├╝ dili"
++              icon={<Languages size={20} />}
++              items={languageBreakdown}
++              title="T├╝rk├ºe ve ─░ngilizce"
++            />
++          </section>
++
++          <p className="analytics-privacy-note"><ShieldCheck size={15} /> Gizlilik odakl─▒ ├╢l├º├╝m: ham IP adresi, y├╢nlendiren adres veya taray─▒c─▒ bilgisi saklanmaz; bilinen bot a├º─▒l─▒┼ƒlar─▒ say─▒lmaz.</p>
++
+           <div className="analytics-lower-grid">
+             <section className="analytics-ranking-card">
+               <div className="analytics-card-heading"><div><span>Men├╝ performans─▒</span><h2>En ├ºok g├╢r├╝nt├╝lenenler</h2></div><Link href="/dashboard/menus">T├╝m men├╝ler <ArrowUpRight size={14} /></Link></div>
+@@ -125,7 +256,7 @@ export function AnalyticsDashboard({ user, analytics }: { user: SessionUser; ana
+             <aside className="analytics-insight-card">
+               <span><Sparkles size={14} /> Ak─▒ll─▒ ├╢zet</span>
+               <h2>{periodViews > 0 ? "Trafi─ƒinin k─▒sa ├╢zeti" : "─░lk verilerini topla"}</h2>
+-              {periodViews > 0 ? <><p>Son {period} g├╝nde men├╝lerin <strong>{periodViews}</strong> kez a├º─▒ld─▒. En yo─ƒun g├╝n <strong>{formatDay(busiestDay.date)}</strong> oldu.</p>{topMenu && <div className="analytics-top-menu"><small>En ├ºok g├╢r├╝nt├╝lenen men├╝</small><strong>{topMenu.name}</strong><span>{topMenu.viewCount} toplam a├º─▒l─▒┼ƒ</span></div>}</> : <p>Men├╝n├╝ yay─▒nla ve QR kodunu masalara yerle┼ƒtir. Her a├º─▒l─▒┼ƒ otomatik olarak bu sayfaya yans─▒r.</p>}
++              {periodViews > 0 ? <><p>Son {period} g├╝nde men├╝lerin <strong>{periodViews}</strong> kez a├º─▒ld─▒. En yo─ƒun g├╝n <strong>{formatDay(busiestDay.date)}</strong> oldu.{dominantSource && <> En g├╝├ºl├╝ kaynak <strong>{dominantSource.label}</strong>{dominantDevice ? <>, en yayg─▒n cihaz ise <strong>{dominantDevice.label.toLocaleLowerCase("tr-TR")}</strong></> : null}.</>}</p>{topMenu && <div className="analytics-top-menu"><small>En ├ºok g├╢r├╝nt├╝lenen men├╝</small><strong>{topMenu.name}</strong><span>{topMenu.viewCount} toplam a├º─▒l─▒┼ƒ</span></div>}</> : <p>Men├╝n├╝ yay─▒nla ve QR kodunu masalara yerle┼ƒtir. Her a├º─▒l─▒┼ƒ otomatik olarak bu sayfaya yans─▒r.</p>}
+               <Link href={topMenu ? `/studio?menu=${topMenu.id}` : "/studio?new=1"}>{topMenu ? "Men├╝y├╝ geli┼ƒtirmeye devam et" : "Yeni men├╝ olu┼ƒtur"} <ArrowUpRight size={14} /></Link>
+               {analytics.trackingStartedAt && <small className="analytics-tracking-note">G├╝nl├╝k kay─▒tlar {new Date(analytics.trackingStartedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })} tarihinden itibaren tutuluyor.</small>}
+             </aside>
+diff --git a/components/MenuStudio.tsx b/components/MenuStudio.tsx
+index ce294f2..79b5799 100644
+--- a/components/MenuStudio.tsx
++++ b/components/MenuStudio.tsx
+@@ -68,6 +68,7 @@ import {
+   type MenuWeekday,
+   type PublishedMenu,
+ } from "@/lib/menu";
++import { buildMenuTrafficUrl } from "@/lib/menu-tracking";
+ import { MenuPreview, PublicMenu } from "@/components/MenuPreview";
+ import type { StoredMenu } from "@/lib/menus";
+ 
+@@ -285,6 +286,7 @@ export function MenuStudio({
+   );
+   const englishCoverage = getEnglishTranslationCoverage(menu);
+   const hasEnglishTranslation = hasEnglishMenuTranslation(menu);
++  const publishQrUrl = buildMenuTrafficUrl(publishUrl, "qr");
+   const englishTranslationCurrent = hasEnglishTranslation &&
+     englishCoverage.percentage === 100 &&
+     menu.translations?.en?.sourceFingerprint === getMenuTranslationFingerprint(menu);
+@@ -1781,7 +1783,7 @@ export function MenuStudio({
+             <h2 id="publish-title">QR men├╝n haz─▒r!</h2>
+             <p>M├╝┼ƒterilerin kodu okuttu─ƒunda men├╝n├╝n bu s├╝r├╝m├╝n├╝ telefonunda g├╢recek.</p>
+             <div className="qr-wrap" id="menu-qr">
+-              <QRCodeSVG value={publishUrl} size={184} level="M" marginSize={2} fgColor="#20251f" bgColor="#ffffff" />
++              <QRCodeSVG value={publishQrUrl} size={184} level="M" marginSize={2} fgColor="#20251f" bgColor="#ffffff" />
+               <div className="qr-brand"><QrCode size={13} /></div>
+             </div>
+             <div className="link-box"><span>{publishUrl}</span><button onClick={() => void copyLink()}>{copied ? <Check size={17} /> : <Copy size={17} />}</button></div>
+diff --git a/components/QrCenter.tsx b/components/QrCenter.tsx
+index 7416198..82dd44e 100644
+--- a/components/QrCenter.tsx
++++ b/components/QrCenter.tsx
+@@ -25,6 +25,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
+ import { DashboardMobileNav } from "@/components/DashboardMobileNav";
+ import { DashboardMobileHeader, DashboardSidebar } from "@/components/DashboardSidebar";
+ import type { SessionUser } from "@/lib/auth";
++import { buildMenuTrafficUrl } from "@/lib/menu-tracking";
+ import type { StoredMenu } from "@/lib/menus";
+ 
+ type PrintTemplate = "poster" | "sticker" | "table";
+@@ -100,21 +101,23 @@ async function copyText(value: string) {
+ }
+ 
+ function QrArtwork({
++  displayUrl,
+   logo,
+   menuName,
+-  publicUrl,
++  qrUrl,
+   source = false,
+   subtitle,
+   template,
+ }: {
++  displayUrl: string;
+   logo: string;
+   menuName: string;
+-  publicUrl: string;
++  qrUrl: string;
+   source?: boolean;
+   subtitle: string;
+   template: PrintTemplate;
+ }) {
+-  const compactUrl = publicUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
++  const compactUrl = displayUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+   return (
+     <article className={`qr-artwork ${template}`}>
+       <div className="qr-artwork-brand">
+@@ -130,7 +133,7 @@ function QrArtwork({
+       <h2>{menuName}</h2>
+       {subtitle && <p>{subtitle}</p>}
+       <div className="qr-artwork-code" data-qr-source={source ? "true" : undefined}>
+-        {publicUrl ? (
++        {qrUrl ? (
+           <QRCodeSVG
+             bgColor="#ffffff"
+             fgColor="#20251f"
+@@ -138,7 +141,7 @@ function QrArtwork({
+             marginSize={2}
+             size={232}
+             title={`${menuName} dijital men├╝ QR kodu`}
+-            value={publicUrl}
++            value={qrUrl}
+           />
+         ) : (
+           <div className="qr-code-placeholder" />
+@@ -154,15 +157,17 @@ function QrArtwork({
+ }
+ 
+ function PrintSheet({
++  displayUrl,
+   logo,
+   menuName,
+-  publicUrl,
++  qrUrl,
+   subtitle,
+   template,
+ }: {
++  displayUrl: string;
+   logo: string;
+   menuName: string;
+-  publicUrl: string;
++  qrUrl: string;
+   subtitle: string;
+   template: PrintTemplate;
+ }) {
+@@ -172,9 +177,10 @@ function PrintSheet({
+       {Array.from({ length: copies }, (_, index) => (
+         <QrArtwork
+           key={index}
++          displayUrl={displayUrl}
+           logo={logo}
+           menuName={menuName}
+-          publicUrl={publicUrl}
++          qrUrl={qrUrl}
+           subtitle={subtitle}
+           template={template}
+         />
+@@ -203,6 +209,7 @@ export function QrCenter({
+   const logo = storedMenu.menu.businessProfile?.logo || "";
+   const artworkStyle = { "--qr-accent": storedMenu.theme.accent } as CSSProperties;
+   const selectedTemplate = templateOptions.find((option) => option.id === template)!;
++  const qrUrl = buildMenuTrafficUrl(publicUrl, "qr");
+   const isLocalPreview = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/)/i.test(publicUrl);
+ 
+   useEffect(() => {
+@@ -447,9 +454,10 @@ export function QrCenter({
+               </div>
+               <div className={`qr-preview-stage ${template}`}>
+                 <QrArtwork
++                  displayUrl={publicUrl}
+                   logo={logo}
+                   menuName={storedMenu.name}
+-                  publicUrl={publicUrl}
++                  qrUrl={qrUrl}
+                   source
+                   subtitle={storedMenu.menu.subtitle}
+                   template={template}
+@@ -462,9 +470,10 @@ export function QrCenter({
+       </section>
+ 
+       <PrintSheet
++        displayUrl={publicUrl}
+         logo={logo}
+         menuName={storedMenu.name}
+-        publicUrl={publicUrl}
++        qrUrl={qrUrl}
+         subtitle={storedMenu.menu.subtitle}
+         template={template}
+       />
+diff --git a/lib/analytics.ts b/lib/analytics.ts
+index 6914a60..facc194 100644
+--- a/lib/analytics.ts
++++ b/lib/analytics.ts
+@@ -1,8 +1,19 @@
+ import { db } from "@/lib/db";
++import {
++  menuTrafficSources,
++  menuViewLanguages,
++  trackedMenuDeviceTypes,
++  type MenuTrafficSource,
++  type MenuViewLanguage,
++  type TrackedMenuDeviceType,
++} from "@/lib/menu-tracking";
+ import { listUserMenus, type MenuStatus } from "@/lib/menus";
+ 
+ export type DailyMenuViews = {
+   date: string;
++  devices: Record<TrackedMenuDeviceType, number>;
++  languages: Record<MenuViewLanguage, number>;
++  sources: Record<MenuTrafficSource, number>;
+   views: number;
+ };
+ 
+@@ -27,6 +38,14 @@ type DailyViewRow = {
+   views: number;
+ };
+ 
++type DailyBreakdownRow = {
++  date: string;
++  device_type: string;
++  language: string;
++  source: string;
++  views: number;
++};
++
+ type TrackingRow = {
+   tracking_started_at: string | null;
+ };
+@@ -35,6 +54,17 @@ function utcDateKey(date: Date) {
+   return date.toISOString().slice(0, 10);
+ }
+ 
++function emptyBreakdown<Key extends string>(keys: readonly Key[]) {
++  return Object.fromEntries(keys.map((key) => [key, 0])) as Record<Key, number>;
++}
++
++function normalizeBreakdownKey<Key extends string>(
++  value: string,
++  keys: readonly Key[],
++): Key {
++  return keys.includes(value as Key) ? value as Key : "unknown" as Key;
++}
++
+ export function getUserAnalytics(userId: string, requestedDays = 60): UserAnalytics {
+   const days = Math.min(Math.max(Math.trunc(requestedDays), 14), 90);
+   const start = new Date();
+@@ -51,11 +81,51 @@ export function getUserAnalytics(userId: string, requestedDays = 60): UserAnalyt
+   ).all(userId, start.toISOString()) as DailyViewRow[];
+ 
+   const viewsByDate = new Map(rows.map((row) => [row.date, Number(row.views)]));
++  const breakdownRows = db.prepare(
++    `SELECT
++       substr(menu_views.viewed_at, 1, 10) AS date,
++       menu_views.source,
++       menu_views.device_type,
++       menu_views.language,
++       COUNT(*) AS views
++     FROM menu_views
++     INNER JOIN menus ON menus.id = menu_views.menu_id
++     WHERE menus.user_id = ? AND menu_views.viewed_at >= ?
++     GROUP BY date, menu_views.source, menu_views.device_type, menu_views.language
++     ORDER BY date ASC`,
++  ).all(userId, start.toISOString()) as DailyBreakdownRow[];
++
++  const breakdownByDate = new Map<string, {
++    devices: Record<TrackedMenuDeviceType, number>;
++    languages: Record<MenuViewLanguage, number>;
++    sources: Record<MenuTrafficSource, number>;
++  }>();
++  breakdownRows.forEach((row) => {
++    const breakdown = breakdownByDate.get(row.date) || {
++      devices: emptyBreakdown(trackedMenuDeviceTypes),
++      languages: emptyBreakdown(menuViewLanguages),
++      sources: emptyBreakdown(menuTrafficSources),
++    };
++    const views = Number(row.views);
++    const source = normalizeBreakdownKey(row.source, menuTrafficSources);
++    const device = normalizeBreakdownKey(row.device_type, trackedMenuDeviceTypes);
++    const language = normalizeBreakdownKey(row.language, menuViewLanguages);
++    breakdown.sources[source] += views;
++    breakdown.devices[device] += views;
++    breakdown.languages[language] += views;
++    breakdownByDate.set(row.date, breakdown);
++  });
++
+   const dailyViews = Array.from({ length: days }, (_, index) => {
+     const date = new Date(start);
+     date.setUTCDate(start.getUTCDate() + index);
+     const key = utcDateKey(date);
+-    return { date: key, views: viewsByDate.get(key) || 0 };
++    const breakdown = breakdownByDate.get(key) || {
++      devices: emptyBreakdown(trackedMenuDeviceTypes),
++      languages: emptyBreakdown(menuViewLanguages),
++      sources: emptyBreakdown(menuTrafficSources),
++    };
++    return { date: key, views: viewsByDate.get(key) || 0, ...breakdown };
+   });
+ 
+   const storedMenus = listUserMenus(userId);
+diff --git a/lib/db.ts b/lib/db.ts
+index 902de6c..969aba3 100644
+--- a/lib/db.ts
++++ b/lib/db.ts
+@@ -55,6 +55,9 @@ db.exec(`
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     menu_id TEXT NOT NULL,
+     viewed_at TEXT NOT NULL,
++    source TEXT NOT NULL DEFAULT 'unknown',
++    device_type TEXT NOT NULL DEFAULT 'unknown',
++    language TEXT NOT NULL DEFAULT 'unknown',
+     FOREIGN KEY (menu_id) REFERENCES menus(id) ON DELETE CASCADE
+   );
+ 
+@@ -76,3 +79,19 @@ db.exec(`
+     ON ai_cache(operation, last_accessed_at DESC);
+   CREATE INDEX IF NOT EXISTS ai_cache_expires_idx ON ai_cache(expires_at);
+ `);
++
++type DatabaseColumn = { name: string };
++const menuViewColumns = new Set(
++  (db.prepare("PRAGMA table_info(menu_views)").all() as DatabaseColumn[])
++    .map((column) => column.name),
++);
++
++if (!menuViewColumns.has("source")) {
++  db.exec("ALTER TABLE menu_views ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
++}
++if (!menuViewColumns.has("device_type")) {
++  db.exec("ALTER TABLE menu_views ADD COLUMN device_type TEXT NOT NULL DEFAULT 'unknown'");
++}
++if (!menuViewColumns.has("language")) {
++  db.exec("ALTER TABLE menu_views ADD COLUMN language TEXT NOT NULL DEFAULT 'unknown'");
++}
+diff --git a/lib/menu-tracking.ts b/lib/menu-tracking.ts
+new file mode 100644
+index 0000000..cf904c7
+--- /dev/null
++++ b/lib/menu-tracking.ts
+@@ -0,0 +1,108 @@
++export const menuTrafficSources = [
++  "qr",
++  "direct",
++  "instagram",
++  "google",
++  "facebook",
++  "whatsapp",
++  "other",
++  "unknown",
++] as const;
++export type MenuTrafficSource = (typeof menuTrafficSources)[number];
++
++export const trackedMenuDeviceTypes = ["mobile", "tablet", "desktop", "unknown"] as const;
++export type TrackedMenuDeviceType = (typeof trackedMenuDeviceTypes)[number];
++export type MenuDeviceType = TrackedMenuDeviceType | "bot";
++
++export const menuViewLanguages = ["tr", "en", "unknown"] as const;
++export type MenuViewLanguage = (typeof menuViewLanguages)[number];
++
++export type MenuViewContext = {
++  deviceType: MenuDeviceType;
++  language: MenuViewLanguage;
++  source: MenuTrafficSource;
++};
++
++export type ExplicitMenuTrafficSource = "qr" | "instagram" | "google" | "facebook" | "whatsapp";
++
++const explicitSources = new Set<ExplicitMenuTrafficSource>([
++  "qr",
++  "instagram",
++  "google",
++  "facebook",
++  "whatsapp",
++]);
++
++export function buildMenuTrafficUrl(
++  menuUrl: string,
++  source: ExplicitMenuTrafficSource,
++) {
++  if (!menuUrl) return "";
++
++  try {
++    const trackedUrl = new URL(menuUrl);
++    trackedUrl.searchParams.set("src", source);
++    return trackedUrl.toString();
++  } catch {
++    const separator = menuUrl.includes("?") ? "&" : "?";
++    return `${menuUrl}${separator}src=${source}`;
++  }
++}
++
++function matchesDomain(hostname: string, domain: string) {
++  return hostname === domain || hostname.endsWith(`.${domain}`);
++}
++
++export function resolveMenuTrafficSource(
++  sourceParameter: string | null | undefined,
++  referrer: string | null,
++  currentHost: string | null,
++): MenuTrafficSource {
++  const explicitSource = sourceParameter?.trim().toLocaleLowerCase("en-US") as ExplicitMenuTrafficSource;
++  if (explicitSources.has(explicitSource)) return explicitSource;
++  if (!referrer) return "direct";
++
++  try {
++    const hostname = new URL(referrer).hostname.toLocaleLowerCase("en-US");
++    const ownHostname = currentHost
++      ? (currentHost.startsWith("[")
++          ? currentHost.slice(1, currentHost.indexOf("]"))
++          : currentHost.split(":")[0]
++        ).toLocaleLowerCase("en-US")
++      : "";
++    if (ownHostname && hostname === ownHostname) return "direct";
++    if (matchesDomain(hostname, "instagram.com")) return "instagram";
++    if (
++      matchesDomain(hostname, "google.com") ||
++      hostname.startsWith("google.") ||
++      hostname.includes(".google.")
++    ) return "google";
++    if (
++      matchesDomain(hostname, "facebook.com") ||
++      matchesDomain(hostname, "fb.com") ||
++      matchesDomain(hostname, "fb.me")
++    ) return "facebook";
++    if (matchesDomain(hostname, "whatsapp.com") || matchesDomain(hostname, "wa.me")) {
++      return "whatsapp";
++    }
++    return "other";
++  } catch {
++    return "other";
++  }
++}
++
++export function resolveMenuDeviceType(
++  userAgent: string | null,
++  mobileClientHint: string | null,
++): MenuDeviceType {
++  if (!userAgent) return mobileClientHint === "?1" ? "mobile" : "unknown";
++  if (
++    /bot|crawler|spider|slurp|facebookexternalhit|facebot|telegrambot|discordbot|twitterbot|linkedinbot|google-inspectiontool|lighthouse|headlesschrome/i
++      .test(userAgent)
++  ) return "bot";
++  if (/ipad|tablet|playbook|silk|(android(?!.*mobile))/i.test(userAgent)) return "tablet";
++  if (mobileClientHint === "?1" || /mobi|iphone|ipod|android|windows phone/i.test(userAgent)) {
++    return "mobile";
++  }
++  return "desktop";
++}
+diff --git a/lib/menus.ts b/lib/menus.ts
+index 2732451..7325fd8 100644
+--- a/lib/menus.ts
++++ b/lib/menus.ts
+@@ -1,5 +1,6 @@
+ import { randomBytes, randomUUID } from "node:crypto";
+ import { db } from "@/lib/db";
++import type { MenuViewContext } from "@/lib/menu-tracking";
+ import {
+   menuAllergens,
+   menuDietaryTags,
+@@ -324,10 +325,27 @@ export function getPublishedMenu(slug: string) {
+   return row ? parseRow(row) : null;
+ }
+ 
+-export function recordMenuView(id: string) {
++export function recordMenuView(
++  id: string,
++  context: MenuViewContext = {
++    deviceType: "unknown",
++    language: "unknown",
++    source: "unknown",
++  },
++) {
++  if (context.deviceType === "bot") return;
++
+   const recordView = db.transaction((menuId: string) => {
+-    db.prepare("INSERT INTO menu_views (menu_id, viewed_at) VALUES (?, ?)")
+-      .run(menuId, new Date().toISOString());
++    db.prepare(
++      `INSERT INTO menu_views (menu_id, viewed_at, source, device_type, language)
++       VALUES (?, ?, ?, ?, ?)`,
++    ).run(
++      menuId,
++      new Date().toISOString(),
++      context.source,
++      context.deviceType,
++      context.language,
++    );
+     db.prepare("UPDATE menus SET view_count = view_count + 1 WHERE id = ?").run(menuId);
+   });
+   recordView(id);

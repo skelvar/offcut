@@ -1,2 +1,0 @@
-BOTH_CTX
-"OFFCUT ACTIVE ΓÇö before you build: does it need to exist? does it already exist here? can the platform or stdlib do it? what is the cheapest thing that works? which boundary owns it?"

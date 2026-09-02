@@ -1,3 +1,0 @@
-SKILL=ponytail-review
-
-Only one fires. `ponytail-review`'s description claims the generic phrasing verbatim ("review for over-engineering", "is this over-engineered"), and `offcut-review`'s description explicitly cedes it ΓÇö its trigger requires the user to name Offcut or invoke `/offcut-review`; the "diff" scoping alone doesn't pull it in. Phase 9's disambiguation clause is doing its job here: no double-fire.

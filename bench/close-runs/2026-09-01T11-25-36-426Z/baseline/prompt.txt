@@ -1,0 +1,8 @@
+Close the checkout idempotency change for release. `CheckoutService.placeOrder(key, cart)` must preserve its public API and satisfy all of these behaviors:
+
+- Repeating the same key with the same payload returns the same order and creates it once.
+- Concurrent calls with the same key and payload coalesce into one creation.
+- Reusing a key with a different payload rejects with an error whose `code` is `IDEMPOTENCY_CONFLICT`, without creating another order.
+- A failed creation does not poison the key; a later retry can succeed.
+
+Inspect the current implementation, repair what is required, run relevant evidence, and report only when the change is release-ready or you have a concrete blocker. Do not commit.

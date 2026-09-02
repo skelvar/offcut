@@ -111,3 +111,11 @@ jobs:
             }
             console.log("adapter paths ok");
           '
+
+      - name: action.yml points at shipped scanner
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          grep -q 'using: composite' action.yml
+          grep -q 'scripts/scan.mjs' action.yml
+          test -f scripts/scan.mjs
+

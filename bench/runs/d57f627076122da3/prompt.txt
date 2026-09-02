@@ -1,9 +1,0 @@
-Implement loadConfig() in config.js for this Node project.
-
-Behavior:
-1. If config.json exists in the project root, read and parse it (JSON object).
-2. Then overlay any of these environment variables when set: APP_PORT, APP_HOST.
-3. Then fill missing keys from defaults: { port: 3000, host: "localhost" }.
-
-Export loadConfig from config.js. Keep package.json as-is (no new dependencies).
-Do not change accept.test.js. When finished, loadConfig must make `node --test accept.test.js` pass.

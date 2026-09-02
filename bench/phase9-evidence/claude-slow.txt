@@ -1,3 +1,0 @@
-BOTH ΓÇö I see `OFFCUT ACTIVE` and `NEIGHBOR_CTX_9f2a1c`.
-
-No `SLOW_CTX_zz` in this turn's context.

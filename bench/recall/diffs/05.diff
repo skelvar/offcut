@@ -1,0 +1,637 @@
+diff --git a/docs/CONFIGURATION.md b/docs/CONFIGURATION.md
+index c13137a2..40ce8db2 100644
+--- a/docs/CONFIGURATION.md
++++ b/docs/CONFIGURATION.md
+@@ -28,6 +28,7 @@ hide_column_menus = False
+ hide_row_expanders = False
+ enable_custom_filters = False
+ enable_web_uploads = False
++export_max_rows = 10000 # the default value is None (no limit); applies to CSV, TSV, Parquet & HTML exports
+ 
+ [charts] # this controls how many points can be contained within scatter & 3D charts
+ scatter_points = 15000
+@@ -62,6 +63,7 @@ auto_hide_empty_columns = False
+ Some notes on these properties:
+ * *theme:* available values are 'light' & 'dark'
+ * *host/port/app_root:* have no default
++* *export_max_rows:* the maximum number of rows allowed when exporting data (applies to CSV, TSV, Parquet & HTML exports). When unset (the default, `None`) no limit is applied and the full result set (after any filters/sorting have been applied) will be exported. When set, requests for fewer rows than this value will be honored as-is, and requests for more rows (or no explicit row count) will be capped at this value. This limit is always enforced server-side, even if a request is made directly (bypassing the UI).
+ 
+ Here is the hierarchy of how parameters are passed to `dtale.show` (in order of most important to least):
+ 1) Passing parameters directly into `dtale.show` or passing a dictionary of settings to `dtale.global_state.set_app_settings` or `dtale.global_state.set_auth_settings`
+diff --git a/dtale/config.py b/dtale/config.py
+index 9afe62b4..2716e209 100644
+--- a/dtale/config.py
++++ b/dtale/config.py
+@@ -139,6 +139,9 @@ def load_app_settings(config):
+     hide_drop_rows = get_config_val(
+         config, curr_app_settings, "hide_drop_rows", section="app", getter="getboolean"
+     )
++    export_max_rows = get_config_val(
++        config, curr_app_settings, "export_max_rows", section="app", getter="getint"
++    )
+ 
+     global_state.set_app_settings(
+         dict(
+@@ -163,6 +166,7 @@ def load_app_settings(config):
+             hide_row_expanders=hide_row_expanders,
+             enable_custom_filters=enable_custom_filters,
+             enable_web_uploads=enable_web_uploads,
++            export_max_rows=export_max_rows,
+         )
+     )
+ 
+diff --git a/dtale/global_state.py b/dtale/global_state.py
+index 04bf441d..063546f3 100644
+--- a/dtale/global_state.py
++++ b/dtale/global_state.py
+@@ -37,6 +37,7 @@
+     "enable_custom_filters": False,
+     "enable_web_uploads": False,
+     "hide_row_expanders": False,
++    "export_max_rows": None,
+ }
+ 
+ AUTH_SETTINGS = {"active": False, "username": None, "password": None}
+diff --git a/dtale/templates/dtale/base.html b/dtale/templates/dtale/base.html
+index 62dd2b01..dcb4db5f 100644
+--- a/dtale/templates/dtale/base.html
++++ b/dtale/templates/dtale/base.html
+@@ -68,6 +68,7 @@
+         <input type="hidden" id="query_engine" value="{{query_engine}}" />
+         <input type="hidden" id="open_custom_filter_on_startup" value="{{open_custom_filter_on_startup}}" />
+         <input type="hidden" id="open_predefined_filters_on_startup" value="{{open_predefined_filters_on_startup}}" />
++        <input type="hidden" id="export_max_rows" value="{{export_max_rows}}" />
+         {% block full_content %}{% endblock %}
+         {% if missing_js is not defined %}
+         <script type="text/javascript" src="{{ url_for('static', filename='dist/polyfills_bundle.js') }}"></script>
+diff --git a/dtale/views.py b/dtale/views.py
+index 8e8d37f3..039bc2c7 100644
+--- a/dtale/views.py
++++ b/dtale/views.py
+@@ -2891,7 +2891,7 @@ def get_data(data_id):
+         results = {}
+         if total:
+             if export:
+-                export_rows = get_int_arg(request, "export_rows")
++                export_rows = get_export_rows(request)
+                 if export_rows:
+                     if query_builder:
+                         data = instance.load_data(
+@@ -2903,6 +2903,15 @@ def get_data(data_id):
+                         data = data.head(export_rows)
+                     else:
+                         data = instance.load_data(row_range=[0, export_rows])
++                else:
++                    if query_builder:
++                        data = instance.load_data(
++                            query_builder=query_builder, **date_range
++                        )
++                    elif len(date_range):
++                        data = instance.load_data(**date_range)
++                    else:
++                        data = instance.load_data()
+                 data, _ = format_data(data)
+                 data = data[
+                     curr_locked + [c for c in data.columns if c not in curr_locked]
+@@ -3034,7 +3043,7 @@ def get_data(data_id):
+         results = {}
+         if total:
+             if export:
+-                export_rows = get_int_arg(request, "export_rows")
++                export_rows = get_export_rows(request)
+                 if export_rows:
+                     data = data.head(export_rows)
+                 results = f.format_dicts(data.itertuples())
+@@ -3180,6 +3189,34 @@ def _filter_numeric(col):
+     return jsonify(curr_settings["filteredRanges"])
+ 
+ 
++def get_export_rows(request, requested_rows=None):
++    """
++    Determine the number of rows which should be exported based on the "export_rows" query
++    parameter (or an explicitly passed value for it) as well as the "export_max_rows" application
++    setting.  This is used to enforce a server-side limit on export size regardless of what the
++    front-end requests, and applies to CSV, TSV, Parquet & HTML exports.
++
++    :param request: :attr:`flask:flask.request`
++    :param requested_rows: number of rows to export, if not provided this will be read from the
++                            "export_rows" query parameter
++    :return: the number of rows which should be exported, `None` means no limit should be applied
++    """
++    if requested_rows is None:
++        requested_rows = get_int_arg(request, "export_rows")
++    if requested_rows is not None and requested_rows <= 0:
++        requested_rows = None
++
++    max_rows = global_state.get_app_settings().get("export_max_rows")
++    if max_rows is not None and max_rows <= 0:
++        max_rows = None
++
++    if max_rows is None:
++        return requested_rows
++    if requested_rows is None:
++        return max_rows
++    return min(requested_rows, max_rows)
++
++
+ @dtale.route("/data-export/<data_id>")
+ @exception_decorator
+ def data_export(data_id):
+@@ -3197,6 +3234,9 @@ def data_export(data_id):
+             if c["visible"]
+         ]
+     ]
++    export_rows = get_export_rows(request)
++    if export_rows is not None:
++        data = data.head(export_rows)
+     file_type = get_str_arg(request, "type", "csv")
+     if file_type in ["csv", "tsv"]:
+         tsv = file_type == "tsv"
+diff --git a/frontend/static/__tests__/popups/ExportPopup.test.tsx b/frontend/static/__tests__/popups/ExportPopup.test.tsx
+index 1be8f5a2..a35d2ab3 100644
+--- a/frontend/static/__tests__/popups/ExportPopup.test.tsx
++++ b/frontend/static/__tests__/popups/ExportPopup.test.tsx
+@@ -31,9 +31,9 @@ describe('ExportOption', () => {
+     dimensions.beforeAll();
+   });
+ 
+-  const setupMock = async (overrides?: Partial<AppStoreState>): Promise<void> => {
++  const setupMock = async (overrides?: Partial<AppStoreState>, exportMaxRows?: string): Promise<void> => {
+     const store = reduxUtils.createDtaleStore();
+-    buildInnerHTML({ dataId: '0', settings: '' }, store);
++    buildInnerHTML({ dataId: '0', settings: '', exportMaxRows }, store);
+     store.dispatch(AppActions.UpdateSettingsAction({ sortInfo: [], ...overrides?.settings }));
+     store.dispatch(
+       AppActions.OpenChartAction({ visible: true, rows: 50, ...overrides?.chartData, type: PopupType.EXPORT }),
+@@ -106,7 +106,7 @@ describe('ExportOption', () => {
+ 
+   describe('HTML export over 10000 rows', () => {
+     beforeEach(async () => {
+-      await setupMock({ chartData: { visible: true, type: PopupType.EXPORT, rows: 11000 } });
++      await setupMock({ chartData: { visible: true, type: PopupType.EXPORT, rows: 11000 } }, '10000');
+       await act(async () => {
+         await fireEvent.click(screen.getByText('html'));
+       });
+@@ -139,4 +139,50 @@ describe('ExportOption', () => {
+       expect(openSpy.mock.calls[0][0].startsWith('/dtale/data/0?export=true&export_rows=1000&_id=')).toBe(true);
+     });
+   });
++
++  describe('export_max_rows configuration', () => {
++    it('does not limit exports when export_max_rows is not configured', async () => {
++      await setupMock({ chartData: { visible: true, type: PopupType.EXPORT, rows: 50000 } });
++      await act(async () => {
++        await fireEvent.click(screen.getByText('CSV'));
++      });
++      expect(openSpy.mock.calls[0][0]).not.toContain('export_rows');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('html'));
++      });
++      expect(openSpy.mock.calls[1][0].startsWith('/dtale/data/0?export=true&export_rows=50000&_id=')).toBe(true);
++    });
++
++    it('exports all rows when data is smaller than export_max_rows', async () => {
++      await setupMock({ chartData: { visible: true, type: PopupType.EXPORT, rows: 5000 } }, '10000');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('CSV'));
++      });
++      expect(openSpy.mock.calls[0][0]).toContain('export_rows=5000');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('html'));
++      });
++      expect(openSpy.mock.calls[1][0].startsWith('/dtale/data/0?export=true&export_rows=5000&_id=')).toBe(true);
++    });
++
++    it('caps exports to export_max_rows when data exceeds it', async () => {
++      await setupMock({ chartData: { visible: true, type: PopupType.EXPORT, rows: 20000 } }, '10000');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('TSV'));
++      });
++      expect(openSpy.mock.calls[0][0]).toContain('export_rows=10000');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('Parquet'));
++      });
++      expect(openSpy.mock.calls[1][0]).toContain('export_rows=10000');
++      await act(async () => {
++        await fireEvent.click(screen.getByText('html'));
++      });
++      const thumb = getByRole(document.body.querySelector('.modal-body')!, 'slider');
++      expect(thumb).toBeDefined();
++      expect(document.body.querySelector('.modal-body')!.getElementsByTagName('input')[0].getAttribute('value')).toBe(
++        '10000',
++      );
++    });
++  });
+ });
+diff --git a/frontend/static/__tests__/reducers/dtale-test.tsx b/frontend/static/__tests__/reducers/dtale-test.tsx
+index 038a1790..38f1058c 100644
+--- a/frontend/static/__tests__/reducers/dtale-test.tsx
++++ b/frontend/static/__tests__/reducers/dtale-test.tsx
+@@ -77,6 +77,7 @@ describe('reducer tests', () => {
+       predefinedFilters: [],
+       maxColumnWidth: null,
+       maxRowHeight: null,
++      exportMaxRows: null,
+       dragResize: null,
+       editedTextAreaHeight: 0,
+       mainTitle: null,
+diff --git a/frontend/static/__tests__/test-utils.tsx b/frontend/static/__tests__/test-utils.tsx
+index d8ad527f..d3f931f9 100644
+--- a/frontend/static/__tests__/test-utils.tsx
++++ b/frontend/static/__tests__/test-utils.tsx
+@@ -88,6 +88,7 @@ export const buildInnerHTML = (props: Record<string, string | undefined> = {}, s
+     buildHidden('username', props.username ?? ''),
+     buildHidden('predefined_filters', props.predefinedFilters ?? '[]'),
+     buildHidden('max_column_width', props.maxColumnWidth ?? 'None'),
++    buildHidden('export_max_rows', props.exportMaxRows ?? 'None'),
+     buildHidden('main_title', props.mainTitle ?? ''),
+     buildHidden('main_title_font', props.mainTitleFont ?? ''),
+     buildHidden('query_engine', props.queryEngine ?? 'python'),
+diff --git a/frontend/static/popups/Export.tsx b/frontend/static/popups/Export.tsx
+index 5cc548ee..0379ac41 100644
+--- a/frontend/static/popups/Export.tsx
++++ b/frontend/static/popups/Export.tsx
+@@ -7,7 +7,7 @@ import { fullPath } from '../dtale/menu/dataViewerMenuUtils';
+ import { closeChart } from '../redux/actions/charts';
+ import { buildURL } from '../redux/actions/url-utils';
+ import { useAppDispatch, useAppSelector } from '../redux/hooks';
+-import { selectChartData, selectDataId, selectSettings } from '../redux/selectors';
++import { selectChartData, selectDataId, selectExportMaxRows, selectSettings } from '../redux/selectors';
+ import { ExportPopupData } from '../redux/state/AppState';
+ import { ENDPOINT as DATA_ENDPOINT } from '../repository/DataRepository';
+ import { ExportThumb, SingleTrack, StyledSlider } from '../sliderUtils';
+@@ -24,19 +24,31 @@ enum HTMLExportType {
+   HTML = 'html',
+ }
+ 
+-const selectResult = createSelector([selectDataId, selectChartData, selectSettings], (dataId, chartData, settings) => ({
+-  dataId,
+-  chartData: chartData as ExportPopupData,
+-  settings,
+-}));
++const selectResult = createSelector(
++  [selectDataId, selectChartData, selectSettings, selectExportMaxRows],
++  (dataId, chartData, settings, exportMaxRows) => ({
++    dataId,
++    chartData: chartData as ExportPopupData,
++    settings,
++    exportMaxRows,
++  }),
++);
+ 
+ const Export: React.FC<WithTranslation> = ({ t }) => {
+-  const { dataId, chartData, settings } = useAppSelector(selectResult);
++  const { dataId, chartData, settings, exportMaxRows } = useAppSelector(selectResult);
+   const dispatch = useAppDispatch();
+   const onClose = (): PayloadAction<void> => dispatch(closeChart());
+ 
++  const defaultRows = exportMaxRows ? Math.min(chartData.rows, exportMaxRows) : chartData.rows;
++  const showRowSelector = !!exportMaxRows && chartData.rows > exportMaxRows;
++
+   const exportFile = (exportType: ExportType): void => {
+-    window.open(`${fullPath('/dtale/data-export', dataId)}?type=${exportType}&_id=${new Date().getTime()}`, '_blank');
++    const url = buildURL(fullPath('/dtale/data-export', dataId), {
++      type: exportType,
++      export_rows: exportMaxRows ? defaultRows : undefined,
++      _id: new Date().getTime(),
++    });
++    window.open(url, '_blank');
+     onClose();
+   };
+ 
+@@ -66,7 +78,7 @@ const Export: React.FC<WithTranslation> = ({ t }) => {
+   );
+ 
+   const [htmlType, setHtmlType] = React.useState<HTMLExportType>();
+-  const [rows, setRows] = React.useState<number>(chartData.rows);
++  const [rows, setRows] = React.useState<number>(defaultRows);
+ 
+   const exportHTML = (): void => {
+     const url = buildURL(fullPath(DATA_ENDPOINT, dataId), {
+@@ -87,7 +99,7 @@ const Export: React.FC<WithTranslation> = ({ t }) => {
+           <ButtonToggle
+             options={buttons}
+             update={(value: HTMLExportType) => {
+-              if (chartData.rows > 10000) {
++              if (showRowSelector) {
+                 setHtmlType(value);
+               } else {
+                 exportHTML();
+@@ -98,7 +110,7 @@ const Export: React.FC<WithTranslation> = ({ t }) => {
+           />
+         </div>
+       </div>
+-      {htmlType && chartData.rows > 10000 && (
++      {htmlType && showRowSelector && (
+         <React.Fragment>
+           <div className="form-group row">
+             <label className="col-md-2 col-form-label text-right">{t('Rows')}</label>
+@@ -115,7 +127,7 @@ const Export: React.FC<WithTranslation> = ({ t }) => {
+                   defaultValue={rows}
+                   renderTrack={SingleTrack as any}
+                   renderThumb={(props: any, state: any) => ExportThumb(props, state)}
+-                  max={chartData.rows}
++                  max={exportMaxRows ?? chartData.rows}
+                   value={rows}
+                   onAfterChange={(updatedRows: any) => setRows(updatedRows as number)}
+                 />
+diff --git a/frontend/static/redux/reducers/app/settings.ts b/frontend/static/redux/reducers/app/settings.ts
+index aa398cb2..2d7a82ca 100644
+--- a/frontend/static/redux/reducers/app/settings.ts
++++ b/frontend/static/redux/reducers/app/settings.ts
+@@ -171,6 +171,10 @@ export const maxRowHeight = createReducer<number | null>(null, (builder) =>
+     .addCase(AppActions.ClearMaxHeightAction, () => null),
+ );
+ 
++export const exportMaxRows = createReducer<number | null>(null, (builder) =>
++  builder.addCase(AppActions.InitAction, () => toFloat(getHiddenValue('export_max_rows'), true) ?? null),
++);
++
+ export const mainTitle = createReducer<string | null>(null, (builder) =>
+   builder.addCase(AppActions.InitAction, () => getHiddenValue('main_title') ?? null),
+ );
+diff --git a/frontend/static/redux/selectors.ts b/frontend/static/redux/selectors.ts
+index ff93b893..5a054c65 100644
+--- a/frontend/static/redux/selectors.ts
++++ b/frontend/static/redux/selectors.ts
+@@ -131,6 +131,7 @@ export const selectMainTitle = (state: AppStoreState): string | null => state.ma
+ export const selectMainTitleFont = (state: AppStoreState): string | null => state.mainTitleFont;
+ export const selectDataViewerUpdate = (state: AppStoreState): DataViewerUpdate | null => state.dataViewerUpdate;
+ export const selectMaxRowHeight = (state: AppStoreState): number | null => state.maxRowHeight;
++export const selectExportMaxRows = (state: AppStoreState): number | null => state.exportMaxRows;
+ export const selectEditedTextAreaHeight = (state: AppStoreState): number => state.editedTextAreaHeight;
+ export const selectDragResize = (state: AppStoreState): number | null => state.dragResize;
+ export const selectXArray = (state: AppStoreState): boolean => state.xarray;
+diff --git a/frontend/static/redux/state/AppState.ts b/frontend/static/redux/state/AppState.ts
+index 570a3b63..fb05218b 100644
+--- a/frontend/static/redux/state/AppState.ts
++++ b/frontend/static/redux/state/AppState.ts
+@@ -441,6 +441,7 @@ export interface AppSettings {
+   columnCount: number;
+   maxColumnWidth: number | null;
+   maxRowHeight: number | null;
++  exportMaxRows: number | null;
+   mainTitle: string | null;
+   mainTitleFont: string | null;
+   queryEngine: QueryEngine;
+diff --git a/tests/dtale/config/dtale.ini b/tests/dtale/config/dtale.ini
+index 0782b0fe..0db8c703 100644
+--- a/tests/dtale/config/dtale.ini
++++ b/tests/dtale/config/dtale.ini
+@@ -16,6 +16,7 @@ hide_column_menus = False
+ hide_row_expanders = False
+ enable_custom_filters = False
+ enable_web_uploads = False
++export_max_rows = 10000
+ 
+ [charts]
+ scatter_points = 15000
+diff --git a/tests/dtale/config/test_config.py b/tests/dtale/config/test_config.py
+index 3964e2d7..3ddcb0c2 100644
+--- a/tests/dtale/config/test_config.py
++++ b/tests/dtale/config/test_config.py
+@@ -30,6 +30,7 @@ def test_load_app_settings():
+         "hide_row_expanders": True,
+         "enable_custom_filters": True,
+         "enable_web_uploads": True,
++        "export_max_rows": None,
+     }
+     with ExitStack() as stack:
+         stack.enter_context(mock.patch("dtale.global_state.APP_SETTINGS", settings))
+@@ -49,6 +50,7 @@ def test_load_app_settings():
+         assert settings["hide_row_expanders"]
+         assert settings["enable_custom_filters"]
+         assert settings["enable_web_uploads"]
++        assert settings["export_max_rows"] is None
+ 
+         load_app_settings(
+             load_config_state(os.path.join(os.path.dirname(__file__), "dtale.ini"))
+@@ -69,6 +71,7 @@ def test_load_app_settings():
+         assert not settings["hide_row_expanders"]
+         assert not settings["enable_custom_filters"]
+         assert not settings["enable_web_uploads"]
++        assert settings["export_max_rows"] == 10000
+ 
+ 
+ @pytest.mark.unit
+@@ -89,6 +92,7 @@ def test_load_app_settings_w_missing_props():
+         "hide_row_expanders": True,
+         "enable_custom_filters": True,
+         "enable_web_uploads": True,
++        "export_max_rows": None,
+     }
+     with ExitStack() as stack:
+         stack.enter_context(mock.patch("dtale.global_state.APP_SETTINGS", settings))
+@@ -106,6 +110,7 @@ def test_load_app_settings_w_missing_props():
+         assert settings["hide_row_expanders"]
+         assert settings["enable_custom_filters"]
+         assert settings["enable_web_uploads"]
++        assert settings["export_max_rows"] is None
+ 
+         load_app_settings(
+             load_config_state(
+@@ -124,6 +129,7 @@ def test_load_app_settings_w_missing_props():
+         assert not settings["hide_row_expanders"]
+         assert not settings["enable_custom_filters"]
+         assert not settings["enable_web_uploads"]
++        assert settings["export_max_rows"] is None
+ 
+ 
+ @pytest.mark.unit
+diff --git a/tests/dtale/test_views.py b/tests/dtale/test_views.py
+index 8ff4f3ba..1b8873bc 100644
+--- a/tests/dtale/test_views.py
++++ b/tests/dtale/test_views.py
+@@ -1,6 +1,7 @@
+ # -*- coding: utf-8 -*-
+ import json
+ from builtins import str
++from io import BytesIO
+ 
+ import mock
+ import numpy as np
+@@ -2023,6 +2024,184 @@ def test_export_parquet(test_data):
+         assert response.content_type == "application/octet-stream"
+ 
+ 
++def _csv_row_ct(response):
++    lines = response.data.decode("utf-8").strip().split("\n")
++    return len(lines) - 1  # subtract header row
++
++
++@pytest.mark.unit
++def test_export_max_rows_csv_tsv(test_data):
++    import dtale.views as views
++
++    with app.test_client() as c:
++        test_data, _ = views.format_data(test_data)
++        build_data_inst({c.port: test_data})
++        build_dtypes({c.port: views.build_dtypes_state(test_data)})
++
++        try:
++            # not configured -> no limit applied, all rows exported
++            global_state.set_app_settings(dict(export_max_rows=None))
++            response = c.get("/dtale/data-export/{}".format(c.port))
++            assert _csv_row_ct(response) == len(test_data)
++
++            global_state.set_app_settings(dict(export_max_rows=10))
++
++            # no export_rows specified -> falls back to configured max
++            response = c.get("/dtale/data-export/{}".format(c.port))
++            assert _csv_row_ct(response) == 10
++
++            # requested rows < max -> honor requested rows
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(export_rows=5),
++            )
++            assert _csv_row_ct(response) == 5
++
++            # requested rows > max -> capped to max
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(export_rows=20),
++            )
++            assert _csv_row_ct(response) == 10
++
++            # invalid/negative requested rows -> falls back to configured max
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(export_rows=-5),
++            )
++            assert _csv_row_ct(response) == 10
++
++            # same rules apply to tsv
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(type="tsv", export_rows=5),
++            )
++            assert _csv_row_ct(response) == 5
++        finally:
++            global_state.set_app_settings(dict(export_max_rows=None))
++
++
++@pytest.mark.unit
++def test_export_max_rows_parquet(test_data):
++    pytest.importorskip("pyarrow")
++
++    import dtale.views as views
++
++    with app.test_client() as c:
++        test_data, _ = views.format_data(test_data)
++        build_data_inst({c.port: test_data})
++        build_dtypes({c.port: views.build_dtypes_state(test_data)})
++
++        try:
++            global_state.set_app_settings(dict(export_max_rows=None))
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port), query_string=dict(type="parquet")
++            )
++            parquet_df = pd.read_parquet(BytesIO(response.data))
++            assert len(parquet_df) == len(test_data)
++
++            global_state.set_app_settings(dict(export_max_rows=10))
++
++            # no export_rows specified -> falls back to configured max
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port), query_string=dict(type="parquet")
++            )
++            parquet_df = pd.read_parquet(BytesIO(response.data))
++            assert len(parquet_df) == 10
++
++            # requested rows < max -> honor requested rows
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(type="parquet", export_rows=5),
++            )
++            parquet_df = pd.read_parquet(BytesIO(response.data))
++            assert len(parquet_df) == 5
++
++            # requested rows > max -> capped to max
++            response = c.get(
++                "/dtale/data-export/{}".format(c.port),
++                query_string=dict(type="parquet", export_rows=20),
++            )
++            parquet_df = pd.read_parquet(BytesIO(response.data))
++            assert len(parquet_df) == 10
++        finally:
++            global_state.set_app_settings(dict(export_max_rows=None))
++
++
++@pytest.mark.unit
++def test_export_max_rows_html(unittest, test_data):
++    import dtale.views as views
++
++    with app.test_client() as c:
++        test_data, _ = views.format_data(test_data)
++        build_data_inst({c.port: test_data})
++        build_dtypes({c.port: views.build_dtypes_state(test_data)})
++
++        try:
++            # not configured -> no limit, export_rows honored as-is
++            global_state.set_app_settings(dict(export_max_rows=None))
++            response = c.get(
++                "/dtale/data/{}".format(c.port),
++                query_string=dict(export=True, export_rows=20),
++            )
++            assert response.content_type == "text/html"
++
++            global_state.set_app_settings(dict(export_max_rows=10))
++
++            # no export_rows specified -> falls back to configured max
++            response = c.get(
++                "/dtale/data/{}".format(c.port), query_string=dict(export=True)
++            )
++            assert response.content_type == "text/html"
++
++            # requested rows < max -> honor requested rows
++            response = c.get(
++                "/dtale/data/{}".format(c.port),
++                query_string=dict(export=True, export_rows=5),
++            )
++            assert response.content_type == "text/html"
++
++            # requested rows > max -> capped to max
++            response = c.get(
++                "/dtale/data/{}".format(c.port),
++                query_string=dict(export=True, export_rows=20),
++            )
++            assert response.content_type == "text/html"
++
++            # invalid/negative requested rows -> falls back to configured max
++            response = c.get(
++                "/dtale/data/{}".format(c.port),
++                query_string=dict(export=True, export_rows=-5),
++            )
++            assert response.content_type == "text/html"
++        finally:
++            global_state.set_app_settings(dict(export_max_rows=None))
++
++
++@pytest.mark.unit
++def test_get_export_rows():
++    import dtale.views as views
++
++    class FakeRequest(object):
++        def __init__(self, args):
++            self.args = args
++
++    try:
++        global_state.set_app_settings(dict(export_max_rows=None))
++        assert views.get_export_rows(FakeRequest({})) is None
++        assert views.get_export_rows(FakeRequest({"export_rows": "5"})) == 5
++
++        global_state.set_app_settings(dict(export_max_rows=10))
++        assert views.get_export_rows(FakeRequest({})) == 10
++        assert views.get_export_rows(FakeRequest({"export_rows": "5"})) == 5
++        assert views.get_export_rows(FakeRequest({"export_rows": "20"})) == 10
++        assert views.get_export_rows(FakeRequest({"export_rows": "-5"})) == 10
++        assert views.get_export_rows(FakeRequest({"export_rows": "0"})) == 10
++        assert views.get_export_rows(FakeRequest({"export_rows": "abc"})) == 10
++    finally:
++        global_state.set_app_settings(dict(export_max_rows=None))
++
++
+ def build_ts_data(size=5, days=5):
+     start = pd.Timestamp("20000101")
+     for d in pd.date_range(start, start + Day(days - 1)):

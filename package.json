@@ -1,6 +1,6 @@
 {
   "name": "@skelvar/offcut",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Build the cheapest correct thing in the right place.",
   "type": "module",
   "bin": {

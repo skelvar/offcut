@@ -1,0 +1,598 @@
+diff --git a/.github/extensions/markdstage/renderer/renderer.js b/.github/extensions/markdstage/renderer/renderer.js
+index 9b51096..44f420a 100644
+--- a/.github/extensions/markdstage/renderer/renderer.js
++++ b/.github/extensions/markdstage/renderer/renderer.js
+@@ -2077,6 +2077,7 @@ let pdfExportAvailable = false;
+ let pptxExportAvailable = false;
+ let markdownImportAvailable = false;
+ let presenterViewOpen = false;
++let presenterViewRequested = false;
+ let pdfExportPending = false;
+ let pptxExportPending = false;
+ 
+@@ -2432,6 +2433,10 @@ async function fetchState() {
+   navMode = data.mode === "adhoc" ? "adhoc" : "deck";
+   renderSlide(typeof data.markdown === "string" ? data.markdown : "");
+   updateNav();
++  if (presenterViewRequested) {
++    presenterViewRequested = false;
++    openPresenterView();
++  }
+ }
+ 
+ // --- navigation ------------------------------------------------------------
+@@ -3151,6 +3156,7 @@ function init() {
+   } catch (_) {}
+ 
+   const params = new URLSearchParams(window.location.search);
++  presenterViewRequested = params.get("presenter") === "1";
+   if (params.get("pptx") === "1") {
+     initPptx(params).catch(reportPptxBootstrapFailure);
+     return;
+diff --git a/.github/extensions/markdstage/runtime/presentation-server.mjs b/.github/extensions/markdstage/runtime/presentation-server.mjs
+index 2ff2fa9..4b40f64 100644
+--- a/.github/extensions/markdstage/runtime/presentation-server.mjs
++++ b/.github/extensions/markdstage/runtime/presentation-server.mjs
+@@ -93,7 +93,7 @@ function broadcast(session) {
+  */
+ export async function startPresentationServer(
+   session,
+-  { editable = false, onLog, token = createUrlToken() } = {},
++  { editable = false, onLog, presenter, token = createUrlToken() } = {},
+ ) {
+   const base = `/${token}`;
+   const architectureEditors = new Map();
+@@ -163,9 +163,9 @@ export async function startPresentationServer(
+         sourceMode: editingAvailable ? "live" : "snapshot",
+         sourceWatchStatus: session.watchStatus || "inactive",
+         sourceWatchError: session.watchError || "",
+-        presenterRunning: false,
+-        presenterWindowAvailable: false,
+-        presenterViewAvailable: false,
++        presenterRunning: Boolean(presenter?.isRunning?.()),
++        presenterWindowAvailable: Boolean(presenter),
++        presenterViewAvailable: Boolean(presenter),
+         pdfExportAvailable: false,
+         pptxExportAvailable: false,
+         markdownImportAvailable: false,
+@@ -598,6 +598,29 @@ export async function startPresentationServer(
+       return;
+     }
+ 
++    if (presenter && route === "/present") {
++      if (req.method !== "POST" && req.method !== "DELETE") {
++        res.setHeader("Allow", "POST, DELETE");
++        json(res, 405, { ok: false, error: "method_not_allowed" });
++        return;
++      }
++      if (!sameOrigin()) {
++        json(res, 403, { ok: false, error: "origin_not_allowed" });
++        return;
++      }
++      try {
++        const result = req.method === "POST" ? await presenter.open() : await presenter.close();
++        json(res, 200, { ok: true, ...result });
++      } catch (error) {
++        json(res, 500, {
++          ok: false,
++          error: error?.code || "presenter_launch_failed",
++          message: error?.message || "The audience view could not be updated.",
++        });
++      }
++      return;
++    }
++
+     // Routes that are unavailable in this CLI server mode stay explicit so the
+     // browser reports an actionable message instead of a bare 404.
+     if (
+diff --git a/README.ja.md b/README.ja.md
+index 520693a..fb555f0 100644
+--- a/README.ja.md
++++ b/README.ja.md
+@@ -150,12 +150,16 @@ Windows x64 / ARM64 σÉæπüæπü«πâ¥πâ╝πé┐πâûπâ½πâôπâ½πâëπü¿ SHA-256 πâüπéºπââπé»πé╡
+ πéñπâ│πé╣πâêπâ╝πâ½µ╕êπü┐πü« Microsoft EdgeπÇüGoogle ChromeπÇüπü╛πüƒπü» Chromium πüîσ┐àΦªüπüºπüÖπÇé
+ 
+ ```console
++npx @markdstage/markdstage presentation slides.md
+ npx @markdstage/markdstage present slides.md --watch
+ npx @markdstage/markdstage validate slides.md --json
+ npx @markdstage/markdstage inspect slides.md
+ npx @markdstage/markdstage export slides.md --output slides.pdf
+ ```
+ 
++`presentation` πü»τÖ║Φí¿ΦÇàτö¿πâÇπââπé╖πâÑπâ£πâ╝πâëπéÆΘûïπüìπü╛πüÖπÇéπü¥πüôπüº **Start presentation** πéÆΘü╕πü╢πü¿πÇü
++σÉîµ£ƒπüòπéîπüƒΦª│σ«óσÉæπüæπéªπéúπâ│πâëπéªπüîΘûïπüìπü╛πüÖπÇé
++
+ `present --watch` πü»Φí¿τñ║πâóπâ╝πâëπüºΘûïσºïπüùπÇüΘë¢τ¡åπü«Θàìτ╜«πé¿πâçπéúπé┐πâ╝πü¿Φ⌐│τ┤░πü¬ Architecture πâçπé╢πéñπâèπâ╝πéÆ
+ µ£ëσè╣πü½πüùπü╛πüÖπÇéΣ┐¥σ¡ÿµÖéπü»σ»╛σ┐£πüÖπéï Markdown πâòπéºπâ│πé╣πéÆπéóπâêπâƒπââπé»πü½µ¢┤µû░πüùπü╛πüÖπÇé`--watch` πü«πü¬πüä
+ `present` πü»Φ¬¡πü┐σÅûπéèσ░éτö¿πüºπüÖπÇé
+diff --git a/README.md b/README.md
+index eef0dc5..9e12a38 100644
+--- a/README.md
++++ b/README.md
+@@ -144,12 +144,16 @@ Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs
+ later and an installed Microsoft Edge, Google Chrome, or Chromium.
+ 
+ ```console
++npx @markdstage/markdstage presentation slides.md
+ npx @markdstage/markdstage present slides.md --watch
+ npx @markdstage/markdstage validate slides.md --json
+ npx @markdstage/markdstage inspect slides.md
+ npx @markdstage/markdstage export slides.md --output slides.pdf
+ ```
+ 
++`presentation` opens the presenter dashboard; select **Start presentation** there
++to open the synchronized audience window.
++
+ `present --watch` starts in viewing mode and enables the pencil placement editor
+ and detailed Architecture designer; saves update the matching Markdown fence
+ atomically. `present` without `--watch` is read-only.
+diff --git a/docs/user-guide/cli.md b/docs/user-guide/cli.md
+index d0306c6..3e1e17c 100644
+--- a/docs/user-guide/cli.md
++++ b/docs/user-guide/cli.md
+@@ -17,6 +17,7 @@ PDF/PNG pipeline as the Canvas Extension, so a deck looks identical on every sur
+ ## Install
+ 
+ ```console
++npx @markdstage/markdstage presentation slides.md
+ npx @markdstage/markdstage present slides.md
+ npm install --global @markdstage/markdstage
+ ```
+@@ -24,6 +25,7 @@ npm install --global @markdstage/markdstage
+ ## Commands
+ 
+ ```console
++markdstage presentation slides.md
+ markdstage present slides.md --watch
+ markdstage validate slides.md --json
+ markdstage inspect slides.md --json
+@@ -36,6 +38,7 @@ markdstage skill install --target codex
+ 
+ | Command | Description |
+ | --- | --- |
++| `presentation` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
+ | `present` | Serves the deck on loopback and opens the presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserves the current slide, keeps the last valid deck if a save is incomplete, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck without launching a browser. |
+ | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
+ | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. Use `--slide <n>` for one page, `--all` to include slides that fit, and `--fail-on-issues` to exit with code 5. |
+@@ -60,7 +63,7 @@ markdstage capture --help
+ 2. `markdstage validate slides.md` ΓÇö check structure, themes, and Architecture DSL.
+ 3. `markdstage inspect slides.md` ΓÇö find slides that would be clipped in fixed 16:9 output.
+ 4. `markdstage capture slides.md` ΓÇö review the clipped slides as PNG files.
+-5. Present the deck, export PDF, or use `markdstage export slides.md --output slides.pptx`.
++5. Start `markdstage presentation slides.md`, export PDF, or use `markdstage export slides.md --output slides.pptx`.
+ 
+ ## Architecture editing in watch mode
+ 
+diff --git a/docs/user-guide/ja/cli.md b/docs/user-guide/ja/cli.md
+index d6eee85..bc27659 100644
+--- a/docs/user-guide/ja/cli.md
++++ b/docs/user-guide/ja/cli.md
+@@ -18,6 +18,7 @@ CLI πü» Canvas Extension πü¿σÉîπüÿ Markdown πâæπâ╝πé╡πâ╝πÇüπâ¼πâ│πâÇπâ⌐πâ╝πÇüπâå
+ ## πéñπâ│πé╣πâêπâ╝πâ½
+ 
+ ```console
++npx @markdstage/markdstage presentation slides.md
+ npx @markdstage/markdstage present slides.md
+ npm install --global @markdstage/markdstage
+ ```
+@@ -25,6 +26,7 @@ npm install --global @markdstage/markdstage
+ ## πé│πâ₧πâ│πâë
+ 
+ ```console
++markdstage presentation slides.md
+ markdstage present slides.md --watch
+ markdstage validate slides.md --json
+ markdstage inspect slides.md --json
+@@ -37,6 +39,7 @@ markdstage skill install --target codex
+ 
+ | πé│πâ₧πâ│πâë | Φ¬¼µÿÄ |
+ | --- | --- |
++| `presentation` | τÅ╛σ£¿πü«πé╣πâ⌐πéñπâëπÇüµ¼íπü«πé╣πâ⌐πéñπâëπü«πâùπâ¼πâôπâÑπâ╝πÇüπé╣πâöπâ╝πé½πâ╝πâÄπâ╝πâêπÇüπâèπâôπé▓πâ╝πé╖πâºπâ│πéÆσéÖπüêπüƒτÖ║Φí¿ΦÇàπâôπâÑπâ╝πéÆΘûïπüìπü╛πüÖπÇé**Start presentation** πéÆΘü╕πü╢πü¿σÉîµ£ƒπüòπéîπüƒΦª│σ«óσÉæπüæπéªπéúπâ│πâëπéªπéÆΘûïπüìπÇü**End presentation** πüºΘûëπüÿπü╛πüÖπÇé`--watch` πü»Σ┐¥σ¡ÿµÖéπü½σåìΦ¬¡πü┐Φ╛╝πü┐πüùπÇü`--no-open` πü»πâûπâ⌐πéªπé╢πâ╝πéÆΦ╡╖σïòπü¢πüÜπü½τÖ║Φí¿ΦÇàπâôπâÑπâ╝πéÆΘàìΣ┐íπüùπü╛πüÖπÇé |
+ | `present` | πâ½πâ╝πâùπâÉπââπé»πüºπâçπââπé¡πéÆΘàìΣ┐íπüùπÇüτÖ║Φí¿τö¿πéªπéúπâ│πâëπéªπéÆΘûïπüìπü╛πüÖπÇéπâÜπâ╝πé╕ΘÇüπéèπÇüτÖ║Φí¿ΦÇàπâôπâÑπâ╝πÇüµ¼íπé╣πâ⌐πéñπâëπü«πâùπâ¼πâôπâÑπâ╝πÇüπé╣πâöπâ╝πé½πâ╝πâÄπâ╝πâêπÇüΣ╕ÇΦªºπÇüπé½πé╣πé┐πâáπâåπâ╝πâ₧πÇüMermaidπÇüArchitecture DSLπÇüπâ¡πâ╝πé½πâ½πéóπé╗πââπâêπü½σ»╛σ┐£πüùπü╛πüÖπÇé`--watch` πü» Markdown πü«Σ┐¥σ¡ÿµÖéπü½σåìΦ¬¡πü┐Φ╛╝πü┐πüùπÇüΦí¿τñ║Σ╕¡πü«πâÜπâ╝πé╕πü¿τ¢┤σëìπü«µ¡úσ╕╕πü¬πâçπââπé¡πéÆΣ┐¥µîüπüùπü¬πüîπéë Architecture τ╖¿Θ¢åπéÆµ£ëσè╣πü½πüùπü╛πüÖπÇé`--watch` πüîπü¬πüäσá┤σÉêπÇüπé╜πâ╝πé╣πü»Φ¬¡πü┐σÅûπéèσ░éτö¿πüºπüÖπÇé`--no-open` πü»πâûπâ⌐πéªπé╢πâ╝πéÆΦ╡╖σïòπü¢πüÜπü½ΘàìΣ┐íπüáπüæΦíîπüäπü╛πüÖπÇé |
+ | `validate` | πâçπââπé¡µºïΘÇáπÇüArchitecture DSL πâûπâ¡πââπé»πÇüπâåπâ╝πâ₧πÇüπâåπâ╝πâ₧πü«πâæπé╣πéÆµñ£Φ¿╝πüùπü╛πüÖπÇé |
+ | `inspect` | Canvas πü« `inspect_layout` πü¿σÉîπüÿ 1280x720 πü«πé»πâ¬πââπâöπâ│πé░Φ¿║µû¡πéÆΦ┐öπüùπü╛πüÖπÇé`--slide <n>` πüº 1 πâÜπâ╝πé╕πüáπüæπÇü`--all` πüºσÅÄπü╛πüúπüªπüäπéïπé╣πâ⌐πéñπâëπééσÉ½πéüπÇü`--fail-on-issues` πüºτ╡éΣ║åπé│πâ╝πâë 5 πéÆΦ┐öπüùπü╛πüÖπÇé |
+diff --git a/packages/markdstage-cli/README.md b/packages/markdstage-cli/README.md
+index 7577d61..ebaa68d 100644
+--- a/packages/markdstage-cli/README.md
++++ b/packages/markdstage-cli/README.md
+@@ -16,6 +16,7 @@ exported PDF, or hybrid editable PowerPoint deck.
+ ## Install
+ 
+ ```console
++npx @markdstage/markdstage presentation slides.md
+ npx @markdstage/markdstage present slides.md
+ npm install --global @markdstage/markdstage
+ ```
+@@ -23,6 +24,7 @@ npm install --global @markdstage/markdstage
+ ## Commands
+ 
+ ```console
++markdstage presentation slides.md
+ markdstage present slides.md --watch
+ markdstage validate slides.md --json
+ markdstage inspect slides.md --json
+@@ -36,6 +38,7 @@ markdstage skill install --target claude
+ 
+ | Command | Description |
+ | --- | --- |
++| `presentation` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
+ | `present` | Serves the deck on loopback and opens the MarkdStage presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads on save while preserving the current slide, keeps the last valid deck when a save is broken, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck only. |
+ | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
+ | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. `--slide <n>` limits it to one page, `--all` includes slides that fit, `--fail-on-issues` exits with code 5. |
+diff --git a/packages/markdstage-cli/src/cli.mjs b/packages/markdstage-cli/src/cli.mjs
+index 9743c60..682d56b 100644
+--- a/packages/markdstage-cli/src/cli.mjs
++++ b/packages/markdstage-cli/src/cli.mjs
+@@ -36,6 +36,7 @@ import {
+ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+ 
+ const COMMANDS = [
++  ["presentation", "Open presenter view and launch the audience view from it."],
+   ["present", "Serve a deck on loopback and open it in a browser window."],
+   ["validate", "Check deck structure, Architecture DSL blocks, and themes."],
+   ["inspect", "Report 1280x720 clipping diagnostics for a deck."],
+@@ -58,6 +59,7 @@ const GLOBAL_OPTIONS = {
+ };
+ 
+ const COMMAND_OPTIONS = {
++  presentation: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
+   present: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
+   validate: {},
+   inspect: { slide: { type: "string" }, all: { type: "boolean" }, "fail-on-issues": { type: "boolean" } },
+@@ -101,6 +103,17 @@ function usage(command) {
+     return lines.join("\n");
+   }
+   const help = {
++    presentation: [
++      "Usage: markdstage presentation <file.md> [options]",
++      "",
++      "Opens presenter view with the current slide, next-slide preview, and speaker notes.",
++      "Use Start presentation in that view to open the synchronized audience window.",
++      "",
++      "  --watch     Reload on save.",
++      "  --no-open   Serve the presenter view without launching a browser.",
++      "",
++      "Presentation requires an installed Microsoft Edge, Google Chrome, or Chromium.",
++    ],
+     present: [
+       "Usage: markdstage present <file.md> [options]",
+       "",
+@@ -263,6 +276,27 @@ export async function run(argv, io = {}) {
+         if (values.json) json(report);
+         return EXIT_OK;
+       }
++      case "presentation": {
++        const file = requireFile(positionals, "presentation");
++        const report = await presentCommand(
++          {
++            ...deckOptions(file, values),
++            watch: values.watch,
++            open: !values["no-open"],
++            presenterView: true,
++            until: io.until,
++          },
++          {
++            print: values.json ? () => {} : (message) => out(message),
++            status: (message, isError) => {
++              if (isError) err(message);
++              else if (!values.json) out(message);
++            },
++          },
++        );
++        if (values.json) json(report);
++        return EXIT_OK;
++      }
+       case "validate": {
+         const file = requireFile(positionals, "validate");
+         const report = await validateCommand(deckOptions(file, values));
+diff --git a/packages/markdstage-cli/src/commands/present.mjs b/packages/markdstage-cli/src/commands/present.mjs
+index f0e0d9a..e6261b5 100644
+--- a/packages/markdstage-cli/src/commands/present.mjs
++++ b/packages/markdstage-cli/src/commands/present.mjs
+@@ -54,57 +54,127 @@ async function createWatcher(session, server, { onStatus }) {
+ }
+ 
+ export async function presentCommand(options, io) {
+-  return withDeckServer(options, async (session, server) => {
+-    const watcher = options.watch ? await createWatcher(session, server, {
+-      onStatus: (message, isError) => io.status(message, isError),
+-    }) : null;
++  let audienceProcess = null;
++  let audienceProfileDir = "";
++  let audienceUrl = "";
+ 
+-    let browserProcess = null;
+-    let profileDir = "";
+-    if (options.open) {
+-      const browser = findChromiumBrowser();
+-      if (!browser) {
+-        throw new MarkdStageError(
+-          "presenter_browser_not_found",
+-          "Presenting requires Microsoft Edge, Google Chrome, or Chromium. Re-run with --no-open to serve the deck only.",
+-        );
+-      }
+-      profileDir = await mkdtemp(join(tmpdir(), "markdstage-presenter-window-"));
+-      browserProcess = spawn(
+-        browser,
+-        buildPresenterBrowserArgs({ profileDir, presenterUrl: server.url }),
+-        { windowsHide: false, stdio: "ignore" },
+-      );
+-      browserProcess.once("error", (error) => {
+-        io.status(`browser failed to start: ${error?.message || error}`, true);
+-      });
++  const closeAudience = async () => {
++    const process = audienceProcess;
++    audienceProcess = null;
++    if (isProcessRunning(process)) await terminateProcessTree(process);
++    if (audienceProfileDir) {
++      await rm(audienceProfileDir, { recursive: true, force: true }).catch(() => {});
++      audienceProfileDir = "";
+     }
++    return { stopped: Boolean(process) };
++  };
+ 
+-    io.print(`MarkdStage is presenting ${session.sourceName || session.file}`);
+-    io.print(`  slides:    ${session.slides.length}`);
+-    io.print(`  theme:     ${session.theme}`);
+-    io.print(`  workspace: ${resolve(session.workspaceRoot)}`);
+-    io.print(`  url:       ${server.url}`);
+-    if (options.watch) {
+-      io.print("  watching:  on (live reload and Architecture editing are enabled)");
+-    }
+-    io.print("Press Ctrl+C to stop.");
++  const audience = options.presenterView
++    ? {
++        isRunning: () => isProcessRunning(audienceProcess),
++        open: async () => {
++          if (isProcessRunning(audienceProcess)) return { alreadyRunning: true };
++          await closeAudience();
++          const browser = findChromiumBrowser();
++          if (!browser) {
++            throw new MarkdStageError(
++              "presenter_browser_not_found",
++              "Opening the audience view requires Microsoft Edge, Google Chrome, or Chromium.",
++            );
++          }
++          audienceProfileDir = await mkdtemp(join(tmpdir(), "markdstage-audience-window-"));
++          audienceProcess = spawn(
++            browser,
++            buildPresenterBrowserArgs({
++              profileDir: audienceProfileDir,
++              presenterUrl: audienceUrl,
++            }),
++            { windowsHide: false, stdio: "ignore" },
++          );
++          await new Promise((ready, reject) => {
++            audienceProcess.once("spawn", ready);
++            audienceProcess.once("error", reject);
++          });
++          return { alreadyRunning: false };
++        },
++        close: closeAudience,
++      }
++    : null;
+ 
+-    await new Promise((done) => {
+-      const stop = () => {
+-        process.off("SIGINT", stop);
+-        process.off("SIGTERM", stop);
+-        done();
+-      };
+-      process.once("SIGINT", stop);
+-      process.once("SIGTERM", stop);
+-      if (browserProcess) browserProcess.once("close", stop);
+-      if (options.until) options.until.then(stop, stop);
+-    });
++  try {
++    return await withDeckServer({ ...options, presenter: audience }, async (session, server) => {
++      if (audience) {
++        const url = new URL(server.url);
++        url.searchParams.set("present", "1");
++        audienceUrl = url.href;
++      }
++      const watcher = options.watch
++        ? await createWatcher(session, server, {
++            onStatus: (message, isError) => io.status(message, isError),
++          })
++        : null;
+ 
+-    watcher?.close();
+-    if (isProcessRunning(browserProcess)) await terminateProcessTree(browserProcess);
+-    if (profileDir) await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+-    return { ok: true, url: server.url, total: session.slides.length, theme: session.theme };
+-  });
++      let browserProcess = null;
++      let profileDir = "";
++      const browserUrl = new URL(server.url);
++      if (options.presenterView) browserUrl.searchParams.set("presenter", "1");
++      try {
++        if (options.open) {
++          const browser = findChromiumBrowser();
++          if (!browser) {
++            throw new MarkdStageError(
++              "presenter_browser_not_found",
++              "Presenting requires Microsoft Edge, Google Chrome, or Chromium. Re-run with --no-open to serve the deck only.",
++            );
++          }
++          profileDir = await mkdtemp(join(tmpdir(), "markdstage-presenter-window-"));
++          browserProcess = spawn(
++            browser,
++            buildPresenterBrowserArgs({ profileDir, presenterUrl: browserUrl.href }),
++            { windowsHide: false, stdio: "ignore" },
++          );
++          await new Promise((ready, reject) => {
++            browserProcess.once("spawn", ready);
++            browserProcess.once("error", reject);
++          });
++        }
++
++        io.print(`MarkdStage is presenting ${session.sourceName || session.file}`);
++        io.print(`  slides:    ${session.slides.length}`);
++        io.print(`  theme:     ${session.theme}`);
++        io.print(`  workspace: ${resolve(session.workspaceRoot)}`);
++        io.print(`  url:       ${browserUrl.href}`);
++        if (options.watch) {
++          io.print("  watching:  on (live reload and Architecture editing are enabled)");
++        }
++        io.print("Press Ctrl+C to stop.");
++
++        await new Promise((done) => {
++          const stop = () => {
++            process.off("SIGINT", stop);
++            process.off("SIGTERM", stop);
++            done();
++          };
++          process.once("SIGINT", stop);
++          process.once("SIGTERM", stop);
++          if (browserProcess) browserProcess.once("close", stop);
++          if (options.until) options.until.then(stop, stop);
++        });
++
++        return {
++          ok: true,
++          url: browserUrl.href,
++          total: session.slides.length,
++          theme: session.theme,
++        };
++      } finally {
++        watcher?.close();
++        await closeAudience();
++        if (isProcessRunning(browserProcess)) await terminateProcessTree(browserProcess);
++        if (profileDir) await rm(profileDir, { recursive: true, force: true }).catch(() => {});
++      }
++    });
++  } finally {
++    await closeAudience();
++  }
+ }
+diff --git a/packages/markdstage-cli/src/deck.mjs b/packages/markdstage-cli/src/deck.mjs
+index bdd95a7..a9ee3e0 100644
+--- a/packages/markdstage-cli/src/deck.mjs
++++ b/packages/markdstage-cli/src/deck.mjs
+@@ -24,6 +24,7 @@ export async function withDeckServer(options, run) {
+     token,
+     onLog: options.log,
+     editable: options.watch === true,
++    presenter: options.presenter,
+   });
+   try {
+     return await run(session, server);
+diff --git a/packages/markdstage-cli/test/cli.test.mjs b/packages/markdstage-cli/test/cli.test.mjs
+index 3e696b7..c593575 100644
+--- a/packages/markdstage-cli/test/cli.test.mjs
++++ b/packages/markdstage-cli/test/cli.test.mjs
+@@ -7,6 +7,7 @@ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+ 
+ import { run } from "../src/cli.mjs";
++import { withDeckServer } from "../src/deck.mjs";
+ import { exportCommand } from "../src/commands/export.mjs";
+ import { inspectCommand } from "../src/commands/inspect.mjs";
+ import { EXIT_DECK, EXIT_ISSUES, EXIT_OK, EXIT_USAGE } from "../src/exit.mjs";
+@@ -74,6 +75,7 @@ test("unknown commands and options fail with the usage exit code", async () => {
+ 
+ test("every command documents itself", async () => {
+   for (const command of [
++    "presentation",
+     "present",
+     "validate",
+     "inspect",
+@@ -113,6 +115,13 @@ test("present help explains watch-mode Architecture editing", async () => {
+   assert.match(io.stdout(), /detailed designer/);
+ });
+ 
++test("presentation help explains the presenter and audience views", async () => {
++  const io = capture();
++  assert.equal(await run(["presentation", "--help"], io), EXIT_OK);
++  assert.match(io.stdout(), /Opens presenter view/);
++  assert.match(io.stdout(), /Start presentation.*audience window/);
++});
++
+ test("help is listed as a command", async () => {
+   const io = capture();
+   await run(["help"], io);
+@@ -222,6 +231,57 @@ test("present --json writes only one machine-readable document", async () => {
+   });
+ });
+ 
++test("presentation starts at the presenter view URL", async () => {
++  await withDeck(VALID_DECK, async ({ file }) => {
++    const io = capture();
++    io.until = Promise.resolve();
++    assert.equal(
++      await run(["presentation", file, "--no-open", "--json"], io),
++      EXIT_OK,
++    );
++    assert.equal(new URL(JSON.parse(io.stdout()).url).searchParams.get("presenter"), "1");
++  });
++});
++
++test("presentation server exposes audience-view controls", async () => {
++  await withDeck(VALID_DECK, async ({ file }) => {
++    let running = false;
++    const calls = [];
++    const presenter = {
++      isRunning: () => running,
++      open: async () => {
++        calls.push("open");
++        running = true;
++        return { alreadyRunning: false };
++      },
++      close: async () => {
++        calls.push("close");
++        running = false;
++        return { stopped: true };
++      },
++    };
++    await withDeckServer({ file, presenter }, async (_session, server) => {
++      const state = await fetch(new URL("state", server.url)).then((response) => response.json());
++      assert.equal(state.presenterViewAvailable, true);
++      assert.equal(state.presenterWindowAvailable, true);
++
++      const origin = new URL(server.url).origin;
++      const opened = await fetch(new URL("present", server.url), {
++        method: "POST",
++        headers: { Origin: origin },
++      }).then((response) => response.json());
++      assert.equal(opened.ok, true);
++
++      const closed = await fetch(new URL("present", server.url), {
++        method: "DELETE",
++        headers: { Origin: origin },
++      }).then((response) => response.json());
++      assert.equal(closed.ok, true);
++      assert.deepEqual(calls, ["open", "close"]);
++    });
++  });
++});
++
+ test("guide prints canonical topics and rejects unknown ones", async () => {
+   const io = capture();
+   assert.equal(await run(["guide", "architecture-dsl"], io), EXIT_OK);
+diff --git a/test/editing/presenter-view.spec.mjs b/test/editing/presenter-view.spec.mjs
+index e459057..cfb1d08 100644
+--- a/test/editing/presenter-view.spec.mjs
++++ b/test/editing/presenter-view.spec.mjs
+@@ -52,6 +52,21 @@ test("presenter view provides presentation controls and returns to the slide", a
+   }
+ });
+ 
++test("presenter query opens presenter view at startup", async ({ page }) => {
++  const harness = await startHarness({ slides: SLIDES });
++  try {
++    const url = new URL(harness.url);
++    url.searchParams.set("presenter", "1");
++    await page.goto(url.href, { waitUntil: "load" });
++    await waitForSlideReady(page);
++
++    await expect(page.locator("#presenterView")).toBeVisible();
++    await expect(page.locator("#presenterToggleButton")).toHaveText("Start presentation");
++  } finally {
++    await harness.close();
++  }
++});
++
+ test("speaker notes do not leak into slide overview titles", async ({ page }) => {
+   const harness = await startHarness({
+     slides: ["<!-- Internal talking point -->\nPublic body line"],

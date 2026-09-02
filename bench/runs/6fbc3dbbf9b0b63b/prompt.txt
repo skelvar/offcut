@@ -1,9 +1,0 @@
-Implement an in-memory key-value store in store.ts for this TypeScript/Node project.
-
-Export createStore() that returns an object with:
-- set(key: string, value: string): void
-- get(key: string): string | undefined
-
-Values are plain strings kept in memory for the life of the process. No persistence, no TTL, no size limit.
-
-When finished, the harness runs accept.mjs against the project root.

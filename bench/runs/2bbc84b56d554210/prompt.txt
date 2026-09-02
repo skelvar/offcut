@@ -1,1 +1,0 @@
-The request logger needs route parameters without invoking the router. Export matchRoute(pattern, pathname) from src/route.ts. Match whole slash-separated paths; segments beginning with ":" capture one decoded segment under that name, while other segments must match literally. Return the parameter object on a match and null otherwise.

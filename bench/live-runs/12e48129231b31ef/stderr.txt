@@ -1,8 +1,0 @@
-WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\Users\\bash\\AppData\\Local\\Temp\\" (codex_home: AbsolutePathBuf("C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-jxM0Y0"))
-Reading additional input from stdin...
-2026-08-30T17:19:07.546020Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell
-2026-08-30T17:19:18.590865Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
-2026-08-30T17:19:26.645842Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
-2026-08-30T17:19:39.911206Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
-2026-08-30T17:19:50.279610Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.
-2026-08-30T17:20:01.402616Z  WARN codex_core::guardian::review_session: failed to refresh guardian trunk rollout snapshot: Session persistence is disabled; cannot guardian review fork.

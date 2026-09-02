@@ -1,0 +1,48 @@
+diff --git a/components/InvoiceList.tsx b/components/InvoiceList.tsx
+index a5bb9f2..db044c2 100644
+--- a/components/InvoiceList.tsx
++++ b/components/InvoiceList.tsx
+@@ -498,7 +498,9 @@ export function InvoiceList() {
+                   {j.status === 'scanning'
+                     ? 'Foto sedang diproses'
+                     : j.status === 'done'
+-                      ? j.extracted?.buyer.name || 'Ketuk untuk lengkapi'
++                      ? j.extracted?.buyer.address ||
++                        j.extracted?.buyer.name ||
++                        'Ketuk untuk lengkapi'
+                       : 'Ketuk untuk isi manual'}
+                 </p>
+               </div>
+@@ -573,7 +575,9 @@ export function InvoiceList() {
+                     </div>
+ 
+                     <div className="min-w-0 flex-1">
+-                      <p className="truncate font-medium">{r.buyer.name || 'ΓÇö'}</p>
++                      <p className="truncate font-medium">
++                        {r.buyer.address || r.buyer.name || 'ΓÇö'}
++                      </p>
+                       {summary && (
+                         <p className="truncate text-sm text-muted-foreground">
+                           {summary}
+diff --git a/hooks/useInvoiceRows.ts b/hooks/useInvoiceRows.ts
+index fcffa02..f13168a 100644
+--- a/hooks/useInvoiceRows.ts
++++ b/hooks/useInvoiceRows.ts
+@@ -70,7 +70,7 @@ export interface DayGroup {
+ // client-side and would otherwise open a stray group above today's.
+ export function groupByDay(rows: InvoiceRow[]): DayGroup[] {
+   const sorted = [...rows].sort(
+-    (a, b) => b.invoiceCreatedAt.getTime() - a.invoiceCreatedAt.getTime()
++    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+   );
+   const groups: DayGroup[] = [];
+   const byKey = new Map<string, DayGroup>();
+@@ -89,7 +89,7 @@ export function groupByDay(rows: InvoiceRow[]): DayGroup[] {
+ }
+ 
+ // One-line summary of what was bought ΓÇö the recognition cue that replaces the
+-// buyer's address and phone in the ledger row.
++// buyer's phone (and, when address is shown, name too) in the ledger row.
+ export function itemSummary(items: Item[]): string {
+   if (items.length === 0) return '';
+   const first = items[0].itemName;

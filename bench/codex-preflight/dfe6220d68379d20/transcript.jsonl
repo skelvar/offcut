@@ -1,7 +1,0 @@
-{"type":"thread.started","thread_id":"01a0449f-b082-7542-98d9-9f1a103e937d"}
-{"type":"item.completed","item":{"id":"item_0","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
-{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I’ll create only the requested proof file, then verify its exact bytes."}}
-{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"BLOCKED: The workspace is read-only, so the requested file could not be created."}}
-{"type":"turn.completed","usage":{"input_tokens":26962,"cached_input_tokens":13056,"cache_write_input_tokens":0,"output_tokens":142,"reasoning_output_tokens":44}}

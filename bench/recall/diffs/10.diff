@@ -1,0 +1,508 @@
+diff --git a/app/scenarios/[slug]/page.tsx b/app/scenarios/[slug]/page.tsx
+index 83d3563..57371e0 100644
+--- a/app/scenarios/[slug]/page.tsx
++++ b/app/scenarios/[slug]/page.tsx
+@@ -7,7 +7,10 @@ import { validateCorpusDirectory } from '@/src/domain/corpus/validate';
+ 
+ type ScenarioPageProps = {
+   params: Promise<{ slug: string }>;
+-  searchParams: Promise<{ position?: string | string[] }>;
++  searchParams: Promise<{
++    mode?: string | string[];
++    position?: string | string[];
++  }>;
+ };
+ 
+ async function findTrainingExample(slug: string) {
+@@ -52,6 +55,7 @@ export default async function ScenarioPage({
+   const requestedPosition = Array.isArray(query.position)
+     ? query.position[0]
+     : query.position;
++  const requestedMode = Array.isArray(query.mode) ? query.mode[0] : query.mode;
+   const selectedKeyframeId =
+     requestedPosition &&
+     entry.trainingExample.scenario.keyframes.some(
+@@ -63,6 +67,7 @@ export default async function ScenarioPage({
+   return (
+     <TrainingExampleView
+       corpusMetadata={entry.metadata}
++      quizMode={requestedMode === 'quiz'}
+       scenarioSlug={slug}
+       selectedKeyframeId={selectedKeyframeId}
+       trainingExample={entry.trainingExample}
+diff --git a/src/components/quiz/keep-clear-quiz.tsx b/src/components/quiz/keep-clear-quiz.tsx
+new file mode 100644
+index 0000000..783d0ee
+--- /dev/null
++++ b/src/components/quiz/keep-clear-quiz.tsx
+@@ -0,0 +1,125 @@
++'use client';
++
++import Link from 'next/link';
++import { useState } from 'react';
++
++import {
++  scoreKeepClearAnswer,
++  type KeepClearQuizQuestion,
++  type KeepClearQuizResult,
++} from '@/src/domain/quiz/keep-clear';
++
++type KeepClearQuizProps = {
++  question: KeepClearQuizQuestion;
++  reviewHref: string;
++  teachingText?: string;
++};
++
++export function KeepClearQuiz({
++  question,
++  reviewHref,
++  teachingText,
++}: KeepClearQuizProps) {
++  const [selectedBoatId, setSelectedBoatId] = useState('');
++  const [result, setResult] = useState<KeepClearQuizResult | null>(null);
++
++  function submitAnswer() {
++    if (!selectedBoatId) return;
++
++    setResult(scoreKeepClearAnswer(question, selectedBoatId));
++  }
++
++  return (
++    <section
++      aria-labelledby="keep-clear-question"
++      data-testid="keep-clear-quiz"
++    >
++      <p className="text-sm font-semibold uppercase text-muted-foreground">
++        Quick check
++      </p>
++      <h2 className="mt-2 text-xl font-semibold" id="keep-clear-question">
++        {question.prompt}
++      </h2>
++
++      <form
++        className="mt-5"
++        onSubmit={(event) => {
++          event.preventDefault();
++          submitAnswer();
++        }}
++      >
++        <fieldset disabled={result !== null}>
++          <legend className="text-sm leading-6 text-muted-foreground">
++            Choose one boat, then check your answer.
++          </legend>
++          <div className="mt-3 grid gap-3">
++            {question.options.map((option) => {
++              const selected = selectedBoatId === option.boatId;
++
++              return (
++                <label
++                  className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-sm font-semibold transition-colors focus-within:outline-2 focus-within:outline-offset-2 ${
++                    selected
++                      ? 'border-primary bg-secondary text-secondary-foreground'
++                      : 'border-border bg-background hover:bg-muted'
++                  } ${result ? 'cursor-default' : ''}`}
++                  key={option.boatId}
++                >
++                  <input
++                    checked={selected}
++                    className="size-5 accent-primary"
++                    name="keep-clear-answer"
++                    onChange={() => setSelectedBoatId(option.boatId)}
++                    type="radio"
++                    value={option.boatId}
++                  />
++                  {option.label}
++                </label>
++              );
++            })}
++          </div>
++        </fieldset>
++
++        <button
++          className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
++          disabled={!selectedBoatId || result !== null}
++          type="submit"
++        >
++          Check answer
++        </button>
++      </form>
++
++      {result ? (
++        <div
++          aria-live="polite"
++          className={`mt-5 border-l-4 pl-4 ${
++            result.isCorrect ? 'border-primary' : 'border-destructive'
++          }`}
++          data-correct={result.isCorrect}
++          data-testid="quiz-feedback"
++        >
++          <h3 className="text-base font-semibold">
++            {result.isCorrect ? 'Correct' : 'Not quite'}
++          </h3>
++          <p className="mt-2 text-sm font-semibold leading-6">
++            {result.explanation}
++          </p>
++          <p className="mt-1 text-sm text-muted-foreground">
++            {result.ruleRefs.join(', ')}
++          </p>
++          {teachingText ? (
++            <p className="mt-3 text-sm leading-6 text-muted-foreground">
++              {teachingText}
++            </p>
++          ) : null}
++          <Link
++            className="mt-4 inline-block text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4"
++            href={reviewHref}
++          >
++            Review the full ruling
++          </Link>
++        </div>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/src/components/scenario/training-example-view.tsx b/src/components/scenario/training-example-view.tsx
+index f89ae1d..b69daf7 100644
+--- a/src/components/scenario/training-example-view.tsx
++++ b/src/components/scenario/training-example-view.tsx
+@@ -1,5 +1,6 @@
+ import Link from 'next/link';
+ 
++import { KeepClearQuiz } from '@/src/components/quiz/keep-clear-quiz';
+ import {
+   BoatGlyph,
+   deriveSailPresentation,
+@@ -10,6 +11,7 @@ import {
+   selectRulingStatements,
+ } from '@/src/components/scenario/ruling-presentation';
+ import type { CorpusMetadata } from '@/src/domain/corpus/schema';
++import { deriveKeepClearQuestion } from '@/src/domain/quiz/keep-clear';
+ import { formatCompassDirection } from '@/src/domain/scenario/geometry';
+ import type { TrainingExample } from '@/src/domain/training-example/schema';
+ 
+@@ -19,6 +21,7 @@ const BOAT_LABEL_Y_OFFSET = 0.3;
+ 
+ type TrainingExampleViewProps = {
+   corpusMetadata: CorpusMetadata;
++  quizMode: boolean;
+   scenarioSlug: string;
+   selectedKeyframeId: string;
+   trainingExample: TrainingExample;
+@@ -26,6 +29,7 @@ type TrainingExampleViewProps = {
+ 
+ export function TrainingExampleView({
+   corpusMetadata,
++  quizMode,
+   scenarioSlug,
+   selectedKeyframeId,
+   trainingExample,
+@@ -44,6 +48,10 @@ export function TrainingExampleView({
+     situation.moments.find((candidate) => candidate.id === keyframe.id) ??
+     situation.moments[0];
+   const selectedRulings = selectRulingStatements(rulings, situationMoment.id);
++  const quizQuestion = deriveKeepClearQuestion(
++    trainingExample,
++    situationMoment.id,
++  );
+   const boatLabels = new Map(
+     scenario.boats.map((boat) => [boat.id, boat.label]),
+   );
+@@ -66,6 +74,8 @@ export function TrainingExampleView({
+       return `${boat?.label} on ${state.tack} tack`;
+     })
+     .join(' and ')} approaching each other in wind from ${windDirection}`;
++  const reviewHref = `/scenarios/${scenarioSlug}?position=${encodeURIComponent(keyframe.id)}`;
++  const quizHref = `${reviewHref}&mode=quiz`;
+ 
+   return (
+     <main className="min-h-screen bg-background text-foreground">
+@@ -114,7 +124,7 @@ export function TrainingExampleView({
+                             ? 'border-primary bg-primary text-primary-foreground'
+                             : 'border-border bg-background text-foreground hover:bg-muted'
+                         }`}
+-                        href={`/scenarios/${scenarioSlug}?position=${encodeURIComponent(candidate.id)}`}
++                        href={`/scenarios/${scenarioSlug}?position=${encodeURIComponent(candidate.id)}${quizMode ? '&mode=quiz' : ''}`}
+                       >
+                         {candidate.label}
+                       </Link>
+@@ -356,10 +366,47 @@ export function TrainingExampleView({
+           </section>
+ 
+           <aside className="min-w-0 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
++            {quizMode ? (
++              quizQuestion ? (
++                <KeepClearQuiz
++                  question={quizQuestion}
++                  reviewHref={reviewHref}
++                  teachingText={corpusMetadata.teachingText}
++                />
++              ) : (
++                <section aria-labelledby="quiz-unavailable-heading">
++                  <p className="text-sm font-semibold uppercase text-muted-foreground">
++                    Quick check
++                  </p>
++                  <h2
++                    className="mt-2 text-xl font-semibold"
++                    id="quiz-unavailable-heading"
++                  >
++                    No keep-clear question at this position
++                  </h2>
++                  <Link
++                    className="mt-4 inline-block text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4"
++                    href={reviewHref}
++                  >
++                    Review the full ruling
++                  </Link>
++                </section>
++              )
++            ) : null}
+             <section
+               data-ruling-moment-id={situationMoment.id}
+               data-testid="ruling-statements"
++              hidden={quizMode}
+             >
++              {quizQuestion ? (
++                <Link
++                  className="mb-5 inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2"
++                  data-testid="start-quiz"
++                  href={quizHref}
++                >
++                  Test this position
++                </Link>
++              ) : null}
+               <p className="text-sm font-semibold uppercase text-muted-foreground">
+                 Rulings
+               </p>
+@@ -488,7 +535,10 @@ export function TrainingExampleView({
+           </aside>
+         </div>
+ 
+-        <section className="mt-10 border-t border-border pt-8">
++        <section
++          className="mt-10 border-t border-border pt-8"
++          hidden={quizMode}
++        >
+           <details open>
+             <summary className="cursor-pointer text-lg font-semibold focus-visible:outline-2 focus-visible:outline-offset-4">
+               Scenario JSON
+diff --git a/src/domain/quiz/keep-clear.test.ts b/src/domain/quiz/keep-clear.test.ts
+new file mode 100644
+index 0000000..c3e2621
+--- /dev/null
++++ b/src/domain/quiz/keep-clear.test.ts
+@@ -0,0 +1,66 @@
++import { describe, expect, it } from 'vitest';
++
++import portStarboardTrainingExample from '../../../corpus/training-examples/port-starboard.json';
++import { trainingExampleSchema } from '../training-example/schema';
++import { deriveKeepClearQuestion, scoreKeepClearAnswer } from './keep-clear';
++
++const validTrainingExample = () =>
++  trainingExampleSchema.parse(structuredClone(portStarboardTrainingExample));
++
++describe('keep-clear quiz', () => {
++  it('derives one answer from the structured obligation at a moment', () => {
++    const question = deriveKeepClearQuestion(
++      validTrainingExample(),
++      'position-1',
++    );
++
++    expect(question).toEqual({
++      momentId: 'position-1',
++      prompt: 'Which boat must keep clear at Position 1?',
++      options: [
++        { boatId: 'blue', label: 'Blue' },
++        { boatId: 'yellow', label: 'Yellow' },
++      ],
++      answer: {
++        boatId: 'yellow',
++        explanation: 'Yellow must keep clear of Blue.',
++        ruleRefs: ['RRS 10'],
++      },
++    });
++  });
++
++  it('does not create a question without one unambiguous obligation', () => {
++    const trainingExample = validTrainingExample();
++    trainingExample.rulings.obligations.push({
++      atMoment: 'position-1',
++      boatId: 'blue',
++      type: 'keep-clear',
++      owedToBoatId: 'yellow',
++      ruleRefs: ['RRS test'],
++    });
++
++    expect(
++      deriveKeepClearQuestion(validTrainingExample(), 'missing-position'),
++    ).toBeNull();
++    expect(deriveKeepClearQuestion(trainingExample, 'position-1')).toBeNull();
++  });
++
++  it('scores correct and incorrect boat choices deterministically', () => {
++    const question = deriveKeepClearQuestion(
++      validTrainingExample(),
++      'position-1',
++    );
++    if (!question) throw new Error('Expected keep-clear question');
++
++    expect(scoreKeepClearAnswer(question, 'yellow')).toMatchObject({
++      isCorrect: true,
++      correctBoatId: 'yellow',
++    });
++    expect(scoreKeepClearAnswer(question, 'blue')).toEqual({
++      isCorrect: false,
++      correctBoatId: 'yellow',
++      explanation: 'Yellow must keep clear of Blue.',
++      ruleRefs: ['RRS 10'],
++    });
++  });
++});
+diff --git a/src/domain/quiz/keep-clear.ts b/src/domain/quiz/keep-clear.ts
+new file mode 100644
+index 0000000..a32b081
+--- /dev/null
++++ b/src/domain/quiz/keep-clear.ts
+@@ -0,0 +1,69 @@
++import type { TrainingExample } from '../training-example/schema';
++
++export type KeepClearQuizQuestion = {
++  momentId: string;
++  prompt: string;
++  options: { boatId: string; label: string }[];
++  answer: {
++    boatId: string;
++    explanation: string;
++    ruleRefs: string[];
++  };
++};
++
++export type KeepClearQuizResult = {
++  isCorrect: boolean;
++  correctBoatId: string;
++  explanation: string;
++  ruleRefs: string[];
++};
++
++export function deriveKeepClearQuestion(
++  trainingExample: TrainingExample,
++  momentId: string,
++): KeepClearQuizQuestion | null {
++  const obligations = trainingExample.rulings.obligations.filter(
++    (obligation) =>
++      obligation.atMoment === momentId && obligation.type === 'keep-clear',
++  );
++
++  if (obligations.length !== 1) return null;
++
++  const obligation = obligations[0];
++  const moment = trainingExample.situation.moments.find(
++    (candidate) => candidate.id === momentId,
++  );
++  const boatLabels = new Map(
++    trainingExample.scenario.boats.map((boat) => [boat.id, boat.label]),
++  );
++  const boatLabel = boatLabels.get(obligation.boatId);
++  const owedToBoatLabel = boatLabels.get(obligation.owedToBoatId);
++
++  if (!moment || !boatLabel || !owedToBoatLabel) return null;
++
++  return {
++    momentId,
++    prompt: `Which boat must keep clear at ${moment.label}?`,
++    options: trainingExample.scenario.boats.map((boat) => ({
++      boatId: boat.id,
++      label: boat.label,
++    })),
++    answer: {
++      boatId: obligation.boatId,
++      explanation: `${boatLabel} must keep clear of ${owedToBoatLabel}.`,
++      ruleRefs: [...obligation.ruleRefs],
++    },
++  };
++}
++
++export function scoreKeepClearAnswer(
++  question: KeepClearQuizQuestion,
++  selectedBoatId: string,
++): KeepClearQuizResult {
++  return {
++    isCorrect: selectedBoatId === question.answer.boatId,
++    correctBoatId: question.answer.boatId,
++    explanation: question.answer.explanation,
++    ruleRefs: [...question.answer.ruleRefs],
++  };
++}
+diff --git a/tests/e2e/scenario-viewer.spec.ts b/tests/e2e/scenario-viewer.spec.ts
+index 94370a9..d6ae5e0 100644
+--- a/tests/e2e/scenario-viewer.spec.ts
++++ b/tests/e2e/scenario-viewer.spec.ts
+@@ -221,6 +221,69 @@ test('shows the windward boat keeping clear under Rule 11', async ({
+   );
+ });
+ 
++test('scores a keep-clear answer without revealing the ruling first', async ({
++  page,
++}) => {
++  const runtimeErrors: string[] = [];
++  page.on('console', (message) => {
++    if (message.type() === 'error') runtimeErrors.push(message.text());
++  });
++  page.on('pageerror', (error) => runtimeErrors.push(error.message));
++
++  await page.goto('/scenarios/port-starboard');
++  await page.getByTestId('start-quiz').click();
++
++  await expect(page).toHaveURL(
++    '/scenarios/port-starboard?position=position-1&mode=quiz',
++  );
++  await expect(
++    page.getByRole('heading', {
++      level: 2,
++      name: 'Which boat must keep clear at Position 1?',
++    }),
++  ).toBeVisible();
++  await expect(page.getByTestId('ruling-statements')).toBeHidden();
++  await expect(page.getByTestId('rulings-json')).toBeHidden();
++  await expect(
++    page.getByRole('button', { name: 'Check answer' }),
++  ).toBeDisabled();
++
++  await page.getByRole('radio', { name: 'Blue' }).check();
++  await page.getByRole('button', { name: 'Check answer' }).click();
++
++  const incorrectFeedback = page.getByTestId('quiz-feedback');
++  await expect(incorrectFeedback).toHaveAttribute('data-correct', 'false');
++  await expect(incorrectFeedback).toContainText('Not quite');
++  await expect(incorrectFeedback).toContainText(
++    'Yellow must keep clear of Blue.',
++  );
++  await expect(incorrectFeedback).toContainText('RRS 10');
++  await expect(incorrectFeedback).toContainText(
++    'On opposite tacks, identify the starboard-tack boat first',
++  );
++
++  await page.goto('/scenarios/port-starboard?position=position-1&mode=quiz');
++  await page.getByRole('radio', { name: 'Yellow' }).check();
++  await page.getByRole('button', { name: 'Check answer' }).click();
++
++  const correctFeedback = page.getByTestId('quiz-feedback');
++  await expect(correctFeedback).toHaveAttribute('data-correct', 'true');
++  await expect(correctFeedback).toContainText('Correct');
++  await correctFeedback
++    .getByRole('link', { name: 'Review the full ruling' })
++    .click();
++
++  await expect(page).toHaveURL('/scenarios/port-starboard?position=position-1');
++  await expect(page.getByTestId('ruling-statements')).toContainText(
++    'Yellow must keep clear of Blue.',
++  );
++  await expect(page.locator('html')).toHaveJSProperty(
++    'scrollWidth',
++    await page.locator('html').evaluate((element) => element.clientWidth),
++  );
++  expect(runtimeErrors).toEqual([]);
++});
++
+ test('switches keyframes, Situation moments, and Rulings together', async ({
+   page,
+ }) => {

@@ -1,0 +1,276 @@
+diff --git a/apps/web/src/lib/public-unknown-route-lifecycle.ts b/apps/web/src/lib/public-unknown-route-lifecycle.ts
+new file mode 100644
+index 00000000..d48bc3c0
+--- /dev/null
++++ b/apps/web/src/lib/public-unknown-route-lifecycle.ts
+@@ -0,0 +1,35 @@
++import type { InterfaceLocale } from "@/lib/interface-localization";
++import {
++  renderPublicLifecycleDocument,
++  type PublicLifecycleRequestLocation,
++} from "@/lib/public-lifecycle-document";
++import { localizedPath } from "@/lib/public-localization";
++import { getPublicSurfaceCopy } from "@/lib/public-surface-localization";
++
++const UNKNOWN_ROUTE_DESCRIPTION: Record<InterfaceLocale, string> = {
++  uk: "╨ó╨░╨║╨╛╤ù ╤ü╤é╨╛╤Ç╤û╨╜╨║╨╕ ╨╜╨░ OverGarden ╨╜╨╡╨╝╨░╤ö. ╨ƒ╨╡╤Ç╨╡╨▓╤û╤Ç╤é╨╡ ╨░╨┤╤Ç╨╡╤ü╤â ╨░╨▒╨╛ ╨┐╨╛╨▓╨╡╤Ç╨╜╤û╤é╤î╤ü╤Å ╨╜╨░ ╨│╨╛╨╗╨╛╨▓╨╜╤â.",
++  bg: "╨ó╨░╨║╨░╨▓╨░ ╤ü╤é╤Ç╨░╨╜╨╕╤å╨░ ╨▓ OverGarden ╨╜╤Å╨╝╨░. ╨ƒ╤Ç╨╛╨▓╨╡╤Ç╨╡╤é╨╡ ╨░╨┤╤Ç╨╡╤ü╨░ ╨╕╨╗╨╕ ╤ü╨╡ ╨▓╤è╤Ç╨╜╨╡╤é╨╡ ╨║╤è╨╝ ╨╜╨░╤ç╨░╨╗╨╛╤é╨╛.",
++  ru: "╨ó╨░╨║╨╛╨╣ ╤ü╤é╤Ç╨░╨╜╨╕╤å╤ï ╨╜╨░ OverGarden ╨╜╨╡╤é. ╨ƒ╤Ç╨╛╨▓╨╡╤Ç╤î╤é╨╡ ╨░╨┤╤Ç╨╡╤ü ╨╕╨╗╨╕ ╨▓╨╡╤Ç╨╜╨╕╤é╨╡╤ü╤î ╨╜╨░ ╨│╨╗╨░╨▓╨╜╤â╤Ä.",
++};
++
++/**
++ * Raw 404 document for a path whose first segment no route can serve. It is
++ * rendered by the proxy so the status code is a real 404; the App Router would
++ * otherwise stream a 200 shell before `notFound()` could run.
++ */
++export function renderNotFoundUnknownRouteHtml(
++  locale: InterfaceLocale,
++  location: PublicLifecycleRequestLocation,
++) {
++  const copy = getPublicSurfaceCopy(locale).notFound;
++
++  return renderPublicLifecycleDocument({
++    locale,
++    pathname: location.pathname,
++    search: location.search,
++    title: copy.title,
++    description: UNKNOWN_ROUTE_DESCRIPTION[locale],
++    actionHref: localizedPath(locale, "/"),
++    actionLabel: copy.home,
++  });
++}
+diff --git a/apps/web/src/lib/root-route-segments.test.ts b/apps/web/src/lib/root-route-segments.test.ts
+new file mode 100644
+index 00000000..ed3b8e75
+--- /dev/null
++++ b/apps/web/src/lib/root-route-segments.test.ts
+@@ -0,0 +1,56 @@
++import { readdirSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++
++import { describe, expect, it } from "vitest";
++
++import { ROOT_ROUTE_SEGMENTS, isUnknownRootPath } from "./root-route-segments";
++
++function directories(url: URL) {
++  return readdirSync(fileURLToPath(url), { withFileTypes: true })
++    .filter((entry) => entry.isDirectory())
++    .map((entry) => entry.name);
++}
++
++describe("root route segments", () => {
++  it("matches the App Router root directories and public/ directories exactly", () => {
++    const expected = [
++      ...directories(new URL("../app/", import.meta.url)).filter(
++        (name) => name !== "[locale]",
++      ),
++      ...directories(new URL("../../public/", import.meta.url)),
++    ].sort();
++
++    expect([...ROOT_ROUTE_SEGMENTS].sort()).toEqual(expected);
++  });
++
++  it("flags only first segments that nothing can serve", () => {
++    for (const path of [
++      "/__visual-fixtures",
++      "/__nonexistent-xyz",
++      "/xyz/journals",
++      "/BG/journals",
++      "/visual-fixtures/x",
++    ]) {
++      expect(isUnknownRootPath(path), path).toBe(true);
++    }
++    for (const path of [
++      "/",
++      "/bg",
++      "/bg/anything",
++      "/feed",
++      "/journal/slug",
++      "/@gardener",
++      "/%40gardener",
++      "/.well-known/security.txt",
++      "/_next/static/chunk.js",
++      "/robots.txt",
++      "/sitemap.xml",
++      "/sw.js",
++      "/manifest.webmanifest",
++      "/licenses/GoogleSans-OFL.txt",
++      "/api/interface/context",
++    ]) {
++      expect(isUnknownRootPath(path), path).toBe(false);
++    }
++  });
++});
+diff --git a/apps/web/src/lib/root-route-segments.ts b/apps/web/src/lib/root-route-segments.ts
+new file mode 100644
+index 00000000..a27d3f6b
+--- /dev/null
++++ b/apps/web/src/lib/root-route-segments.ts
+@@ -0,0 +1,67 @@
++import { isPublicLocale } from "@/lib/public-localization";
++
++/**
++ * Every first path segment the App Router can serve at the site root: one
++ * entry per directory in `src/app` (except `[locale]`, which only accepts the
++ * public locales) plus the directories served from `public/`. The proxy turns
++ * any other first segment into a real 404 before rendering, because under
++ * Cache Components a page that calls `notFound()` after the shell has streamed
++ * still answers 200. `root-route-segments.test.ts` fails when this list and the
++ * filesystem drift apart.
++ */
++export const ROOT_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
++  "account",
++  "answers",
++  "api",
++  "auth",
++  "blog",
++  "bookmarks",
++  "breed",
++  "catalog",
++  "communities",
++  "engagement",
++  "erasure",
++  "feed",
++  "first-publication-disclosure",
++  "garden",
++  "guides",
++  "health",
++  "journal",
++  "journals",
++  "knowledge",
++  "licenses",
++  "lineage",
++  "markets",
++  "notifications",
++  "objects",
++  "privacy",
++  "skeleton",
++  "sources",
++  "species",
++  "support",
++  "topics",
++  "variety",
++  "wishlist",
++]);
++
++/**
++ * True when no route can serve the first segment. Locale roots, profile
++ * handles, Next internals, dot-prefixed well-known paths, and file-like paths
++ * (`/robots.txt`, `/sitemap.xml`, `/sw.js`) stay with the App Router.
++ */
++export function isUnknownRootPath(pathname: string): boolean {
++  const segments = pathname.split("/").filter((segment) => segment.length > 0);
++  const first = segments[0];
++  if (!first) return false;
++  if (isPublicLocale(first)) return false;
++  if (
++    first.startsWith("@") ||
++    first.startsWith("%40") ||
++    first.startsWith(".") ||
++    first === "_next"
++  ) {
++    return false;
++  }
++  if (segments[segments.length - 1].includes(".")) return false;
++  return !ROOT_ROUTE_SEGMENTS.has(first);
++}
+diff --git a/apps/web/src/proxy.test.ts b/apps/web/src/proxy.test.ts
+index c3e297e2..9a1202de 100644
+--- a/apps/web/src/proxy.test.ts
++++ b/apps/web/src/proxy.test.ts
+@@ -21,6 +21,8 @@ import {
+   resetUnresolvedAuthorizationServeCountsForTests,
+ } from "@/lib/auth/unresolved-authorization";
+ 
++import { getPublicSurfaceCopy } from "@/lib/public-surface-localization";
++
+ const mocks = vi.hoisted(() => ({
+   getPublicObjectPassportLookup: vi.fn().mockResolvedValue({
+     status: "not_found",
+@@ -1258,3 +1260,43 @@ function stubLocalWalkingSkeletonEnvironment() {
+   vi.stubEnv("VERCEL", "");
+   vi.stubEnv("VERCEL_ENV", "development");
+ }
++
++describe("unknown root segments", () => {
++  const documentHeaders = { accept: "text/html", "sec-fetch-dest": "document" };
++
++  it.each([
++    "/__visual-fixtures",
++    "/__nonexistent-xyz",
++    "/xyz/journals",
++    "/BG/journals",
++  ])("answers a real 404 lifecycle document for %s", async (path) => {
++    const response = await responseFor(path, {
++      ...documentHeaders,
++      "x-vercel-ip-country": "BG",
++    });
++    const html = await response.text();
++
++    expect(response.status).toBe(404);
++    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
++    expect(response.headers.get("Cache-Control")).toBe(APP_ROUTE_CACHE_CONTROL);
++    expect(response.headers.get("Content-Language")).toBe("bg");
++    expect(html).toContain('<html lang="bg"');
++    expect(html).toContain(getPublicSurfaceCopy("bg").notFound.title);
++    expect(html).toContain('href="/bg"');
++  });
++
++  it("leaves known roots, locale roots, and file-like paths to the App Router", async () => {
++    for (const path of [
++      "/feed",
++      "/bg",
++      "/bg/journals",
++      "/sitemap.xml",
++      "/robots.txt",
++      "/licenses/GoogleSans-OFL.txt",
++      "/api/interface/context",
++    ]) {
++      const response = await responseFor(path, documentHeaders);
++      expect(response.status, path).not.toBe(404);
++    }
++  });
++});
+diff --git a/apps/web/src/proxy.ts b/apps/web/src/proxy.ts
+index 69bf2871..3c8419d6 100644
+--- a/apps/web/src/proxy.ts
++++ b/apps/web/src/proxy.ts
+@@ -52,6 +52,9 @@ import {
+   tryResolveWalkingSkeletonEnvironment,
+ } from "@/lib/walking-skeleton/environment";
+ 
++import { renderNotFoundUnknownRouteHtml } from "@/lib/public-unknown-route-lifecycle";
++import { isUnknownRootPath } from "@/lib/root-route-segments";
++
+ export const APP_ROUTE_CACHE_CONTROL =
+   "private, no-store, max-age=0, s-maxage=0, must-revalidate";
+ 
+@@ -451,6 +454,28 @@ export async function proxy(request: NextRequest) {
+   const localization = resolveRequestLocalization(request);
+   const { locale } = localization;
+ 
++  // A first segment no route can serve must not reach `[locale]`: under Cache
++  // Components the page would stream a 200 shell before `notFound()` runs.
++  if (isUnknownRootPath(request.nextUrl.pathname)) {
++    return withAppRouteContract(
++      new NextResponse(
++        renderNotFoundUnknownRouteHtml(locale, {
++          pathname: request.nextUrl.pathname,
++          search: request.nextUrl.searchParams,
++        }),
++        {
++          status: 404,
++          headers: {
++            "content-type": "text/html; charset=utf-8",
++            "X-Robots-Tag": "noindex, nofollow",
++          },
++        },
++      ),
++      request,
++      localization,
++    );
++  }
++
+   const isDocumentNavigation = isDocumentNavigationRequest(request);
+   if (
+     (request.method === "GET" || request.method === "HEAD") &&

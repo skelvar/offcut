@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RUNTIME = path.resolve(
@@ -82,9 +82,18 @@ function runInstaller(remove) {
   return result.status ?? 1;
 }
 
-function main() {
+async function main() {
+  if (process.argv[2] === 'scan') {
+    const { runScanCli } = await import(pathToFileURL(path.join(SOURCE, 'scripts', 'scan.mjs')).href);
+    const result = runScanCli(process.argv.slice(3));
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    process.exitCode = result.code;
+    return;
+  }
+
   if (HELP) {
-    console.log('Usage: offcut [--uninstall]');
+    console.log('Usage: offcut [--uninstall] | offcut scan --diff <file|-> [--format text|github] | offcut scan <path...>');
     console.log(`Runtime: ${RUNTIME}`);
     return;
   }
@@ -106,4 +115,4 @@ function main() {
   process.exitCode = status;
 }
 
-main();
+await main();

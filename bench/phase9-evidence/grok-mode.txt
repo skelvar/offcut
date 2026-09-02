@@ -1,5 +1,0 @@
-Switching Offcut to lite mode for this session. Checking how mode switches are handled.Checking how Offcut persists mode state so I can switch this session to lite.Setting session mode to `lite`.**Offcut is on `lite` for this session.**
-
-Reminders will fire every third turn instead of every turn. Your default for new sessions is still `full`.
-
-To make lite the default going forward: `/offcut default lite`.

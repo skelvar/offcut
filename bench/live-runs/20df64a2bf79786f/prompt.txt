@@ -1,3 +1,0 @@
-Add a save control to the editor toolbar (primary, "Save" / "Saving...", disabled while saving). The shell already passes `saving`. There is busy/async machinery in the repo; use it if it actually fits, otherwise don't.
-
-Keep Cancel. Export Toolbar({ saving }) from src/components/editor/Toolbar.js.

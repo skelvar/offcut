@@ -54,8 +54,8 @@ diagnostic evidence, not a general savings win.
 
 Evidence:
 
-- [reviewed JSON](../../bench/live-style-busy-helper-79e24727-reviewed.json)
-- [reviewed receipt](../../bench/live-style-busy-helper-79e24727-reviewed.md)
+- [reviewed JSON](https://github.com/skelvar/offcut-evidence/blob/main/live-style-busy-helper-79e24727-reviewed.json)
+- [reviewed receipt](https://github.com/skelvar/offcut-evidence/blob/main/live-style-busy-helper-79e24727-reviewed.md)
 - receipt SHA-256:
   `22f324d1b94984f262313695b7fb3f0ab2c2a52d1ad01173b544aff9ba9a39c9`
 
@@ -86,8 +86,8 @@ replicates, so a one-ticket result must not be presented as a reproduction.
 
 Evidence:
 
-- [reviewed JSON](../../bench/live-competitive-busy-helper-79e24727-reviewed.json)
-- [reviewed receipt](../../bench/live-competitive-busy-helper-79e24727-reviewed.md)
+- [reviewed JSON](https://github.com/skelvar/offcut-evidence/blob/main/live-competitive-busy-helper-79e24727-reviewed.json)
+- [reviewed receipt](https://github.com/skelvar/offcut-evidence/blob/main/live-competitive-busy-helper-79e24727-reviewed.md)
 - receipt SHA-256:
   `07cdebcf042ea8327dc0cb334e49342fcfab85f22279aeb88d8e473087c48097`
 

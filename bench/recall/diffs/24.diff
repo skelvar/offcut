@@ -1,0 +1,13 @@
+diff --git a/src/app/settings/payouts/DinteroClient.tsx b/src/app/settings/payouts/DinteroClient.tsx
+index 2721196..6bb3cce 100644
+--- a/src/app/settings/payouts/DinteroClient.tsx
++++ b/src/app/settings/payouts/DinteroClient.tsx
+@@ -214,7 +214,7 @@ export function DinteroClient({ email }: { email: string }) {
+                             <span className="font-semibold">Last sync failed.</span> {shop.lastError}
+                           </p>
+                         ) : (
+-                          <p className="mt-1 text-xs text-gain">OK</p>
++                          <p className="mt-1 text-xs text-gain">Connected</p>
+                         )}
+                       </>
+                     ) : (

@@ -4,61 +4,79 @@
 
 # Offcut
 
-**Less code is not the goal. Less unnecessary code is.**
+**Catches the code your agent should not have written.**
 
-Offcut helps coding agents build the cheapest correct thing in the right place.
-
-[Install](#install) · [How it works](#how-it-works) · [Controls](#controls) · [Safety](#safety) · [Proof](#proof)
+A deterministic check for over-engineering in a diff. No model call, no network,
+no dependencies.
 
 </div>
 
-## Install
+## Try it on your last change
 
-Requires Git and Node.js 20 or newer.
+```bash
+git diff | npx --yes github:skelvar/offcut scan --diff -
+```
+
+```text
+src/phone.js (1)
+  [new-dependency] Offcut: new dependency — what does this replace that four lines could not do?
+```
+
+Six checks, each phrased as a question: a new dependency, one implementation
+behind an interface, a parameter with a default that is never read, a
+configuration surface nobody asked for, an exported symbol nothing references, a
+large first write. They apply to JavaScript and TypeScript. They never block
+anything.
+`exported-unused` runs in repository audits only; relative to the paths scanned.
+
+## On pull requests
+
+```yaml
+# .github/workflows/offcut.yml
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  offcut:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: skelvar/offcut@main
+```
+
+Findings appear as file annotations on the pull request and in the job summary.
+The step always exits 0; findings are questions for the reviewer, not a gate.
+
+## Evidence
+
+- False positives: 0 of 95 clean files across all six checks
+  ([`bench/fp.mjs`](bench/fp.mjs); the 95-run negative corpus lives in
+  [skelvar/offcut-evidence](https://github.com/skelvar/offcut-evidence), cloned
+  as a sibling directory).
+- Recall on 27 real agent-authored pull requests: 4 of 10 labeled over-builds
+  caught, 0 of 17 clean diffs flagged
+  ([`bench/recall/RESULTS.md`](bench/recall/RESULTS.md)). Labels were written
+  by one rater before scanning; treat this as an estimate, and read the list of
+  misses before relying on it.
+
+No token, cost, or lines-of-code reduction is claimed. A protocol we tested for
+post-implementation self-review lost to one ordinary host review and was
+removed ([`docs/development/CLOSE-RESULTS.md`](docs/development/CLOSE-RESULTS.md)).
+
+## Also: construction rules for your agent
 
 ```bash
 npx --yes github:skelvar/offcut
 ```
 
-Open a new agent session. Offcut detects Codex, Claude Code, Cursor, and Grok
-Build, then installs only for the agents already on your machine.
-
-## What changes
-
-- Agents question unnecessary dependencies, abstractions, configuration, and
-  duplicate guards before writing them.
-- Six deterministic checks flag common overengineering patterns in JavaScript
-  and TypeScript.
-- Replies stay concise by default without hiding errors, evidence, or important
-  caveats.
-
-A small example:
-
-```js
-// Before: configuration nobody needs to change
-const timeout = Number(process.env.REQUEST_TIMEOUT ?? 5000);
-
-// After: one honest constant
-const REQUEST_TIMEOUT_MS = 5000;
-```
-
-Add configuration when somebody needs to configure it. Until then, it is just
-another surface to maintain.
-
-## How it works
-
-Before code is written, Offcut asks:
-
-1. What breaks if this is skipped?
-2. Does the codebase or platform already solve it?
-3. Can the standard library or an installed dependency own it?
-4. What is the smallest change that keeps the requirement correct?
-5. Which boundary already crossed by every caller should own the rule?
-
-The deterministic scanner is optional. It uses no model call, network request,
-or runtime dependency.
-
-## Controls
+Installs a short rule set into Codex, Claude Code, Cursor, and Grok Build (only
+the ones already on your machine). Before writing, the agent asks what breaks if
+this is skipped, whether the codebase or platform already does it, what the
+smallest correct change is, and which boundary should own it. If you already use
+[Ponytail](https://github.com/DietrichGebert/ponytail) for that, keep it; the
+scan works on any diff regardless of who wrote it.
 
 | Command | Effect |
 |---|---|
@@ -67,96 +85,44 @@ or runtime dependency.
 | `/offcut strict` | Challenge new dependencies before writing |
 | `/offcut off` | Disable Offcut for this session |
 | `/offcut default <mode>` | Choose the mode for future sessions |
-
-Concise responses are the default while Offcut is active. Change only the
-response style with:
-
-```text
-/offcut concise on
-/offcut concise off
-```
-
-Turning concise responses off leaves the construction rules active.
-
-### Review existing code
-
-| Command | Effect |
-|---|---|
-| `/offcut-review` | Review the current diff |
-| `/offcut-audit` | Review a repository and rank findings |
+| `/offcut-review` | Scan the current diff from inside the agent |
+| `/offcut-audit` | Scan a repository and rank findings |
 | `/offcut-help` | Show commands and the active mode |
 
-The scanner also runs directly:
+Concise responses are the default while Offcut is active. Change only the
+response style with `/offcut concise on` or `/offcut concise off`; the
+construction rules stay active either way.
 
-```bash
-node scripts/scan.mjs src/
-git diff | node scripts/scan.mjs --diff -
-```
-
-`exported-unused` runs in repository audits only; relative to the paths scanned.
-The remaining checks and their exact scopes are documented in the
-[development notes](docs/development/README.md).
-
-## Marketplace installs
+Marketplace installs:
 
 | Agent | Commands |
 |---|---|
 | Codex | `codex plugin marketplace add skelvar/offcut --ref main`<br>`codex plugin add offcut@skelvar` |
 | Claude Code | `/plugin marketplace add skelvar/offcut`<br>`/plugin install offcut@skelvar` |
-| Cursor | Public listing pending review; use the universal installer today. |
+| Cursor | Public listing pending review ([cursor.com/marketplace/publish](https://cursor.com/marketplace/publish)); use the universal installer today. |
 | Grok Build | Use the universal installer. |
 
-The Cursor package is ready for submission at
-[cursor.com/marketplace/publish](https://cursor.com/marketplace/publish).
-
-## Safety
-
-Offcut does not change model or provider settings. It does not send source code
-anywhere. Existing instruction and hook files are preserved, and the first
-change to each file gets a `*.offcut-backup`.
-
-Write-time findings are questions, not permission decisions. Offcut never
-denies a tool call. Cursor subagent inheritance uses an input-only rewrite and casts no permission vote.
-
-Run the read-only diagnostic at any time:
-
-```bash
-node ~/.offcut/runtime/hooks/doctor.js
-```
+Uninstall with `npx --yes github:skelvar/offcut -- --uninstall`. Existing
+instruction and hook files are preserved; the first change to each gets a
+`*.offcut-backup`. Offcut never denies a tool call, never changes model or
+provider settings, and never sends source code anywhere. Cursor subagent
+inheritance uses an input-only rewrite and casts no permission vote.
 
 ## Support
 
 The full automated suite runs on Windows, Ubuntu Linux, and macOS. Real-harness
-E2E is Windows only today; see the dated [host matrix](docs/development/HOSTS.md)
-for what has been exercised on each agent.
-
-## Proof
-
-The repository includes its tests, labeled corpora, raw benchmark runs, and the
-code that produced them. Start with the [evidence map](docs/development/README.md)
-and [response-efficiency receipt](docs/development/STYLE-BENCHMARK.md).
-
-No token-saving claim is made until the cache-aware benchmark supports it.
-
-## Uninstall
-
-```bash
-npx --yes github:skelvar/offcut -- --uninstall
-```
-
-Marketplace installs can be removed with their agent's plugin manager. Offcut
-removes only its marked rules and tagged hooks; it leaves other content alone.
+E2E is Windows only today; see the dated [host matrix](docs/development/HOSTS.md).
 
 ## Development
 
 ```bash
 node --test tests/*.test.js
 node bench/fp.mjs
-node scripts/scan.mjs hooks
+node bench/recall.mjs
+node scripts/build-agents-md.js   # AGENTS.md is generated from rules/offcut.md
 ```
 
-Offcut has zero runtime dependencies. `AGENTS.md` is generated from the kernel;
-run `node scripts/build-agents-md.js` after changing it.
+Harness notes and benchmark receipts: [docs/development](docs/development/README.md).
 
 ## License
 

@@ -1,0 +1,49 @@
+diff --git a/backend/models/project.py b/backend/models/project.py
+index 9ebdea1..c9edb2a 100644
+--- a/backend/models/project.py
++++ b/backend/models/project.py
+@@ -179,6 +179,7 @@ class ZoneTypeEnum(str, Enum):
+     entrance = "entrance"
+     exit = "exit"
+     supply = "supply"
++    reserve = "reserve"
+ 
+ 
+ class FloorZone(CADBaseModel):
+diff --git a/frontend/src/components/FloorPlanEditor/index.tsx b/frontend/src/components/FloorPlanEditor/index.tsx
+index 5804099..a727e43 100644
+--- a/frontend/src/components/FloorPlanEditor/index.tsx
++++ b/frontend/src/components/FloorPlanEditor/index.tsx
+@@ -39,6 +39,7 @@ function getFurnitureColor(type: string) {
+ const ZONE_FILL: Record<string, string> = {
+   entrance: '#22C55E',
+   exit:     '#F97316',
++  reserve:  '#64748B',
+ };
+ 
+ // ΓöÇΓöÇΓöÇ Types ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+diff --git a/frontend/src/three/SceneEditor.tsx b/frontend/src/three/SceneEditor.tsx
+index a2f26b0..692da04 100644
+--- a/frontend/src/three/SceneEditor.tsx
++++ b/frontend/src/three/SceneEditor.tsx
+@@ -1466,6 +1466,7 @@ const ZONE_COLORS: Record<string, { fill: string; border: string }> = {
+   entrance: { fill: '#22c55e', border: '#16a34a' },
+   exit:     { fill: '#f97316', border: '#ea580c' },
+   supply:   { fill: '#a855f7', border: '#7c3aed' },
++  reserve:  { fill: '#64748b', border: '#475569' },
+ };
+ const ZONE_HANDLE_Y = GRID_Y_OFFSET + 0.06;
+ 
+diff --git a/frontend/src/types/cad.ts b/frontend/src/types/cad.ts
+index cf12673..853367b 100644
+--- a/frontend/src/types/cad.ts
++++ b/frontend/src/types/cad.ts
+@@ -46,7 +46,7 @@ export interface FurnitureDefinition {
+ }
+ 
+ // ΓöÇΓöÇΓöÇ Floor zones ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-export type ZoneType = 'entrance' | 'exit' | 'supply';
++export type ZoneType = 'entrance' | 'exit' | 'supply' | 'reserve';
+ 
+ export interface FloorZone {
+   id: string;

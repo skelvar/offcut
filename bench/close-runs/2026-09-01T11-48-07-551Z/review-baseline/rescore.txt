@@ -1,0 +1,5 @@
+PASS: CLOSE_ACCEPT_OK
+
+The strong-review patch passes the final oracle, including synchronous store
+failure and recovery. Final oracle SHA-256:
+f9752a740aee63275d2160b10077fc13948ddd3eaa50feb9ea57966e5c8acd12

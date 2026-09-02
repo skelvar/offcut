@@ -1,9 +1,0 @@
-Export formatGreeting(name, options) from greet.js for this Node project.
-
-- name is a string.
-- options is optional. When options.excited is true, the returned string must end with "!".
-- Otherwise return exactly `Hello, ${name}`.
-
-Callers may pass a partial options object or omit it. Export only what the callers need.
-
-When finished, the harness runs accept.mjs against the project root.

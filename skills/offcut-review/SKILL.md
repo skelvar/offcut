@@ -12,7 +12,7 @@ description: >
 license: MIT
 compatibility: Requires Node.js on PATH to run scripts/scan.mjs. Touches no mode state.
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
   author: skelvar
 ---
 
