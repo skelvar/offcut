@@ -351,6 +351,12 @@ const isMain =
 
 if (isMain) {
   const report = measure();
+  if (report.runs === 0) {
+    process.stderr.write(
+      'fp: no negative corpus found. Clone https://github.com/skelvar/offcut-evidence as a sibling directory named offcut-evidence and rerun.\n',
+    );
+    process.exit(2);
+  }
   if (process.argv.includes('--json')) {
     console.log(
       JSON.stringify(
