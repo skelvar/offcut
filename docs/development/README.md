@@ -9,6 +9,8 @@ not required to install or use the project.
 | [STYLE-BENCHMARK.md](STYLE-BENCHMARK.md) | Guarded concise-style benchmark and claim limits |
 | [EFFICACY-RESULTS.md](EFFICACY-RESULTS.md) | Sealed persistent-mode efficacy result |
 | [COEXIST.md](COEXIST.md) | Coexistence and uninstall verification with other hooks |
+| [OFFCUT-CLOSE-AUDIT.md](OFFCUT-CLOSE-AUDIT.md) | Architecture audit for a rejected "Close" verification protocol |
+| [CLOSE-RESULTS.md](CLOSE-RESULTS.md) | The one-task experiment and the no-go decision |
 
 Raw fixtures, run records, receipts, and reproducibility scripts live under
 [`bench/`](../../bench/). Completed implementation plans and agent handoffs are
