@@ -290,7 +290,8 @@ test('cursor package: native manifest and adapter expose every required lifecycl
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.name, 'offcut');
-  assert.equal(manifest.version, '0.3.0');
+  const rootVersion = JSON.parse(fs.readFileSync(path.join(root, 'plugin.json'), 'utf8')).version;
+  assert.equal(manifest.version, rootVersion);
   assert.equal(manifest.skills, './skills/');
   assert.equal(manifest.hooks, './adapters/cursor/hooks.json');
   assert.ok(fs.statSync(path.join(root, manifest.skills)).isDirectory());
