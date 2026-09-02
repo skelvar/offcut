@@ -1,0 +1,58 @@
+diff --git a/src/checkout.js b/src/checkout.js
+index 38a4245..d189596 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -1,20 +1,46 @@
++function idempotencyConflict() {
++  const error = new Error('idempotency key already used with a different payload');
++  error.code = 'IDEMPOTENCY_CONFLICT';
++  return error;
++}
++
+ export class CheckoutService {
+   constructor(store) {
+     this.store = store;
+     this.completed = new Map();
++    this.inflight = new Map();
+   }
+ 
+   async placeOrder(key, cart) {
+     if (!key) throw new TypeError('idempotency key is required');
+ 
++    const payload = JSON.stringify(cart);
++
+     const completed = this.completed.get(key);
+-    if (completed) return completed.order;
++    if (completed) {
++      if (completed.payload !== payload) throw idempotencyConflict();
++      return completed.order;
++    }
++
++    const inflight = this.inflight.get(key);
++    if (inflight) {
++      if (inflight.payload !== payload) throw idempotencyConflict();
++      return inflight.promise;
++    }
++
++    const promise = this.store.create(structuredClone(cart)).then(
++      (order) => {
++        this.completed.set(key, { payload, order });
++        this.inflight.delete(key);
++        return order;
++      },
++      (error) => {
++        this.inflight.delete(key);
++        throw error;
++      },
++    );
+ 
+-    const order = await this.store.create(structuredClone(cart));
+-    this.completed.set(key, {
+-      payload: JSON.stringify(cart),
+-      order,
+-    });
+-    return order;
++    this.inflight.set(key, { payload, promise });
++    return promise;
+   }
+ }

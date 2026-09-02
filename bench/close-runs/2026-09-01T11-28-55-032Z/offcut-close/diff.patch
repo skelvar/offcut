@@ -1,0 +1,56 @@
+diff --git a/src/checkout.js b/src/checkout.js
+index 38a4245..c10e8f0 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -2,19 +2,44 @@ export class CheckoutService {
+   constructor(store) {
+     this.store = store;
+     this.completed = new Map();
++    this.inFlight = new Map();
+   }
+ 
+   async placeOrder(key, cart) {
+     if (!key) throw new TypeError('idempotency key is required');
+ 
++    const payload = JSON.stringify(cart);
++
+     const completed = this.completed.get(key);
+-    if (completed) return completed.order;
++    if (completed) {
++      this.#assertSamePayload(completed.payload, payload);
++      return completed.order;
++    }
++
++    const pending = this.inFlight.get(key);
++    if (pending) {
++      this.#assertSamePayload(pending.payload, payload);
++      return pending.promise;
++    }
++
++    const promise = (async () => {
++      try {
++        const order = await this.store.create(structuredClone(cart));
++        this.completed.set(key, { payload, order });
++        return order;
++      } finally {
++        this.inFlight.delete(key);
++      }
++    })();
++
++    this.inFlight.set(key, { payload, promise });
++    return promise;
++  }
+ 
+-    const order = await this.store.create(structuredClone(cart));
+-    this.completed.set(key, {
+-      payload: JSON.stringify(cart),
+-      order,
+-    });
+-    return order;
++  #assertSamePayload(recorded, payload) {
++    if (recorded === payload) return;
++    const err = new Error('IDEMPOTENCY_CONFLICT');
++    err.code = 'IDEMPOTENCY_CONFLICT';
++    throw err;
+   }
+ }

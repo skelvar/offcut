@@ -1,0 +1,119 @@
+diff --git a/src/checkout.js b/src/checkout.js
+index 38a4245..7b8b8a2 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -1,20 +1,39 @@
+ export class CheckoutService {
+   constructor(store) {
+     this.store = store;
+-    this.completed = new Map();
++    this.records = new Map();
+   }
+ 
+   async placeOrder(key, cart) {
+     if (!key) throw new TypeError('idempotency key is required');
+ 
+-    const completed = this.completed.get(key);
+-    if (completed) return completed.order;
++    const payload = JSON.stringify(cart);
++    const existing = this.records.get(key);
+ 
+-    const order = await this.store.create(structuredClone(cart));
+-    this.completed.set(key, {
+-      payload: JSON.stringify(cart),
+-      order,
+-    });
+-    return order;
++    if (existing) {
++      if (existing.payload !== payload) {
++        const error = new Error('idempotency key reused with a different payload');
++        error.code = 'IDEMPOTENCY_CONFLICT';
++        throw error;
++      }
++      return existing.promise;
++    }
++
++    const record = { payload };
++    this.records.set(key, record);
++
++    try {
++      record.promise = Promise.resolve(this.store.create(structuredClone(cart))).catch((error) => {
++        if (this.records.get(key) === record) {
++          this.records.delete(key);
++        }
++        throw error;
++      });
++    } catch (error) {
++      this.records.delete(key);
++      throw error;
++    }
++
++    return record.promise;
+   }
+ }
+diff --git a/test/checkout.test.js b/test/checkout.test.js
+index 8cf4182..7f6c9d9 100644
+--- a/test/checkout.test.js
++++ b/test/checkout.test.js
+@@ -31,3 +31,61 @@ test('a failed creation can be retried', async () => {
+   assert.equal((await service.placeOrder('checkout-2', { sku: 1 })).id, 'recovered');
+   assert.equal(creates, 2);
+ });
++
++test('a synchronous create failure does not poison the key', async () => {
++  let creates = 0;
++  const service = new CheckoutService({
++    create(cart) {
++      creates += 1;
++      if (creates === 1) throw new Error('sync fail');
++      return { id: 'recovered-sync', cart };
++    },
++  });
++
++  await assert.rejects(service.placeOrder('checkout-5', { sku: 1 }), /sync fail/);
++  assert.equal((await service.placeOrder('checkout-5', { sku: 1 })).id, 'recovered-sync');
++  assert.equal(creates, 2);
++});
++
++test('concurrent calls with the same key and payload create once', async () => {
++  let creates = 0;
++  let release;
++  const gate = new Promise((resolve) => {
++    release = resolve;
++  });
++  const service = new CheckoutService({
++    async create(cart) {
++      creates += 1;
++      await gate;
++      return { id: 'order-concurrent', cart };
++    },
++  });
++
++  const first = service.placeOrder('checkout-3', { sku: 3 });
++  const second = service.placeOrder('checkout-3', { sku: 3 });
++  release();
++  const [a, b] = await Promise.all([first, second]);
++  assert.deepEqual(a, b);
++  assert.equal(creates, 1);
++});
++
++test('reusing a key with a different payload is a conflict', async () => {
++  let creates = 0;
++  const service = new CheckoutService({
++    async create(cart) {
++      creates += 1;
++      return { id: `order-${creates}`, cart };
++    },
++  });
++
++  const first = await service.placeOrder('checkout-4', { sku: 4 });
++  await assert.rejects(
++    () => service.placeOrder('checkout-4', { sku: 5 }),
++    (error) => {
++      assert.equal(error.code, 'IDEMPOTENCY_CONFLICT');
++      return true;
++    },
++  );
++  assert.equal(creates, 1);
++  assert.deepEqual(await service.placeOrder('checkout-4', { sku: 4 }), first);
++});
