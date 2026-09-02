@@ -1,0 +1,51 @@
+diff --git a/packages/kindle-ui/src/components/ActionBar/ActionBar.tsx b/packages/kindle-ui/src/components/ActionBar/ActionBar.tsx
+index c8d5dd6..16ac558 100644
+--- a/packages/kindle-ui/src/components/ActionBar/ActionBar.tsx
++++ b/packages/kindle-ui/src/components/ActionBar/ActionBar.tsx
+@@ -26,7 +26,7 @@ export interface ActionGroupProps {
+ }
+ 
+ export function ActionGroup({ children, className }: ActionGroupProps) {
+-  return <div className={cn('flex h-full items-center', className)}>{children}</div>
++  return <div className={cn('flex h-full min-w-0 items-center', className)}>{children}</div>
+ }
+ 
+ export interface ActionItemProps {
+@@ -74,7 +74,7 @@ export function SearchBar({
+   return (
+     <div
+       className={cn(
+-        'relative flex h-full w-[150px] items-center justify-center border-x border-divider',
++        'relative flex h-full w-full min-w-0 max-w-[150px] items-center justify-center border-x border-divider',
+         className
+       )}
+     >
+@@ -101,5 +101,5 @@ export interface ActionBarSpaceProps {
+ }
+ 
+ export function ActionBarSpace({ className }: ActionBarSpaceProps) {
+-  return <div className={cn('flex-1 px-2', className)} />
++  return <div className={cn('min-w-0 flex-1 px-2', className)} />
+ }
+diff --git a/packages/kindle-ui/src/components/Input/Input.tsx b/packages/kindle-ui/src/components/Input/Input.tsx
+index 725f46c..0a510a7 100644
+--- a/packages/kindle-ui/src/components/Input/Input.tsx
++++ b/packages/kindle-ui/src/components/Input/Input.tsx
+@@ -153,7 +153,7 @@ export function OtpInput({
+ 
+   return (
+     <div
+-      className={cn('flex items-center justify-center gap-2', className)}
++      className={cn('flex w-full items-center justify-between gap-2', className)}
+       role="group"
+       aria-label="One-time password"
+     >
+@@ -169,7 +169,7 @@ export function OtpInput({
+           value={digits[i] || ''}
+           aria-label={`Digit ${i + 1} of ${length}`}
+           className={cn(
+-            'h-12 w-10 rounded-md border border-divider bg-paper text-center font-sans text-lg text-ink transition-colors focus-visible:ku-focus-ring disabled:opacity-50 disabled:cursor-not-allowed'
++            'h-12 flex-1 min-w-0 rounded-md border border-divider bg-paper text-center font-sans text-base text-ink transition-colors focus-visible:ku-focus-ring disabled:opacity-50 disabled:cursor-not-allowed'
+           )}
+           onChange={(e) => handleChange(i, e)}
+           onKeyDown={(e) => handleKeyDown(i, e)}

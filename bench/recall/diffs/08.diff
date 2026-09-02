@@ -1,0 +1,195 @@
+diff --git a/src/backend/database.py b/src/backend/database.py
+index 384e66b..817fbb1 100644
+--- a/src/backend/database.py
++++ b/src/backend/database.py
+@@ -45,6 +45,7 @@ def init_database():
+     },
+     "Programming Class": {
+         "description": "Learn programming fundamentals and build software projects",
++        "difficulty": "Beginner",
+         "schedule": "Tuesdays and Thursdays, 7:00 AM - 8:00 AM",
+         "schedule_details": {
+             "days": ["Tuesday", "Thursday"],
+@@ -111,6 +112,7 @@ def init_database():
+     },
+     "Math Club": {
+         "description": "Solve challenging problems and prepare for math competitions",
++        "difficulty": "Intermediate",
+         "schedule": "Tuesdays, 7:15 AM - 8:00 AM",
+         "schedule_details": {
+             "days": ["Tuesday"],
+@@ -133,6 +135,7 @@ def init_database():
+     },
+     "Weekend Robotics Workshop": {
+         "description": "Build and program robots in our state-of-the-art workshop",
++        "difficulty": "Advanced",
+         "schedule": "Saturdays, 10:00 AM - 2:00 PM",
+         "schedule_details": {
+             "days": ["Saturday"],
+@@ -197,4 +200,3 @@ def init_database():
+         "role": "admin"
+     }
+ ]
+-
+diff --git a/src/static/app.js b/src/static/app.js
+index abb5820..0f4bcd7 100644
+--- a/src/static/app.js
++++ b/src/static/app.js
+@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
+   const searchInput = document.getElementById("activity-search");
+   const searchButton = document.getElementById("search-button");
+   const categoryFilters = document.querySelectorAll(".category-filter");
++  const difficultyFilters = document.querySelectorAll(".difficulty-filter");
+   const dayFilters = document.querySelectorAll(".day-filter");
+   const timeFilters = document.querySelectorAll(".time-filter");
+ 
+@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
+   // State for activities and filters
+   let allActivities = {};
+   let currentFilter = "all";
++  let currentDifficulty = "";
+   let searchQuery = "";
+   let currentDay = "";
+   let currentTimeRange = "";
+@@ -51,6 +53,16 @@ document.addEventListener("DOMContentLoaded", () => {
+     weekend: { days: ["Saturday", "Sunday"] }, // Weekend days
+   };
+ 
++  const difficultyLevels = {
++    Beginner: { label: "Beginner", color: "#e8f5e9", textColor: "#2e7d32" },
++    Intermediate: {
++      label: "Intermediate",
++      color: "#fff3e0",
++      textColor: "#e65100",
++    },
++    Advanced: { label: "Advanced", color: "#ffebee", textColor: "#c62828" },
++  };
++
+   // Initialize filters from active elements
+   function initializeFilters() {
+     // Initialize day filter
+@@ -425,6 +437,15 @@ document.addEventListener("DOMContentLoaded", () => {
+         return;
+       }
+ 
++      // Apply difficulty filter. Activities without difficulty are for all levels.
++      if (currentDifficulty) {
++        if (details.difficulty !== currentDifficulty) {
++          return;
++        }
++      } else if (details.difficulty) {
++        return;
++      }
++
+       // Apply weekend filter if selected
+       if (currentTimeRange === "weekend" && details.schedule_details) {
+         const activityDays = details.schedule_details.days;
+@@ -607,6 +628,15 @@ document.addEventListener("DOMContentLoaded", () => {
+       </span>
+     `;
+ 
++    const difficultyInfo = difficultyLevels[details.difficulty];
++    const difficultyHtml = difficultyInfo
++      ? `
++        <span class="activity-tag" style="background-color: ${difficultyInfo.color}; color: ${difficultyInfo.textColor}">
++          ${difficultyInfo.label}
++        </span>
++      `
++      : "";
++
+     // Create capacity indicator
+     const capacityIndicator = `
+       <div class="capacity-container ${capacityStatusClass}">
+@@ -622,6 +652,7 @@ document.addEventListener("DOMContentLoaded", () => {
+ 
+     activityCard.innerHTML = `
+       ${tagHtml}
++      ${difficultyHtml}
+       <h4>${name}</h4>
+       <p>${details.description}</p>
+       <p class="tooltip">
+@@ -718,6 +749,19 @@ document.addEventListener("DOMContentLoaded", () => {
+     });
+   });
+ 
++  // Add event listeners to difficulty filter buttons
++  difficultyFilters.forEach((button) => {
++    button.addEventListener("click", () => {
++      // Update active class
++      difficultyFilters.forEach((btn) => btn.classList.remove("active"));
++      button.classList.add("active");
++
++      // Update current difficulty and display filtered activities
++      currentDifficulty = button.dataset.difficulty;
++      displayFilteredActivities();
++    });
++  });
++
+   // Add event listeners to day filter buttons
+   dayFilters.forEach((button) => {
+     button.addEventListener("click", () => {
+diff --git a/src/static/index.html b/src/static/index.html
+index 284d70b..3da88a6 100644
+--- a/src/static/index.html
++++ b/src/static/index.html
+@@ -66,6 +66,24 @@ <h3>Filter Activities</h3>
+               </div>
+             </div>
+ 
++            <div class="filter-container">
++              <div class="filter-label">Filter by difficulty:</div>
++              <div class="difficulty-filters" id="difficulty-filters">
++                <button class="difficulty-filter active" data-difficulty="">
++                  All
++                </button>
++                <button class="difficulty-filter" data-difficulty="Beginner">
++                  Beginner
++                </button>
++                <button class="difficulty-filter" data-difficulty="Intermediate">
++                  Intermediate
++                </button>
++                <button class="difficulty-filter" data-difficulty="Advanced">
++                  Advanced
++                </button>
++              </div>
++            </div>
++
+             <!-- Day Filter -->
+             <div class="filter-container day-filter-container">
+               <div class="filter-label">Filter by day:</div>
+diff --git a/src/static/styles.css b/src/static/styles.css
+index 9511219..ef4e063 100644
+--- a/src/static/styles.css
++++ b/src/static/styles.css
+@@ -587,6 +587,7 @@ footer {
+ }
+ 
+ .category-filters,
++.difficulty-filters,
+ .day-filters,
+ .time-filters {
+   display: flex;
+@@ -595,6 +596,7 @@ footer {
+ }
+ 
+ .category-filter,
++.difficulty-filter,
+ .day-filter,
+ .time-filter {
+   background-color: var(--background);
+@@ -608,6 +610,7 @@ footer {
+ }
+ 
+ .category-filter.active,
++.difficulty-filter.active,
+ .day-filter.active,
+ .time-filter.active {
+   background-color: var(--primary);
+@@ -616,6 +619,7 @@ footer {
+ }
+ 
+ .category-filter:hover,
++.difficulty-filter:hover,
+ .day-filter:hover,
+ .time-filter:hover {
+   background-color: var(--primary-light);

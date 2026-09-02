@@ -1,0 +1,352 @@
+diff --git a/README.md b/README.md
+index 7796dba..0499ad0 100644
+--- a/README.md
++++ b/README.md
+@@ -50,7 +50,6 @@ LinkLang is a professional translation services platform that connects clients w
+ - Cloudflare Workers (serverless backend)
+ - Cloudflare Pages (frontend hosting)
+ - Cloudflare D1 (SQLite database)
+-- hCaptcha (bot prevention)
+ 
+ ---
+ 
+@@ -74,7 +73,7 @@ linklang-vite/
+ Γöé   Γöé   Γö£ΓöÇΓöÇ pages/             # Route pages
+ Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Home.tsx       # Landing page
+ Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Login.tsx      # Login page
+-Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Register.tsx   # Registration with hCaptcha
++Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Register.tsx       # Registration
+ Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ ForgotPassword.tsx
+ Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Privacy.tsx    # Privacy policy
+ Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ Terms.tsx      # Terms & conditions
+@@ -192,7 +191,6 @@ CANCELLED
+ - **Password Requirements**: 8+ characters, uppercase, lowercase, number, special character
+ - **JWT Authentication**: 7-day token expiration
+ - **Rate Limiting**: Anti-brute-force protection (20 requests/900s on auth endpoints)
+-- **hCaptcha Integration**: Bot prevention on registration
+ - **HTTPS**: All production traffic encrypted
+ - **CORS Protection**: Configurable allowed origins
+ - **Input Validation**: Zod schema validation on all endpoints
+@@ -227,7 +225,7 @@ npx wrangler pages deploy dist
+ ### Backend (Cloudflare Workers)
+ 
+ ```bash
+-cd backend
++# Run from the repository root
+ npx wrangler deploy --env production
+ ```
+ 
+@@ -289,7 +287,7 @@ vars = { CORS_ORIGIN = "https://linklang.co.uk" }
+ ## ≡ƒöä API Endpoints
+ 
+ ### Authentication
+-- `POST /api/register` - User registration with hCaptcha
++- `POST /api/register` - User registration
+ - `POST /api/login` - User login
+ - `GET /api/me` - Get current user info
+ 
+diff --git a/backend/src/email.ts b/backend/src/email.ts
+index f8d9021..9589015 100644
+--- a/backend/src/email.ts
++++ b/backend/src/email.ts
+@@ -40,48 +40,56 @@ async function send(apiKey: string, subject: string, to: string, html: string, r
+ }
+ 
+ export function sendWelcomeEmail(apiKey: string, to: string, name: string) {
++  const safeName = escapeHtml(name);
+   return send(
+     apiKey,
+     "Witaj w LinkLang",
+     to,
+-    `<p>Cze┼¢─ç ${name},</p><p>Twoje konto w LinkLang zosta┼éo utworzone. Mo┼╝esz teraz z┼éo┼╝y─ç zlecenie t┼éumaczenia w swoim panelu klienta.</p>`
++    `<p>Cze┼¢─ç ${safeName},</p><p>Twoje konto w LinkLang zosta┼éo utworzone. Mo┼╝esz teraz z┼éo┼╝y─ç zlecenie t┼éumaczenia w swoim panelu klienta.</p>`
+   );
+ }
+ 
+ export function sendOrderConfirmationEmail(apiKey: string, to: string, name: string, orderId: number) {
++  const safeName = escapeHtml(name);
+   return send(
+     apiKey,
+     `Otrzymali┼¢my Twoje zlecenie #${String(orderId).padStart(4, "0")}`,
+     to,
+-    `<p>Cze┼¢─ç ${name},</p><p>Otrzymali┼¢my Twoje zlecenie #${String(orderId).padStart(4, "0")}. Skontaktujemy si─Ö z wycen─à najszybciej, jak to mo┼╝liwe.</p>`
++    `<p>Cze┼¢─ç ${safeName},</p><p>Otrzymali┼¢my Twoje zlecenie #${String(orderId).padStart(4, "0")}. Skontaktujemy si─Ö z wycen─à najszybciej, jak to mo┼╝liwe.</p>`
+   );
+ }
+ 
+ export function sendQuoteSentEmail(apiKey: string, to: string, name: string, orderId: number, amount: number, currency: string) {
++  const safeName = escapeHtml(name);
++  const safeCurrency = escapeHtml(currency);
+   return send(
+     apiKey,
+     `Wycena dla zlecenia #${String(orderId).padStart(4, "0")}`,
+     to,
+-    `<p>Cze┼¢─ç ${name},</p><p>Przygotowali┼¢my wycen─Ö dla Twojego zlecenia #${String(orderId).padStart(4, "0")}: <strong>${amount.toFixed(2)} ${currency}</strong>.</p><p>Zaloguj si─Ö do panelu klienta, aby j─à zaakceptowa─ç.</p>`
++    `<p>Cze┼¢─ç ${safeName},</p><p>Przygotowali┼¢my wycen─Ö dla Twojego zlecenia #${String(orderId).padStart(4, "0")}: <strong>${amount.toFixed(2)} ${safeCurrency}</strong>.</p><p>Zaloguj si─Ö do panelu klienta, aby j─à zaakceptowa─ç.</p>`
+   );
+ }
+ 
+ export function sendStatusChangeEmail(apiKey: string, to: string, name: string, orderId: number, status: string) {
+   const label = STATUS_LABELS[status] || status;
++  const safeName = escapeHtml(name);
++  const safeLabel = escapeHtml(label);
+   return send(
+     apiKey,
+     `Status zlecenia #${String(orderId).padStart(4, "0")}: ${label}`,
+     to,
+-    `<p>Cze┼¢─ç ${name},</p><p>Status Twojego zlecenia #${String(orderId).padStart(4, "0")} zmieni┼é si─Ö na: <strong>${label}</strong>.</p>`
++    `<p>Cze┼¢─ç ${safeName},</p><p>Status Twojego zlecenia #${String(orderId).padStart(4, "0")} zmieni┼é si─Ö na: <strong>${safeLabel}</strong>.</p>`
+   );
+ }
+ 
+ export function sendPasswordResetEmail(apiKey: string, to: string, name: string, resetLink: string) {
++  const safeName = escapeHtml(name);
++  const safeResetLink = escapeHtml(resetLink);
+   return send(
+     apiKey,
+     "LinkLang - Reset has┼éa",
+     to,
+-    `<p>Cze┼¢─ç ${name},</p><p>Otrzymali┼¢my pro┼¢b─Ö o reset has┼éa do Twojego konta LinkLang.</p><p><a href="${resetLink}" style="background-color: #0f3d2e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">Zmie┼ä has┼éo</a></p><p>Link wygasa za 24 godziny.</p><p>Je┼¢li nie prosi┼ée┼¢ o reset has┼éa, zignoruj t─Ö wiadomo┼¢─ç.</p>`
++    `<p>Cze┼¢─ç ${safeName},</p><p>Otrzymali┼¢my pro┼¢b─Ö o reset has┼éa do Twojego konta LinkLang.</p><p><a href="${safeResetLink}" style="background-color: #0f3d2e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">Zmie┼ä has┼éo</a></p><p>Link wygasa za 24 godziny.</p><p>Je┼¢li nie prosi┼ée┼¢ o reset has┼éa, zignoruj t─Ö wiadomo┼¢─ç.</p>`
+   );
+ }
+ 
+diff --git a/backend/src/index.ts b/backend/src/index.ts
+index 532cba2..7ad8b51 100644
+--- a/backend/src/index.ts
++++ b/backend/src/index.ts
+@@ -49,7 +49,9 @@ app.use("*", async (c, next) => {
+     .map((o) => o.trim())
+     .filter(Boolean);
+ 
+-  const allowedOrigins = Array.from(new Set([...configured, ...defaultAllowedOrigins]));
++  const allowedOrigins = configured.length > 0
++    ? Array.from(new Set(configured.map((origin) => origin.toLowerCase())))
++    : defaultAllowedOrigins;
+ 
+   return cors({
+     origin: (origin) => {
+@@ -64,7 +66,7 @@ app.use("*", async (c, next) => {
+ 
+       if (wildcardMatch) return normalized;
+ 
+-      if (normalized.endsWith(".linklang.pages.dev")) return normalized;
++      if (normalized.endsWith(".linklang.pages.dev") && configured.length === 0) return normalized;
+ 
+       return allowedOrigins[0];
+     },
+@@ -76,7 +78,7 @@ app.use("*", async (c, next) => {
+ 
+ 
+ 
+-app.post("/api/contact", async (c) => {
++app.post("/api/contact", authRateLimit, async (c) => {
+   const schema = z.object({
+     name: z.string().trim().min(1).max(120),
+     email: z.string().trim().email(),
+@@ -128,7 +130,7 @@ async function authRateLimit(c: any, next: any) {
+     return;
+   }
+   const ip = c.req.header("cf-connecting-ip") || "unknown";
+-  const ok = await checkRateLimit(c.env.DB, `auth:${ip}`, 20, 900);
++  const ok = await checkRateLimit(c.env.DB, `rate:${c.req.path}:${ip}`, 20, 900);
+   if (!ok) return c.json({ error: "Too many requests" }, 429);
+   await next();
+ }
+@@ -319,7 +321,7 @@ app.post("/api/quotes", authMiddleware, adminMiddleware, async (c) => {
+   const user = c.get("user");
+   const schema = z.object({
+     orderId: z.number(),
+-    amount: z.number(),
++    amount: z.number().finite().positive().max(1000000),
+     notes: z.string().optional(),
+   });
+   const parsed = schema.safeParse(await c.req.json());
+@@ -448,7 +450,14 @@ app.post("/api/forgot-password", authRateLimit, async (c) => {
+     .setExpirationTime("24h")
+     .sign(getJwtKey(c.env));
+ 
+-  const frontendOrigin = c.req.header("origin") || "https://linklang.co.uk";
++  const requestedOrigin = c.req.header("origin")?.replace(/\/$/, "");
++  const configuredFrontendOrigins = (c.env.CORS_ORIGIN || "https://linklang.co.uk,https://www.linklang.co.uk")
++    .split(",")
++    .map((origin) => origin.trim().replace(/\/$/, ""))
++    .filter(Boolean);
++  const frontendOrigin = requestedOrigin && configuredFrontendOrigins.includes(requestedOrigin)
++    ? requestedOrigin
++    : "https://linklang.co.uk";
+   const resetLink = `${frontendOrigin}/forgot-password?token=${resetToken}`;
+   c.executionCtx.waitUntil(
+     sendPasswordResetEmail(c.env.RESEND_API_KEY, user.email, user.name || "Kliencie", resetLink)
+diff --git a/frontend/src/components/CookieBanner.tsx b/frontend/src/components/CookieBanner.tsx
+index e5111e9..b63c629 100644
+--- a/frontend/src/components/CookieBanner.tsx
++++ b/frontend/src/components/CookieBanner.tsx
+@@ -58,7 +58,13 @@ export default function CookieBanner() {
+       setIsVisible(true);
+     } else {
+       const saved = localStorage.getItem("linklang_cookie_preferences");
+-      if (saved) setPreferences(JSON.parse(saved));
++      if (saved) {
++        try {
++          setPreferences(JSON.parse(saved));
++        } catch {
++          localStorage.removeItem("linklang_cookie_preferences");
++        }
++      }
+     }
+   }, []);
+ 
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index 827810b..112dcb5 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -21,7 +21,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
+     ...options,
+     headers: {
+       "Content-Type": "application/json",
+-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
++      ...(token ? { Authorization: "Bearer " + token } : {}),
+       ...options.headers,
+     },
+   });
+diff --git a/frontend/src/lib/store.ts b/frontend/src/lib/store.ts
+index d9ccd68..c1eb7a8 100644
+--- a/frontend/src/lib/store.ts
++++ b/frontend/src/lib/store.ts
+@@ -15,7 +15,14 @@ interface AuthState {
+ }
+ 
+ export const useAuth = create<AuthState>((set) => ({
+-  user: JSON.parse(localStorage.getItem("linklang_user") || "null"),
++  user: (() => {
++    try {
++      return JSON.parse(localStorage.getItem("linklang_user") || "null");
++    } catch {
++      localStorage.removeItem("linklang_user");
++      return null;
++    }
++  })(),
+   token: localStorage.getItem("linklang_token") || null,
+   setAuth: (user, token) => {
+     localStorage.setItem("linklang_user", JSON.stringify(user));
+diff --git a/frontend/src/pages/Admin.tsx b/frontend/src/pages/Admin.tsx
+index b57a61f..9728792 100644
+--- a/frontend/src/pages/Admin.tsx
++++ b/frontend/src/pages/Admin.tsx
+@@ -23,8 +23,11 @@ export default function Admin() {
+   const [summary, setSummary] = useState<any>(null);
+ 
+   useEffect(() => {
+-    apiFetch("/api/orders").then((data) => { setOrders(data); setFiltered(data); setLoading(false); });
+-    apiFetch("/api/admin/summary").then(setSummary);
++    apiFetch("/api/orders")
++      .then((data) => { setOrders(data); setFiltered(data); })
++      .catch(() => {})
++      .finally(() => setLoading(false));
++    apiFetch("/api/admin/summary").then(setSummary).catch(() => {});
+   }, []);
+ 
+   useEffect(() => {
+diff --git a/frontend/src/pages/ForgotPassword.tsx b/frontend/src/pages/ForgotPassword.tsx
+index f828bdb..2bd0080 100644
+--- a/frontend/src/pages/ForgotPassword.tsx
++++ b/frontend/src/pages/ForgotPassword.tsx
+@@ -102,7 +102,7 @@ export default function ForgotPassword() {
+                 <input
+                   type="password"
+                   required
+-                  minLength={6}
++                  minLength={8}
+                   value={newPassword}
+                   onChange={(e) => setNewPassword(e.target.value)}
+                   className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+@@ -113,7 +113,7 @@ export default function ForgotPassword() {
+                 <input
+                   type="password"
+                   required
+-                  minLength={6}
++                  minLength={8}
+                   value={confirmPassword}
+                   onChange={(e) => setConfirmPassword(e.target.value)}
+                   className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+diff --git a/frontend/src/pages/OrderDetail.tsx b/frontend/src/pages/OrderDetail.tsx
+index b9629aa..a5235d0 100644
+--- a/frontend/src/pages/OrderDetail.tsx
++++ b/frontend/src/pages/OrderDetail.tsx
+@@ -25,24 +25,29 @@ export default function OrderDetail() {
+     setLoading(false);
+   }
+ 
+-  useEffect(() => { load(); }, [id]);
++  useEffect(() => {
++    load().catch(() => setLoading(false));
++  }, [id]);
+ 
+   async function sendMessage(e: React.FormEvent) {
+     e.preventDefault();
+     if (!message.trim()) return;
+     setSending(true);
+-    await apiFetch(`/api/orders/${id}/messages`, {
+-      method: "POST",
+-      body: JSON.stringify({ content: message }),
+-    });
+-    setMessage("");
+-    setSending(false);
+-    load();
++    try {
++      await apiFetch(`/api/orders/${id}/messages`, {
++        method: "POST",
++        body: JSON.stringify({ content: message }),
++      });
++      setMessage("");
++      await load();
++    } finally {
++      setSending(false);
++    }
+   }
+ 
+   async function acceptQuote(quoteId: number) {
+     await apiFetch(`/api/quotes/${quoteId}/accept`, { method: "POST" });
+-    load();
++    await load();
+   }
+ 
+   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-600" /></div>;
+diff --git a/frontend/tsconfig.json b/frontend/tsconfig.json
+index fc84e35..14c6349 100644
+--- a/frontend/tsconfig.json
++++ b/frontend/tsconfig.json
+@@ -15,10 +15,6 @@
+     "noUnusedLocals": true,
+     "noUnusedParameters": true,
+     "noFallthroughCasesInSwitch": true,
+-    "baseUrl": ".",
+-    "paths": {
+-      "@/*": ["src/*"]
+-    }
+   },
+   "include": ["src"]
+ }
+diff --git a/frontend/vite.config.ts b/frontend/vite.config.ts
+index 53cd044..7048c3d 100644
+--- a/frontend/vite.config.ts
++++ b/frontend/vite.config.ts
+@@ -1,12 +1,15 @@
+ import { defineConfig } from "vite";
+ import react from "@vitejs/plugin-react";
+-import path from "path";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const rootDir = path.dirname(fileURLToPath(import.meta.url));
+ 
+ export default defineConfig({
+   plugins: [react()],
+   resolve: {
+     alias: {
+-      "@": path.resolve(__dirname, "./src"),
++      "@": path.resolve(rootDir, "./src"),
+     },
+   },
+   server: {

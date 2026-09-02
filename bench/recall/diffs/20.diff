@@ -1,0 +1,103 @@
+diff --git a/backend/tests/test_pilot_api.py b/backend/tests/test_pilot_api.py
+index 7cc7e72..7e497ec 100644
+--- a/backend/tests/test_pilot_api.py
++++ b/backend/tests/test_pilot_api.py
+@@ -835,6 +835,17 @@ def test_daily_close_session_lifecycle_respects_module_enablement(app, client):
+     assert opened_body["session"]["notes"] == ""
+     assert opened_body["history"][0]["id"] == session_id
+ 
++    reopened = client.post(
++        "/api/pilot/daily-close",
++        headers=csrf_headers(client),
++        json={"locationId": location_id, "businessDate": "2026-08-30"},
++    )
++    assert reopened.status_code == 200
++    assert reopened.get_json()["session"]["id"] == session_id
++    immediate_get = client.get("/api/pilot/daily-close", query_string={"locationId": location_id, "businessDate": "2026-08-30"})
++    assert immediate_get.status_code == 200
++    assert immediate_get.get_json()["session"]["id"] == session_id
++
+     updated = client.patch(
+         f"/api/pilot/daily-close/{session_id}",
+         headers=csrf_headers(client),
+diff --git a/src/pilot/PilotDailyClosePage.tsx b/src/pilot/PilotDailyClosePage.tsx
+index 7e0be2f..55d07cd 100644
+--- a/src/pilot/PilotDailyClosePage.tsx
++++ b/src/pilot/PilotDailyClosePage.tsx
+@@ -25,6 +25,10 @@ function formatSignedNumber(value: number | null | undefined) {
+   return `${prefix}${formatNumber(number)}`;
+ }
+ 
++function currentBusinessDate(timeZone: string | null | undefined) {
++  return new Intl.DateTimeFormat("en-CA", { timeZone: timeZone || "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
++}
++
+ export function PilotDailyClosePage() {
+   const { currentLocation, locations } = usePilotSession();
+   const location = useLocation();
+@@ -33,7 +37,7 @@ export function PilotDailyClosePage() {
+   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(() =>
+     Number.isFinite(queryLocationId) && queryLocationId > 0 ? queryLocationId : currentLocation?.id ?? locations[0]?.id ?? null,
+   );
+-  const [selectedBusinessDate, setSelectedBusinessDate] = useState<string>(() => queryBusinessDate || new Date().toISOString().slice(0, 10));
++  const [selectedBusinessDate, setSelectedBusinessDate] = useState<string>(() => queryBusinessDate || currentBusinessDate(currentLocation?.timezone));
+   const [data, setData] = useState<PilotDailyCloseResponse | null>(null);
+   const [notes, setNotes] = useState("");
+   const [loading, setLoading] = useState(true);
+@@ -75,6 +79,12 @@ export function PilotDailyClosePage() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []);
+ 
++  useEffect(() => {
++    if (!queryBusinessDate && !data && currentLocation?.timezone) {
++      setSelectedBusinessDate(currentBusinessDate(currentLocation.timezone));
++    }
++  }, [currentLocation?.timezone, data, queryBusinessDate]);
++
+   const metrics = useMemo(
+     () => [
+       {
+diff --git a/src/pilot/workspace/pilotWorkspaceUtils.ts b/src/pilot/workspace/pilotWorkspaceUtils.ts
+index e985ca9..457bba9 100644
+--- a/src/pilot/workspace/pilotWorkspaceUtils.ts
++++ b/src/pilot/workspace/pilotWorkspaceUtils.ts
+@@ -46,6 +46,10 @@ export function formatDate(value: string | null | undefined) {
+   if (!value) {
+     return "ΓÇö";
+   }
++  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
++  if (dateOnly) {
++    return dateFormatter.format(new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])));
++  }
+   return dateFormatter.format(new Date(value));
+ }
+ 
+diff --git a/tests/frontend/PilotDailyClosePage.test.tsx b/tests/frontend/PilotDailyClosePage.test.tsx
+index c378a27..14c0cc7 100644
+--- a/tests/frontend/PilotDailyClosePage.test.tsx
++++ b/tests/frontend/PilotDailyClosePage.test.tsx
+@@ -136,6 +136,24 @@ describe("PilotDailyClosePage", () => {
+     await waitFor(() => expect(pilotApiMocks.openPilotDailyClose).toHaveBeenCalledWith({ locationId: 7, businessDate: "2026-08-30" }));
+   });
+ 
++  it("renders date-only business dates without a timezone shift", async () => {
++    pilotApiMocks.fetchPilotDailyClose.mockResolvedValue({
++      session: null,
++      snapshot: { healthStatus: "Open", inventoryValue: 0, sales: {}, usage: { totals: {}, ingredientUsage: [] }, variance: { quantity: null, percent: null, value: 0 }, square: {}, readyToFinalize: true },
++      usage: { totals: {}, ingredientUsage: [] },
++      exceptions: [],
++      history: [{ id: 9, organizationId: 42, locationId: 7, businessDate: "2026-09-01", status: "DRAFT", notes: "", currentSnapshot: null }],
++      location: { id: 7, name: "Line Kitchen", timezone: "America/Toronto" },
++      businessDate: "2026-09-01",
++      square: {},
++    });
++
++    render(<MemoryRouter><PilotDailyClosePage /></MemoryRouter>);
++
++    expect(await screen.findByText("Business date Sep 1")).toBeVisible();
++    expect(screen.getByText("Sep 1")).toBeVisible();
++  });
++
+   it("syncs Square sales for the selected business date and refreshes the draft", async () => {
+     pilotApiMocks.fetchPilotDailyClose.mockResolvedValue({
+       session: {

@@ -1,0 +1,429 @@
+diff --git a/README.md b/README.md
+index f9e87db..86b3730 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,27 @@
+ # ManualSite
++
++JSON πâçπâ╝πé┐πéÆΣ╜┐πüúπüª manual πéÆµñ£τ┤óπâ╗τ«íτÉåπüºπüìπéïπâåπé╣πâêτö¿πâ¥πâ╝πé┐πâ½πüºπüÖπÇé
++
++## Φ╡╖σïòµû╣µ│ò
++
++Σ╗╗µäÅπü«Θ¥ÖτÜäπâòπéíπéñπâ½πé╡πâ╝πâÉπâ╝πüºΦ╡╖σïòπüºπüìπü╛πüÖπÇéΣ╛ï:
++
++```bash
++cd /home/runner/work/ManualSite/ManualSite
++python3 -m http.server 8000
++```
++
++πâûπâ⌐πéªπé╢πüº `http://localhost:8000` πéÆΘûïπüäπüªπüÅπüáπüòπüäπÇé
++
++## Σ╜┐πüäµû╣
++
++- Σ╕èΘâ¿πü«µñ£τ┤óπâ£πââπé»πé╣πüº manual πéÆπé¡πâ╝πâ»πâ╝πâëµñ£τ┤óπüºπüìπü╛πüÖ
++- πâòπé⌐πâ╝πâáπüïπéë manual πéÆµû░ΦªÅΦ┐╜σèáπüºπüìπü╛πüÖ
++- Σ╕ÇΦªºπü«πÇîτ╖¿Θ¢åπÇìπüºµùóσ¡ÿ manual πéÆπâòπé⌐πâ╝πâáπü½Φ¬¡πü┐Φ╛╝πü┐πÇüµ¢┤µû░πüºπüìπü╛πüÖ
++- Σ╕ÇΦªºπü«πÇîσëèΘÖñπÇìπüº manual πéÆσëèΘÖñπüºπüìπü╛πüÖ
++- Σ╕ÇΦªºπü«πÇîΘûïπüÅπÇìπüºΦ¿¡σ«Üµ╕êπü┐ SharePoint URL πéÆµû░πüùπüäπé┐πâûπüºΘûïπüæπü╛πüÖ
++
++## πâçπâ╝πé┐πü½πüñπüäπüª
++
++- σê¥µ£ƒπâçπâ╝πé┐πü» `manuals.json` πü½Σ┐¥σ¡ÿπüùπüªπüäπü╛πüÖ
++- Φ┐╜σèá/τ╖¿Θ¢å/σëèΘÖñπü«τ╡Éµ₧£πü»πâûπâ⌐πéªπé╢ `localStorage` πü½Σ┐¥σ¡ÿπüòπéîπü╛πüÖ∩╝êπâåπé╣πâêτö¿πü«µô¼Σ╝╝µ░╕τ╢Üσîû∩╝ë
+diff --git a/app.js b/app.js
+new file mode 100644
+index 0000000..0d76daf
+--- /dev/null
++++ b/app.js
+@@ -0,0 +1,207 @@
++const STORAGE_KEY = "manualSite.manuals";
++
++const state = {
++  manuals: [],
++  keyword: "",
++};
++
++const elements = {
++  searchInput: document.getElementById("searchInput"),
++  manualList: document.getElementById("manualList"),
++  manualForm: document.getElementById("manualForm"),
++  manualId: document.getElementById("manualId"),
++  titleInput: document.getElementById("titleInput"),
++  categoryInput: document.getElementById("categoryInput"),
++  descriptionInput: document.getElementById("descriptionInput"),
++  urlInput: document.getElementById("urlInput"),
++  formTitle: document.getElementById("formTitle"),
++  saveButton: document.getElementById("saveButton"),
++  cancelEditButton: document.getElementById("cancelEditButton"),
++};
++
++function saveToStorage() {
++  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.manuals));
++}
++
++function normalizeHttpUrl(value) {
++  try {
++    const url = new URL(value);
++    if (url.protocol === "http:" || url.protocol === "https:") {
++      return url.toString();
++    }
++  } catch (_) {
++    return null;
++  }
++  return null;
++}
++
++function getNextId() {
++  return state.manuals.reduce((maxId, manual) => Math.max(maxId, manual.id), 0) + 1;
++}
++
++function resetForm() {
++  elements.manualForm.reset();
++  elements.manualId.value = "";
++  elements.formTitle.textContent = "manual µû░ΦªÅΦ┐╜σèá";
++  elements.saveButton.textContent = "Φ┐╜σèá";
++}
++
++function startEdit(id) {
++  const manual = state.manuals.find((item) => item.id === id);
++  if (!manual) return;
++
++  elements.manualId.value = String(manual.id);
++  elements.titleInput.value = manual.title;
++  elements.categoryInput.value = manual.category;
++  elements.descriptionInput.value = manual.description;
++  elements.urlInput.value = manual.sharepointUrl;
++  elements.formTitle.textContent = "manual τ╖¿Θ¢å";
++  elements.saveButton.textContent = "µ¢┤µû░";
++}
++
++function deleteManual(id) {
++  state.manuals = state.manuals.filter((item) => item.id !== id);
++  saveToStorage();
++  renderManuals();
++}
++
++function createManualItem(manual) {
++  const li = document.createElement("li");
++  li.className = "manual-item";
++
++  const title = document.createElement("h3");
++  title.textContent = manual.title;
++  li.appendChild(title);
++
++  const meta = document.createElement("p");
++  meta.className = "manual-meta";
++  meta.textContent = `πé½πâåπé┤πâ¬: ${manual.category}`;
++  li.appendChild(meta);
++
++  const desc = document.createElement("p");
++  desc.textContent = manual.description;
++  li.appendChild(desc);
++
++  const actions = document.createElement("div");
++  actions.className = "item-actions";
++
++  const openButton = document.createElement("button");
++  openButton.type = "button";
++  openButton.textContent = "ΘûïπüÅ";
++  openButton.addEventListener("click", () => {
++    const safeUrl = normalizeHttpUrl(manual.sharepointUrl);
++    if (!safeUrl) return;
++    window.open(safeUrl, "_blank", "noopener,noreferrer");
++  });
++
++  const editButton = document.createElement("button");
++  editButton.type = "button";
++  editButton.textContent = "τ╖¿Θ¢å";
++  editButton.className = "secondary";
++  editButton.addEventListener("click", () => startEdit(manual.id));
++
++  const deleteButton = document.createElement("button");
++  deleteButton.type = "button";
++  deleteButton.textContent = "σëèΘÖñ";
++  deleteButton.className = "secondary";
++  deleteButton.addEventListener("click", () => deleteManual(manual.id));
++
++  actions.append(openButton, editButton, deleteButton);
++  li.appendChild(actions);
++
++  return li;
++}
++
++function renderManuals() {
++  const keyword = state.keyword.trim().toLowerCase();
++  const filtered = state.manuals.filter((manual) =>
++    [manual.title, manual.category, manual.description]
++      .join(" ")
++      .toLowerCase()
++      .includes(keyword)
++  );
++
++  elements.manualList.innerHTML = "";
++
++  if (filtered.length === 0) {
++    const empty = document.createElement("li");
++    empty.className = "empty";
++    empty.textContent = "Φ⌐▓σ╜ôπüÖπéï manual πü»πüéπéèπü╛πü¢πéôπÇé";
++    elements.manualList.appendChild(empty);
++    return;
++  }
++
++  filtered.forEach((manual) => {
++    elements.manualList.appendChild(createManualItem(manual));
++  });
++}
++
++function submitForm(event) {
++  event.preventDefault();
++
++  const id = Number(elements.manualId.value);
++  const payload = {
++    title: elements.titleInput.value.trim(),
++    category: elements.categoryInput.value.trim(),
++    description: elements.descriptionInput.value.trim(),
++    sharepointUrl: elements.urlInput.value.trim(),
++  };
++
++  if (!payload.title || !payload.category || !payload.description || !payload.sharepointUrl) {
++    return;
++  }
++
++  const safeUrl = normalizeHttpUrl(payload.sharepointUrl);
++  if (!safeUrl) {
++    return;
++  }
++  payload.sharepointUrl = safeUrl;
++
++  if (id) {
++    state.manuals = state.manuals.map((manual) =>
++      manual.id === id ? { ...manual, ...payload } : manual
++    );
++  } else {
++    state.manuals.push({
++      id: getNextId(),
++      ...payload,
++    });
++  }
++
++  saveToStorage();
++  resetForm();
++  renderManuals();
++}
++
++async function loadManuals() {
++  const fromStorage = localStorage.getItem(STORAGE_KEY);
++  if (fromStorage) {
++    try {
++      state.manuals = JSON.parse(fromStorage);
++      renderManuals();
++      return;
++    } catch (_) {
++      localStorage.removeItem(STORAGE_KEY);
++    }
++  }
++
++  const response = await fetch("manuals.json");
++  state.manuals = await response.json();
++  saveToStorage();
++  renderManuals();
++}
++
++function bindEvents() {
++  elements.searchInput.addEventListener("input", (event) => {
++    state.keyword = event.target.value;
++    renderManuals();
++  });
++  elements.manualForm.addEventListener("submit", submitForm);
++  elements.cancelEditButton.addEventListener("click", resetForm);
++}
++
++bindEvents();
++loadManuals().catch(() => {
++  state.manuals = [];
++  renderManuals();
++});
+diff --git a/index.html b/index.html
+new file mode 100644
+index 0000000..99a3792
+--- /dev/null
++++ b/index.html
+@@ -0,0 +1,53 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>Manual Portal</title>
++  <link rel="stylesheet" href="styles.css" />
++</head>
++<body>
++  <main class="container">
++    <h1>Manual Portal</h1>
++
++    <section class="panel">
++      <label for="searchInput">µñ£τ┤ó</label>
++      <input id="searchInput" type="text" placeholder="πé┐πéñπâêπâ½πâ╗πé½πâåπé┤πâ¬πâ╗Φ¬¼µÿÄπüºµñ£τ┤ó" />
++    </section>
++
++    <section class="panel">
++      <h2 id="formTitle">manual µû░ΦªÅΦ┐╜σèá</h2>
++      <form id="manualForm">
++        <input id="manualId" type="hidden" />
++        <div class="field">
++          <label for="titleInput">πé┐πéñπâêπâ½</label>
++          <input id="titleInput" type="text" required />
++        </div>
++        <div class="field">
++          <label for="categoryInput">πé½πâåπé┤πâ¬</label>
++          <input id="categoryInput" type="text" required />
++        </div>
++        <div class="field">
++          <label for="descriptionInput">Φ¬¼µÿÄ</label>
++          <textarea id="descriptionInput" rows="3" required></textarea>
++        </div>
++        <div class="field">
++          <label for="urlInput">SharePoint URL</label>
++          <input id="urlInput" type="url" required />
++        </div>
++        <div class="actions">
++          <button type="submit" id="saveButton">Φ┐╜σèá</button>
++          <button type="button" id="cancelEditButton" class="secondary">τ╖¿Θ¢åπéÆπé¡πâúπâ│πé╗πâ½</button>
++        </div>
++      </form>
++    </section>
++
++    <section class="panel">
++      <h2>manual Σ╕ÇΦªº</h2>
++      <ul id="manualList" class="manual-list"></ul>
++    </section>
++  </main>
++
++  <script src="app.js"></script>
++</body>
++</html>
+diff --git a/manuals.json b/manuals.json
+new file mode 100644
+index 0000000..100d0af
+--- /dev/null
++++ b/manuals.json
+@@ -0,0 +1,23 @@
++[
++  {
++    "id": 1,
++    "title": "PCπé╗πââπâêπéóπââπâùµëïΘáå",
++    "category": "IT",
++    "description": "µû░σàÑτñ╛σôíσÉæπüæ PC πé╗πââπâêπéóπââπâùπü«σê¥µ£ƒµëïΘáåπüºπüÖπÇé",
++    "sharepointUrl": "https://contoso.sharepoint.com/sites/manuals/pc-setup"
++  },
++  {
++    "id": 2,
++    "title": "σïñµÇáσàÑσè¢πé¼πéñπâë",
++    "category": "τ╖ÅσïÖ",
++    "description": "σïñµÇáπé╖πé╣πâåπâáπü«µ£êµ¼íσàÑσè¢µû╣µ│òπéÆΦ¬¼µÿÄπüùπü╛πüÖπÇé",
++    "sharepointUrl": "https://contoso.sharepoint.com/sites/manuals/attendance"
++  },
++  {
++    "id": 3,
++    "title": "τ╡îΦ▓╗τ▓╛τ«ùπâ₧πâïπâÑπéóπâ½",
++    "category": "τ╡îτÉå",
++    "description": "τ╡îΦ▓╗τö│Φ½ïπüïπéëµë┐Φ¬ìπü╛πüºπü«σƒ║µ£¼πâòπâ¡πâ╝πüºπüÖπÇé",
++    "sharepointUrl": "https://contoso.sharepoint.com/sites/manuals/expense"
++  }
++]
+diff --git a/styles.css b/styles.css
+new file mode 100644
+index 0000000..db294f1
+--- /dev/null
++++ b/styles.css
+@@ -0,0 +1,90 @@
++* {
++  box-sizing: border-box;
++}
++
++body {
++  margin: 0;
++  font-family: sans-serif;
++  background: #f5f7fb;
++  color: #1d2433;
++}
++
++.container {
++  max-width: 960px;
++  margin: 0 auto;
++  padding: 24px;
++}
++
++.panel {
++  background: #fff;
++  border: 1px solid #dde3ed;
++  border-radius: 8px;
++  padding: 16px;
++  margin-bottom: 16px;
++}
++
++.field {
++  margin-bottom: 12px;
++}
++
++label {
++  display: block;
++  margin-bottom: 6px;
++  font-weight: 600;
++}
++
++input,
++textarea {
++  width: 100%;
++  padding: 8px;
++  border: 1px solid #c6cfdb;
++  border-radius: 6px;
++}
++
++.actions {
++  display: flex;
++  gap: 8px;
++}
++
++button {
++  border: none;
++  border-radius: 6px;
++  padding: 8px 12px;
++  cursor: pointer;
++  background: #1f6feb;
++  color: #fff;
++}
++
++button.secondary {
++  background: #6b7280;
++}
++
++.manual-list {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: grid;
++  gap: 10px;
++}
++
++.manual-item {
++  border: 1px solid #dde3ed;
++  border-radius: 8px;
++  padding: 12px;
++}
++
++.manual-meta {
++  font-size: 0.9rem;
++  color: #526079;
++}
++
++.item-actions {
++  display: flex;
++  gap: 8px;
++  margin-top: 10px;
++  flex-wrap: wrap;
++}
++
++.empty {
++  color: #526079;
++}

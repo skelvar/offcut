@@ -1,0 +1,176 @@
+diff --git a/.github/workflows/update-pr-review-chart.yml b/.github/workflows/update-pr-review-chart.yml
+index 0accd2c..09f1ea9 100644
+--- a/.github/workflows/update-pr-review-chart.yml
++++ b/.github/workflows/update-pr-review-chart.yml
+@@ -33,19 +33,25 @@ jobs:
+         with:
+           node-version: "20"
+ 
++      - name: Require organization analytics token
++        env:
++          PROFILE_ANALYTICS_TOKEN: ${{ secrets.PROFILE_ANALYTICS_TOKEN }}
++        run: |
++          if [ -z "$PROFILE_ANALYTICS_TOKEN" ]; then
++            echo "::error::Configure PROFILE_ANALYTICS_TOKEN with repo/read:org scopes and organization SSO authorization."
++            exit 1
++          fi
++
+       - name: Generate PR and review chart
+         env:
+-          # Optional: use a PAT in PROFILE_ANALYTICS_TOKEN for broader org/private analytics
+-          # (typically repo + read:org scopes and org SSO authorization when required).
++          # Required: PAT with repo + read:org scopes and SSO authorization for each organization.
+           PROFILE_ANALYTICS_TOKEN: ${{ secrets.PROFILE_ANALYTICS_TOKEN }}
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           GITHUB_LOGIN: azizullahaziz
+         run: node scripts/generate-pr-review-chart.mjs
+ 
+       - name: Generate GitHub stats SVGs
+         env:
+           PROFILE_ANALYTICS_TOKEN: ${{ secrets.PROFILE_ANALYTICS_TOKEN }}
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           GITHUB_LOGIN: azizullahaziz
+         run: node scripts/generate-github-stats.mjs
+ 
+diff --git a/README.md b/README.md
+index aa550b5..dd50770 100644
+--- a/README.md
++++ b/README.md
+@@ -257,7 +257,7 @@ This chart compares **pull requests opened** with **pull-request reviews complet
+ ## ≡ƒôê GitHub Overview
+ 
+ > Analytics assets are generated automatically by GitHub Actions and committed to this repository.
+-> Scope note: charts cover repositories discoverable with the workflow token (owned, contributed, organization-accessible, PR/review-linked). Private org repositories require token permission and organization SSO authorization.
++> Scope note: charts cover repositories discoverable with `PROFILE_ANALYTICS_TOKEN` (owned, contributed, organization-accessible, PR/review-linked). The token must have `repo` and `read:org` scopes, and must be SSO-authorized for each organization; otherwise organization activity cannot be retrieved.
+ 
+ <p align="center">
+   <img
+diff --git a/scripts/generate-pr-review-chart.mjs b/scripts/generate-pr-review-chart.mjs
+index 82758ee..85abfa9 100644
+--- a/scripts/generate-pr-review-chart.mjs
++++ b/scripts/generate-pr-review-chart.mjs
+@@ -84,6 +84,57 @@ async function fetchPullRequestsAndReviews(discovery) {
+     inaccessibleRepositories: new Set(),
+   };
+ 
++  try {
++    const activityDates = { pullRequests: [], reviews: [] };
++    const fetchContributions = async (connectionName, monthKey) => {
++      let after = null;
++      while (true) {
++        const data = await client.graphql(
++          `query($login: String!, $from: DateTime!, $to: DateTime!, $after: String) {
++            user(login: $login) {
++              contributionsCollection(from: $from, to: $to) {
++                ${connectionName}(first: 100, after: $after) {
++                  pageInfo { hasNextPage endCursor }
++                  nodes { occurredAt }
++                }
++              }
++            }
++          }`,
++          {
++            login: canonicalLogin,
++            from: rangeStart.toISOString(),
++            to: rangeEndExclusive.toISOString(),
++            after,
++          }
++        );
++        const connection = data.user?.contributionsCollection?.[connectionName];
++        if (!connection || !Array.isArray(connection.nodes)) {
++          throw new Error(`Malformed ${connectionName} response`);
++        }
++        for (const contribution of connection.nodes) {
++          activityDates[monthKey].push(contribution.occurredAt);
++        }
++        if (!connection.pageInfo?.hasNextPage) break;
++        after = connection.pageInfo.endCursor;
++        await sleep(150);
++      }
++    };
++
++    await fetchContributions("pullRequestContributions", "pullRequests");
++    await fetchContributions("pullRequestReviewContributions", "reviews");
++    for (const date of activityDates.pullRequests) {
++      if (incrementMonth(date, "pullRequests")) diagnostics.authoredPullRequests += 1;
++    }
++    for (const date of activityDates.reviews) {
++      if (incrementMonth(date, "reviews")) diagnostics.submittedReviews += 1;
++    }
++    diagnostics.activitySource = "GraphQL contributions";
++    return diagnostics;
++  } catch (error) {
++    diagnostics.activitySource = "repository search fallback";
++    diagnostics.skippedRepositories.push(`GraphQL contribution activity failed (${error.message})`);
++  }
++
+   for (const repository of discovery.repositories) {
+     const { owner, name, nameWithOwner } = repository;
+ 
+diff --git a/scripts/github-analytics-common.mjs b/scripts/github-analytics-common.mjs
+index 05d952b..6f01326 100644
+--- a/scripts/github-analytics-common.mjs
++++ b/scripts/github-analytics-common.mjs
+@@ -5,9 +5,9 @@ export function getConfiguredLogin() {
+ }
+ 
+ export function getGitHubToken() {
+-  const token = process.env.PROFILE_ANALYTICS_TOKEN || process.env.GITHUB_TOKEN;
++  const token = process.env.PROFILE_ANALYTICS_TOKEN;
+   if (!token) {
+-    throw new Error("PROFILE_ANALYTICS_TOKEN or GITHUB_TOKEN is required.");
++    throw new Error("PROFILE_ANALYTICS_TOKEN is required for organization-wide analytics.");
+   }
+   return token;
+ }
+@@ -303,6 +303,42 @@ async function discoverSearchRepositories({ request, repoMap, diagnostics, sourc
+   }
+ }
+ 
++async function discoverContributionRepositories({ graphql, login, repoMap, diagnostics }) {
++  const to = new Date();
++  const from = new Date(Date.UTC(to.getUTCFullYear() - 1, to.getUTCMonth(), to.getUTCDate()));
++  let cursor = null;
++
++  for (const contributionType of ["pullRequestContributions", "pullRequestReviewContributions"]) {
++    cursor = null;
++    while (true) {
++      const data = await graphql(
++        `query($login: String!, $from: DateTime!, $to: DateTime!, $after: String) {
++          user(login: $login) {
++            contributionsCollection(from: $from, to: $to) {
++              ${contributionType}(first: 100, after: $after) {
++                pageInfo { hasNextPage endCursor }
++                nodes {
++                  repository { name nameWithOwner isPrivate isFork owner { login } }
++                }
++              }
++            }
++          }
++        }`,
++        { login, from: from.toISOString(), to: to.toISOString(), after: cursor }
++      );
++      const connection = data.user?.contributionsCollection?.[contributionType];
++      if (!connection || !Array.isArray(connection.nodes)) {
++        diagnostics.warnings.push(`activity repositories: malformed ${contributionType} response`);
++        break;
++      }
++      for (const node of connection.nodes) addRepo(repoMap, node?.repository, "activity");
++      if (!connection.pageInfo?.hasNextPage) break;
++      cursor = connection.pageInfo.endCursor;
++      await sleep(150);
++    }
++  }
++}
++
+ export async function discoverRepositories({ client, login }) {
+   const diagnostics = {
+     warnings: [],
+@@ -329,6 +365,7 @@ export async function discoverRepositories({ client, login }) {
+     { key: "owned", run: () => discoverOwnedRepositories({ graphql: client.graphql, login: canonicalLogin, repoMap, diagnostics }) },
+     { key: "contributed", run: () => discoverContributedRepositories({ graphql: client.graphql, login: canonicalLogin, repoMap, diagnostics }) },
+     { key: "organization", run: () => discoverOrganizationRepositories({ graphql: client.graphql, login: canonicalLogin, repoMap, diagnostics }) },
++    { key: "activity", run: () => discoverContributionRepositories({ graphql: client.graphql, login: canonicalLogin, repoMap, diagnostics }) },
+     {
+       key: "authored-pr-search",
+       run: () =>

@@ -1,0 +1,664 @@
+diff --git a/app/src/components/itinerary/ItineraryDayDetail.tsx b/app/src/components/itinerary/ItineraryDayDetail.tsx
+index 4ab33a1..7a90a67 100644
+--- a/app/src/components/itinerary/ItineraryDayDetail.tsx
++++ b/app/src/components/itinerary/ItineraryDayDetail.tsx
+@@ -1,18 +1,110 @@
++import { useState } from "react";
++
+ import { Card, Heading, Stack, Button } from "../ui";
+ import { ItineraryDayAdditionalDetails } from
+     "./ItineraryDayAdditionalDetails";
++import { ItineraryItemModal } from
++    "./ItineraryItemModal";
+ 
+-import type { ItineraryDay } from "../../types";
++import type {
++    ItineraryDay,
++    ItineraryItem,
++} from "../../types";
++import type { ItineraryItemFields } from
++    "./ItineraryItemForm";
++import { TripService } from "../../services/TripService";
+ 
+ type ItineraryDayDetailProps = {
+     day: ItineraryDay;
++    tripId: string;
+     onClose: () => void;
++    onDayChanged: () => void;
+ };
+ 
+ export function ItineraryDayDetail({
+     day,
++    tripId,
+     onClose,
++    onDayChanged,
+ }: ItineraryDayDetailProps) {
++    const [modalOpen, setModalOpen] =
++        useState(false);
++
++    const [editingItem, setEditingItem] =
++        useState<ItineraryItem | undefined>();
++
++    function handleSubmit(
++        fields: ItineraryItemFields
++    ) {
++        if (editingItem) {
++            TripService.updateItineraryItem(
++                tripId,
++                day.date,
++                editingItem.id,
++                fields
++            );
++        } else {
++            TripService.addItineraryItem(
++                tripId,
++                day.date,
++                {
++                    ...fields,
++                    date: day.date,
++                }
++            );
++        }
++
++        setModalOpen(false);
++        setEditingItem(undefined);
++        onDayChanged();
++    }
++
++    function handleEdit(item: ItineraryItem) {
++        setEditingItem(item);
++        setModalOpen(true);
++    }
++
++    function handleDelete(itemId: string) {
++        if (!window.confirm("Delete this activity?")) {
++            return;
++        }
++
++        TripService.deleteItineraryItem(
++            tripId,
++            day.date,
++            itemId
++        );
++
++        onDayChanged();
++    }
++
++    function handleMove(
++        itemIndex: number,
++        direction: number
++    ) {
++        const newIndex = itemIndex + direction;
++
++        if (
++            newIndex < 0 ||
++            newIndex >= day.items.length
++        ) {
++            return;
++        }
++
++        const orderedItems = [...day.items];
++        const [item] = orderedItems.splice(itemIndex, 1);
++
++        orderedItems.splice(newIndex, 0, item);
++
++        TripService.reorderItineraryItems(
++            tripId,
++            day.date,
++            orderedItems.map(item => item.id)
++        );
++
++        onDayChanged();
++    }
++
+     return (
+         <Card>
+             <Stack gap="md">
+@@ -24,12 +116,22 @@ export function ItineraryDayDetail({
+                         : ""}
+                 </Heading>
+ 
++                <Button
++                    type="button"
++                    onClick={() => {
++                        setEditingItem(undefined);
++                        setModalOpen(true);
++                    }}
++                >
++                    Add Activity
++                </Button>
++
+                 <p>
+                     {day.items.length} activities
+                 </p>
+ 
+                 <Stack gap="md">
+-                    {day.items.map((item) => (
++                    {day.items.map((item, index) => (
+                         <div key={item.id}>
+ 
+                             <strong>
+@@ -92,6 +194,49 @@ export function ItineraryDayDetail({
+                                 </div>
+                             )}
+ 
++                            <Stack gap="sm">
++                                <Button
++                                    type="button"
++                                    onClick={() =>
++                                        handleEdit(item)
++                                    }
++                                >
++                                    Edit
++                                </Button>
++
++                                <Button
++                                    type="button"
++                                    onClick={() =>
++                                        handleDelete(item.id)
++                                    }
++                                >
++                                    Delete
++                                </Button>
++
++                                <Button
++                                    type="button"
++                                    disabled={index === 0}
++                                    onClick={() =>
++                                        handleMove(index, -1)
++                                    }
++                                >
++                                    Move up
++                                </Button>
++
++                                <Button
++                                    type="button"
++                                    disabled={
++                                        index ===
++                                        day.items.length - 1
++                                    }
++                                    onClick={() =>
++                                        handleMove(index, 1)
++                                    }
++                                >
++                                    Move down
++                                </Button>
++                            </Stack>
++
+                         </div>
+                     ))}
+                 </Stack>
+@@ -107,6 +252,16 @@ export function ItineraryDayDetail({
+                     Back to Itinerary
+                 </Button>
+ 
++                <ItineraryItemModal
++                    open={modalOpen}
++                    item={editingItem}
++                    onClose={() => {
++                        setModalOpen(false);
++                        setEditingItem(undefined);
++                    }}
++                    onSubmit={handleSubmit}
++                />
++
+             </Stack>
+         </Card>
+     );
+diff --git a/app/src/components/itinerary/ItineraryItemForm.tsx b/app/src/components/itinerary/ItineraryItemForm.tsx
+new file mode 100644
+index 0000000..ae1d1e5
+--- /dev/null
++++ b/app/src/components/itinerary/ItineraryItemForm.tsx
+@@ -0,0 +1,155 @@
++import { Button, Stack } from "../ui";
++import "../trips/NewTripModal.css";
++
++import { useState } from "react";
++
++import type { ItineraryItem } from "../../types";
++
++export type ItineraryItemFields = Omit<ItineraryItem, "id" | "date">;
++
++type ItineraryItemFormProps = {
++  item?: ItineraryItem;
++  onSubmit: (item: ItineraryItemFields) => void;
++};
++
++export function ItineraryItemForm({ item, onSubmit }: ItineraryItemFormProps) {
++  const [time, setTime] = useState(item?.time ?? "");
++  const [title, setTitle] = useState(item?.title ?? "");
++  const [description, setDescription] = useState(item?.description ?? "");
++  const [location, setLocation] = useState(item?.location ?? "");
++  const [goal, setGoal] = useState(item?.goal ?? "");
++  const [priority, setPriority] = useState(item?.priority ?? "");
++  const [parking, setParking] = useState(item?.parking ?? "");
++  const [smartChip, setSmartChip] = useState(item?.smartChip ?? "");
++  const [mapLink, setMapLink] = useState(item?.mapLink ?? "");
++  const [price, setPrice] = useState(item?.price ?? "");
++  const [note, setNote] = useState(item?.note ?? "");
++
++  function validate() {
++    if (!title.trim()) {
++      alert("Title is required.");
++
++      return false;
++    }
++
++    return true;
++  }
++
++  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++
++    if (!validate()) {
++      return;
++    }
++
++    onSubmit({
++      time,
++      title,
++      description,
++      location,
++      goal,
++      priority,
++      parking,
++      smartChip,
++      mapLink,
++      price,
++      note,
++    });
++  }
++
++  return (
++    <form className="tc-trip-form" onSubmit={handleSubmit}>
++      <Stack gap="md">
++        <label>
++          Time
++          <input
++            type="text"
++            value={time}
++            onChange={(event) => setTime(event.target.value)}
++          />
++        </label>
++        <label>
++          Title
++          <input
++            type="text"
++            value={title}
++            onChange={(event) => setTitle(event.target.value)}
++          />
++        </label>
++        <label>
++          Description
++          <input
++            type="text"
++            value={description}
++            onChange={(event) => setDescription(event.target.value)}
++          />
++        </label>
++        <label>
++          Location
++          <input
++            type="text"
++            value={location}
++            onChange={(event) => setLocation(event.target.value)}
++          />
++        </label>
++        <label>
++          Goal
++          <input
++            type="text"
++            value={goal}
++            onChange={(event) => setGoal(event.target.value)}
++          />
++        </label>
++        <label>
++          Priority
++          <input
++            type="text"
++            value={priority}
++            onChange={(event) => setPriority(event.target.value)}
++          />
++        </label>
++        <label>
++          Parking
++          <input
++            type="text"
++            value={parking}
++            onChange={(event) => setParking(event.target.value)}
++          />
++        </label>
++        <label>
++          Smart Chip
++          <input
++            type="text"
++            value={smartChip}
++            onChange={(event) => setSmartChip(event.target.value)}
++          />
++        </label>
++        <label>
++          Map Link
++          <input
++            type="text"
++            value={mapLink}
++            onChange={(event) => setMapLink(event.target.value)}
++          />
++        </label>
++        <label>
++          Price
++          <input
++            type="text"
++            value={price}
++            onChange={(event) => setPrice(event.target.value)}
++          />
++        </label>
++        <label>
++          Note
++          <input
++            type="text"
++            value={note}
++            onChange={(event) => setNote(event.target.value)}
++          />
++        </label>
++        <Button type="submit">Save Activity</Button>
++      </Stack>
++    </form>
++  );
++}
+diff --git a/app/src/components/itinerary/ItineraryItemModal.tsx b/app/src/components/itinerary/ItineraryItemModal.tsx
+new file mode 100644
+index 0000000..5f67326
+--- /dev/null
++++ b/app/src/components/itinerary/ItineraryItemModal.tsx
+@@ -0,0 +1,31 @@
++import { Modal } from "../ui";
++import {
++  ItineraryItemForm,
++  type ItineraryItemFields,
++} from "./ItineraryItemForm";
++
++import type { ItineraryItem } from "../../types";
++
++type ItineraryItemModalProps = {
++  open: boolean;
++  item?: ItineraryItem;
++  onClose: () => void;
++  onSubmit: (item: ItineraryItemFields) => void;
++};
++
++export function ItineraryItemModal({
++  open,
++  item,
++  onClose,
++  onSubmit,
++}: ItineraryItemModalProps) {
++  return (
++    <Modal
++      open={open}
++      onClose={onClose}
++      title={item ? "Edit Activity" : "Add Activity"}
++    >
++      <ItineraryItemForm item={item} onSubmit={onSubmit} />
++    </Modal>
++  );
++}
+diff --git a/app/src/components/itinerary/index.ts b/app/src/components/itinerary/index.ts
+index 019c707..a272d42 100644
+--- a/app/src/components/itinerary/index.ts
++++ b/app/src/components/itinerary/index.ts
+@@ -2,3 +2,4 @@ export * from "./ItineraryCard";
+ export * from "./ItineraryDayDetail";
+ export * from "./ItineraryDayAdditionalDetails";
+ export * from "./ItineraryDayCard";
++export * from "./ItineraryItemModal";
+diff --git a/app/src/components/sections/ItinerarySection.tsx b/app/src/components/sections/ItinerarySection.tsx
+index fe5de3f..aa79642 100644
+--- a/app/src/components/sections/ItinerarySection.tsx
++++ b/app/src/components/sections/ItinerarySection.tsx
+@@ -30,9 +30,24 @@ export function ItinerarySection() {
+ 
+                 <ItineraryDayDetail
+                     day={selectedDay}
++                    tripId={activeTrip?.id ?? ""}
+                     onClose={() =>
+                         setSelectedDay(null)
+                     }
++                    onDayChanged={() => {
++                        const updatedDay =
++                            TripService.getActive()
++                                ?.itinerary
++                                ?.find(
++                                    day =>
++                                        day.id ===
++                                        selectedDay.id
++                                );
++
++                        setSelectedDay(
++                            updatedDay ?? null
++                        );
++                    }}
+                 />
+             </>
+         );
+diff --git a/app/src/services/TripService.ts b/app/src/services/TripService.ts
+index c02a2be..18f1c3c 100644
+--- a/app/src/services/TripService.ts
++++ b/app/src/services/TripService.ts
+@@ -2,6 +2,7 @@ import { trips } from "../data/trips";
+ 
+ import type {
+     ItineraryDay,
++    ItineraryItem,
+     Trip,
+ } from "../types";
+ 
+@@ -88,6 +89,142 @@ export const TripService = {
+         persistTrips();
+     },
+ 
++    addItineraryItem(
++        tripId: string,
++        date: string,
++        item: Omit<ItineraryItem, "id">
++    ) {
++        const trip = trips.find(
++            item => item.id === tripId
++        );
++
++        if (!trip) {
++            return;
++        }
++
++        const itinerary = trip.itinerary ?? [];
++        let day = itinerary.find(
++            item => item.date === date
++        );
++
++        if (!day) {
++            day = {
++                id: date,
++                date,
++                title: "",
++                items: [],
++            };
++
++            itinerary.push(day);
++            trip.itinerary = itinerary;
++        }
++
++        day.items.push({
++            ...item,
++            id: `${date}-item-${crypto.randomUUID()}`,
++            date,
++        });
++
++        persistTrips();
++    },
++
++    updateItineraryItem(
++        tripId: string,
++        date: string,
++        itemId: string,
++        updates: Partial<ItineraryItem>
++    ) {
++        const trip = trips.find(
++            item => item.id === tripId
++        );
++
++        const day = trip?.itinerary?.find(
++            item => item.date === date
++        );
++
++        const item = day?.items.find(
++            item => item.id === itemId
++        );
++
++        if (!item) {
++            return;
++        }
++
++        Object.assign(item, updates);
++
++        persistTrips();
++    },
++
++    deleteItineraryItem(
++        tripId: string,
++        date: string,
++        itemId: string
++    ) {
++        const trip = trips.find(
++            item => item.id === tripId
++        );
++
++        const day = trip?.itinerary?.find(
++            item => item.date === date
++        );
++
++        if (!day) {
++            return;
++        }
++
++        const index = day.items.findIndex(
++            item => item.id === itemId
++        );
++
++        if (index === -1) {
++            return;
++        }
++
++        day.items.splice(index, 1);
++
++        persistTrips();
++    },
++
++    reorderItineraryItems(
++        tripId: string,
++        date: string,
++        orderedItemIds: string[]
++    ) {
++        const trip = trips.find(
++            item => item.id === tripId
++        );
++
++        const day = trip?.itinerary?.find(
++            item => item.date === date
++        );
++
++        if (
++            !day ||
++            orderedItemIds.length !== day.items.length ||
++            new Set(orderedItemIds).size !== orderedItemIds.length
++        ) {
++            return;
++        }
++
++        const orderedItems: ItineraryItem[] = [];
++
++        for (const itemId of orderedItemIds) {
++            const item = day.items.find(
++                item => item.id === itemId
++            );
++
++            if (!item) {
++                return;
++            }
++
++            orderedItems.push(item);
++        }
++
++        day.items = orderedItems;
++
++        persistTrips();
++    },
++
+     delete(id: string) {
+         const index = trips.findIndex(
+             trip => trip.id === id
+diff --git a/docs/roadmap/Roadmap.md b/docs/roadmap/Roadmap.md
+index 8863bc9..bfa29d4 100644
+--- a/docs/roadmap/Roadmap.md
++++ b/docs/roadmap/Roadmap.md
+@@ -42,7 +42,7 @@ Trip creation, validation, editing, deletion, Active Trip management and persist
+ 
+ Import existing RoadBook/XLSX planning data, map it into the domain model, persist it inside Trips and expose it through the Active Trip itinerary.
+ 
+-Completed through **6.0.12**.
++Completed through **6.0.14**.
+ 
+ Next:
+ - 7.x ΓÇö BlizzCon / real travel experience
+@@ -122,16 +122,17 @@ Additional travel functionality, including:
+ - 6.0.10 ΓÇö Active Trip itinerary integration
+ - 6.0.11 ΓÇö Itinerary day cards and day-detail interaction
+ - 6.0.12 ΓÇö Recommended venues and day statistics import
++- 6.0.14 ΓÇö In-app itinerary activity editing
+ 
+-All work through **6.0.12** has been implemented and functionally tested.
++All work through **6.0.14** has been implemented and functionally tested.
+ 
+ ---
+ 
+ ## 5. Current State
+ 
+ **Current Milestone:** 6.x ΓÇö Data Import & Itinerary  
+-**Current completed Feature:** 6.0.12  
+-**Status:** DONE through 6.0.12
++**Current completed Feature:** 6.0.14
++**Status:** DONE through 6.0.14
+ 
+ The Trip system currently supports:
+ 
+@@ -160,6 +161,7 @@ The RoadBook/itinerary system currently supports:
+ - display of day activities
+ - recommended venues and flexible day statistics
+ - collapsed day-detail sections in the preview and saved itinerary
++- in-app activity creation, editing, deletion and reordering
+ 
+ Verified test data currently imports as:
+ 
+diff --git a/docs/roadmap/SprintLog.md b/docs/roadmap/SprintLog.md
+index a1ea7f7..e83ed11 100644
+--- a/docs/roadmap/SprintLog.md
++++ b/docs/roadmap/SprintLog.md
+@@ -236,13 +236,17 @@ Imported recommended venues and flexible day statistics from RoadBook worksheets
+ **Status:** DONE
+ Stopped recommended venues from being duplicated into the main timeline and preserved Google Maps links from timeline, venue and parking smart-chip cells.
+ 
++### 6.0.14
++**Status:** DONE
++Added in-app itinerary activity creation, editing, deletion and reordering with immediate localStorage persistence.
++
+ ---
+ 
+ # Current Position
+ 
+ **Current Milestone:** 6.x ΓÇö Data Import & Itinerary  
+-**Completed through:** 6.0.13
+-**Status:** DONE through 6.0.13
++**Completed through:** 6.0.14
++**Status:** DONE through 6.0.14
+ 
+ Next:
+ 

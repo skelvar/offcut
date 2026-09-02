@@ -1,0 +1,1122 @@
+diff --git a/qna-noor-auto/prisma/migrations/20260902073130_add_org_ui_defaults/migration.sql b/qna-noor-auto/prisma/migrations/20260902073130_add_org_ui_defaults/migration.sql
+new file mode 100644
+index 0000000..1b3e233
+--- /dev/null
++++ b/qna-noor-auto/prisma/migrations/20260902073130_add_org_ui_defaults/migration.sql
+@@ -0,0 +1,22 @@
++ALTER TABLE "Organization"
++  ADD COLUMN "uiDefaults" TEXT,
++  ADD COLUMN "navDefault" TEXT,
++  ADD COLUMN "dashDefault" TEXT;
++
++ALTER TABLE "User"
++  ALTER COLUMN "uiPalette" DROP NOT NULL,
++  ALTER COLUMN "uiPalette" DROP DEFAULT,
++  ALTER COLUMN "uiAccent" DROP NOT NULL,
++  ALTER COLUMN "uiAccent" DROP DEFAULT,
++  ALTER COLUMN "uiScale" DROP NOT NULL,
++  ALTER COLUMN "uiScale" DROP DEFAULT,
++  ALTER COLUMN "uiRadius" DROP NOT NULL,
++  ALTER COLUMN "uiRadius" DROP DEFAULT,
++  ALTER COLUMN "uiFont" DROP NOT NULL,
++  ALTER COLUMN "uiFont" DROP DEFAULT;
++
++UPDATE "User" SET "uiPalette" = NULL WHERE "uiPalette" = 'default';
++UPDATE "User" SET "uiAccent" = NULL WHERE "uiAccent" = 'default';
++UPDATE "User" SET "uiScale" = NULL WHERE "uiScale" = 'default';
++UPDATE "User" SET "uiRadius" = NULL WHERE "uiRadius" = 'default';
++UPDATE "User" SET "uiFont" = NULL WHERE "uiFont" = 'default';
+diff --git a/qna-noor-auto/prisma/schema.prisma b/qna-noor-auto/prisma/schema.prisma
+index baf45d4..9b1121e 100644
+--- a/qna-noor-auto/prisma/schema.prisma
++++ b/qna-noor-auto/prisma/schema.prisma
+@@ -1064,6 +1064,9 @@ model Organization {
+   aiAssistantApiKeyEncrypted  String?
+   aiAssistantName             String  @default("Assistant")
+   aiAssistantVoice            String?
++  uiDefaults                  String?
++  navDefault                  String?
++  dashDefault                 String?
+ 
+   // --- Billing (Stripe subscription) ---------------------------------------
+   // Contact email used for the Stripe customer / receipts.
+@@ -1174,11 +1177,11 @@ model User {
+   // SUPERADMIN | OWNER | ADMIN | STAFF
+   role         String  @default("STAFF")
+   isActive     Boolean @default(true)
+-  uiPalette    String  @default("default")
+-  uiAccent     String  @default("default")
+-  uiScale      String  @default("default")
+-  uiRadius     String  @default("default")
+-  uiFont       String  @default("default")
++  uiPalette    String?
++  uiAccent     String?
++  uiScale      String?
++  uiRadius     String?
++  uiFont       String?
+   dashLayout   String?
+   navLayout    String?
+ 
+diff --git a/qna-noor-auto/src/app/DashboardGrid.tsx b/qna-noor-auto/src/app/DashboardGrid.tsx
+index 7ec707a..9f01e7e 100644
+--- a/qna-noor-auto/src/app/DashboardGrid.tsx
++++ b/qna-noor-auto/src/app/DashboardGrid.tsx
+@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
+ import { useState } from "react";
+ import { Button, LinkButton } from "@/components/ui";
+ import {
+-  DEFAULT_DASHBOARD_LAYOUT,
+   type DashboardBlockId,
+   type DashboardLayout,
+ } from "@/lib/dashboard";
+@@ -19,10 +18,12 @@ type DashboardBlock = {
+ 
+ export function DashboardGrid({
+   layout,
++  resetLayout,
+   blocks,
+   editing,
+ }: {
+   layout: DashboardLayout;
++  resetLayout: DashboardLayout;
+   blocks: DashboardBlock[];
+   editing: boolean;
+ }) {
+@@ -67,8 +68,8 @@ export function DashboardGrid({
+   const reset = async () => {
+     await resetDashboardLayout();
+     setCurrent({
+-      columns: DEFAULT_DASHBOARD_LAYOUT.columns,
+-      blocks: DEFAULT_DASHBOARD_LAYOUT.blocks.map((block) => ({ ...block })),
++      columns: resetLayout.columns,
++      blocks: resetLayout.blocks.map((block) => ({ ...block })),
+     });
+   };
+   const gridClass =
+diff --git a/qna-noor-auto/src/app/DashboardPersonal.tsx b/qna-noor-auto/src/app/DashboardPersonal.tsx
+index 5bf0ffd..b404a2d 100644
+--- a/qna-noor-auto/src/app/DashboardPersonal.tsx
++++ b/qna-noor-auto/src/app/DashboardPersonal.tsx
+@@ -7,7 +7,7 @@ import { enabledFeatureSet, repairOrderNouns } from "@/lib/features";
+ import { orgTimeZone } from "@/lib/orgTimezone";
+ import {
+   DASHBOARD_BLOCKS,
+-  normalizeDashboardLayout,
++  resolveDashboardLayout,
+   type DashboardBlockId,
+ } from "@/lib/dashboard";
+ import { DashboardGrid } from "./DashboardGrid";
+@@ -132,15 +132,26 @@ export async function DashboardPersonal({
+   searchParams: SearchParams;
+ }) {
+   const orgId = user.orgId as string;
+-  const [timezone, layoutRecord] = await Promise.all([
++  const [timezone, layoutRecord, orgRecord] = await Promise.all([
+     orgTimeZone(orgId),
+     db.user.findUnique({
+       where: { id: user.id },
+       select: { dashLayout: true },
+     }),
++    db.organization.findUnique({
++      where: { id: orgId },
++      select: { dashDefault: true },
++    }),
+   ]);
+   const features = enabledFeatureSet(user);
+-  const layout = normalizeDashboardLayout(layoutRecord?.dashLayout);
++  const layout = resolveDashboardLayout(
++    layoutRecord?.dashLayout,
++    orgRecord?.dashDefault,
++  );
++  const accountDefaultLayout = resolveDashboardLayout(
++    null,
++    orgRecord?.dashDefault,
++  );
+   const params = await searchParams;
+   const editing =
+     params.customize === "1" ||
+@@ -200,6 +211,7 @@ export async function DashboardPersonal({
+       />
+       <DashboardGrid
+         layout={layout}
++        resetLayout={accountDefaultLayout}
+         blocks={blockDescriptors}
+         editing={editing}
+       />
+diff --git a/qna-noor-auto/src/app/dashboard-actions.ts b/qna-noor-auto/src/app/dashboard-actions.ts
+index 16a68f8..8a178e2 100644
+--- a/qna-noor-auto/src/app/dashboard-actions.ts
++++ b/qna-noor-auto/src/app/dashboard-actions.ts
+@@ -10,9 +10,6 @@ import {
+ 
+ export async function saveDashboardLayout(fd: FormData) {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Dashboard customization is only available for personal accounts");
+-  }
+   const layout = normalizeDashboardLayout(fd.get("layout"));
+   await db.user.update({
+     where: { id: user.id },
+@@ -23,9 +20,6 @@ export async function saveDashboardLayout(fd: FormData) {
+ 
+ export async function resetDashboardLayout() {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Dashboard customization is only available for personal accounts");
+-  }
+   await db.user.update({
+     where: { id: user.id },
+     data: { dashLayout: null },
+diff --git a/qna-noor-auto/src/app/layout.tsx b/qna-noor-auto/src/app/layout.tsx
+index 069de1a..26f66d3 100644
+--- a/qna-noor-auto/src/app/layout.tsx
++++ b/qna-noor-auto/src/app/layout.tsx
+@@ -14,7 +14,7 @@ import { db } from "@/lib/db";
+ import {
+   DEFAULT_APPEARANCE,
+   appearanceCss,
+-  normalizeAppearance,
++  resolveAppearance,
+ } from "@/lib/appearance";
+ 
+ export const metadata: Metadata = {
+@@ -48,9 +48,8 @@ export default async function RootLayout({
+     themeCookie === "light" || themeCookie === "dark" ? themeCookie : "system";
+   const orgLabel = user.orgName ?? APP_NAME;
+   const enabledFeatures = Array.from(enabledFeatureSet(user));
+-  const isPersonal = user.accountType === "PERSONAL";
+-  const appearanceRecord = isPersonal
+-    ? await db.user.findUnique({
++  const [appearanceRecord, organization] = await Promise.all([
++    db.user.findUnique({
+         where: { id: user.id },
+         select: {
+           uiPalette: true,
+@@ -60,18 +59,17 @@ export default async function RootLayout({
+           uiFont: true,
+           navLayout: true,
+         },
+-      })
+-    : null;
+-  const appearancePrefs = normalizeAppearance(
+-    appearanceRecord
+-      ? {
+-          palette: appearanceRecord.uiPalette,
+-          accent: appearanceRecord.uiAccent,
+-          scale: appearanceRecord.uiScale,
+-          radius: appearanceRecord.uiRadius,
+-          font: appearanceRecord.uiFont,
+-        }
+-      : DEFAULT_APPEARANCE,
++      }),
++    user.orgId
++      ? db.organization.findUnique({
++          where: { id: user.orgId },
++          select: { uiDefaults: true, navDefault: true },
++        })
++      : Promise.resolve(null),
++  ]);
++  const appearancePrefs = resolveAppearance(
++    appearanceRecord,
++    organization?.uiDefaults ?? DEFAULT_APPEARANCE,
+   );
+   const appearanceStyles = appearanceCss(appearancePrefs);
+ 
+@@ -79,7 +77,7 @@ export default async function RootLayout({
+     <html
+       lang="en"
+       className={theme === "dark" ? "dark h-full" : "h-full"}
+-      data-vx-theme={isPersonal ? "custom" : undefined}
++      data-vx-theme="custom"
+       suppressHydrationWarning={theme === "system"}
+     >
+       <head>
+@@ -111,7 +109,8 @@ export default async function RootLayout({
+             aiAssistantEnabled={
+               user.accountType === "PERSONAL" && user.aiAssistantEnabled
+             }
+-            navLayout={isPersonal ? appearanceRecord?.navLayout : null}
++            navLayout={appearanceRecord?.navLayout}
++            navDefault={organization?.navDefault}
+           />
+           <main className="flex-1 min-w-0 overflow-auto pt-14 lg:pt-0">
+             {isDemoOrg(user.orgId) && <DemoBanner />}
+diff --git a/qna-noor-auto/src/app/settings/AppearanceEditor.tsx b/qna-noor-auto/src/app/settings/AppearanceEditor.tsx
+index 46f28ad..b1930c8 100644
+--- a/qna-noor-auto/src/app/settings/AppearanceEditor.tsx
++++ b/qna-noor-auto/src/app/settings/AppearanceEditor.tsx
+@@ -89,10 +89,17 @@ function SegmentButton({
+ 
+ export function AppearanceEditor({
+   initialPrefs,
++  resetPrefs = DEFAULT_APPEARANCE,
+ }: {
+   initialPrefs: AppearancePrefs;
++  resetPrefs?: AppearancePrefs;
+ }) {
+   const [prefs, setPrefs] = useState<AppearancePrefs>(initialPrefs);
++  const [customHex, setCustomHex] = useState(
++    /^#[0-9a-f]{6}$/i.test(initialPrefs.accent)
++      ? initialPrefs.accent
++      : "#18181b",
++  );
+ 
+   useEffect(() => {
+     const styleId = "vx-appearance-preview";
+@@ -117,6 +124,14 @@ export function AppearanceEditor({
+     setPrefs((current) => ({ ...current, [key]: value }));
+   }
+ 
++  function setCustomAccent(value: string) {
++    const normalized = value.toLowerCase();
++    setCustomHex(normalized);
++    if (/^#[0-9a-f]{6}$/.test(normalized)) {
++      setPreference("accent", normalized);
++    }
++  }
++
+   return (
+     <div className="space-y-6 p-6">
+       <p className="text-sm text-zinc-600 dark:text-zinc-400">
+@@ -165,6 +180,27 @@ export function AppearanceEditor({
+                 onSelect={() => setPreference("accent", accent.key)}
+               />
+             ))}
++            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
++              <input
++                type="color"
++                value={
++                  /^#[0-9a-f]{6}$/i.test(customHex) ? customHex : "#18181b"
++                }
++                onChange={(event) => setCustomAccent(event.target.value)}
++                aria-label="Choose custom accent color"
++                className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0"
++              />
++              <span className="flex-1">Custom</span>
++              <input
++                type="text"
++                value={customHex}
++                onChange={(event) => setCustomAccent(event.target.value)}
++                aria-label="Custom accent hex"
++                placeholder="#rrggbb"
++                maxLength={7}
++                className="w-24 rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
++              />
++            </label>
+           </div>
+         </fieldset>
+ 
+@@ -229,10 +265,17 @@ export function AppearanceEditor({
+           <button
+             type="submit"
+             formAction={resetAppearance}
+-            onClick={() => setPrefs({ ...DEFAULT_APPEARANCE })}
++            onClick={() => {
++              setPrefs({ ...resetPrefs });
++              setCustomHex(
++                /^#[0-9a-f]{6}$/i.test(resetPrefs.accent)
++                  ? resetPrefs.accent
++                  : "#18181b",
++              );
++            }}
+             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+           >
+-            Reset to defaults
++            Reset to account default
+           </button>
+           <span className="text-xs text-zinc-500">Preview updates instantly.</span>
+         </div>
+diff --git a/qna-noor-auto/src/app/settings/NavLayoutEditor.tsx b/qna-noor-auto/src/app/settings/NavLayoutEditor.tsx
+index 4118e8f..efcb61e 100644
+--- a/qna-noor-auto/src/app/settings/NavLayoutEditor.tsx
++++ b/qna-noor-auto/src/app/settings/NavLayoutEditor.tsx
+@@ -3,7 +3,6 @@
+ import { useState } from "react";
+ import { Button } from "@/components/ui";
+ import {
+-  NAV_ITEMS,
+   type NavCatalogItem,
+   type NavLayout,
+ } from "@/lib/navLayout";
+@@ -11,9 +10,11 @@ import { resetNavLayout, saveNavLayout } from "./nav-actions";
+ 
+ export function NavLayoutEditor({
+   initialLayout,
++  resetLayout,
+   items,
+ }: {
+   initialLayout: NavLayout;
++  resetLayout: NavLayout;
+   items: NavCatalogItem[];
+ }) {
+   const [current, setCurrent] = useState(initialLayout);
+@@ -61,9 +62,7 @@ export function NavLayoutEditor({
+ 
+   const reset = async () => {
+     await resetNavLayout();
+-    setCurrent({
+-      items: NAV_ITEMS.map((item) => ({ href: item.href, visible: true })),
+-    });
++    setCurrent(resetLayout);
+   };
+ 
+   return (
+@@ -79,9 +78,56 @@ export function NavLayoutEditor({
+             className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5"
+           >
+             <div className="flex items-center gap-2">
+-              <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+-                {item.label}
+-              </span>
++              <div className="min-w-48">
++                <label className="sr-only" htmlFor={`nav-label-${item.href}`}>
++                  Name for {item.label}
++                </label>
++                <input
++                  id={`nav-label-${item.href}`}
++                  type="text"
++                  value={entry.label ?? item.label}
++                  placeholder={item.label}
++                  maxLength={24}
++                  onChange={(event) => {
++                    const label = event.target.value;
++                    setCurrent({
++                      items: current.items.map((currentEntry) =>
++                        currentEntry.href === entry.href
++                          ? {
++                              ...currentEntry,
++                              ...(label
++                                ? { label }
++                                : { label: undefined }),
++                            }
++                          : currentEntry,
++                      ),
++                    });
++                  }}
++                  className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
++                />
++                <span className="text-xs text-zinc-500">
++                  Default: {item.label}
++                </span>
++              </div>
++              {entry.label && (
++                <Button
++                  type="button"
++                  variant="ghost"
++                  size="sm"
++                  className="dark:text-zinc-300 dark:hover:bg-zinc-800"
++                  onClick={() =>
++                    setCurrent({
++                      items: current.items.map((currentEntry) =>
++                        currentEntry.href === entry.href
++                          ? { ...currentEntry, label: undefined }
++                          : currentEntry,
++                      ),
++                    })
++                  }
++                >
++                  Use default name
++                </Button>
++              )}
+               {!entry.visible && (
+                 <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                   Hidden
+@@ -145,7 +191,7 @@ export function NavLayoutEditor({
+             size="sm"
+             className="dark:text-zinc-300 dark:hover:bg-zinc-800"
+           >
+-            Reset to default
++            Reset to account default
+           </Button>
+         </form>
+       </div>
+diff --git a/qna-noor-auto/src/app/settings/appearance-actions.ts b/qna-noor-auto/src/app/settings/appearance-actions.ts
+index 3b5c43e..cd1a984 100644
+--- a/qna-noor-auto/src/app/settings/appearance-actions.ts
++++ b/qna-noor-auto/src/app/settings/appearance-actions.ts
+@@ -3,14 +3,10 @@
+ import { revalidatePath } from "next/cache";
+ import { db } from "@/lib/db";
+ import { requireUser } from "@/lib/session";
+-import { DEFAULT_APPEARANCE, normalizeAppearance } from "@/lib/appearance";
++import { normalizeAppearance } from "@/lib/appearance";
+ 
+ export async function saveAppearance(fd: FormData) {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Appearance customization is only available for personal accounts");
+-  }
+-
+   const prefs = normalizeAppearance({
+     palette: fd.get("palette"),
+     accent: fd.get("accent"),
+@@ -33,17 +29,14 @@ export async function saveAppearance(fd: FormData) {
+ 
+ export async function resetAppearance() {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Appearance customization is only available for personal accounts");
+-  }
+   await db.user.update({
+     where: { id: user.id },
+     data: {
+-      uiPalette: DEFAULT_APPEARANCE.palette,
+-      uiAccent: DEFAULT_APPEARANCE.accent,
+-      uiScale: DEFAULT_APPEARANCE.scale,
+-      uiRadius: DEFAULT_APPEARANCE.radius,
+-      uiFont: DEFAULT_APPEARANCE.font,
++      uiPalette: null,
++      uiAccent: null,
++      uiScale: null,
++      uiRadius: null,
++      uiFont: null,
+     },
+   });
+   revalidatePath("/", "layout");
+diff --git a/qna-noor-auto/src/app/settings/default-actions.ts b/qna-noor-auto/src/app/settings/default-actions.ts
+new file mode 100644
+index 0000000..567332a
+--- /dev/null
++++ b/qna-noor-auto/src/app/settings/default-actions.ts
+@@ -0,0 +1,145 @@
++"use server";
++
++import { revalidatePath } from "next/cache";
++import {
++  canManageUsers,
++  requireUser,
++  type CurrentUser,
++} from "@/lib/session";
++import { canViewFinancials } from "@/lib/permissions";
++import { enabledFeatureSet } from "@/lib/features";
++import { db } from "@/lib/db";
++import { resolveAppearance } from "@/lib/appearance";
++import {
++  resolveNavLayout,
++  serializeNavLayout,
++} from "@/lib/navLayout";
++import {
++  resolveDashboardLayout,
++  serializeDashboardLayout,
++} from "@/lib/dashboard";
++
++async function requireOrgSettingsUser(): Promise<
++  CurrentUser & { orgId: string }
++> {
++  const user = await requireUser();
++  if (user.role !== "OWNER" && user.role !== "ADMIN") {
++    throw new Error("You don't have permission to do that");
++  }
++  if (!user.orgId) throw new Error("Organization required");
++  return { ...user, orgId: user.orgId };
++}
++
++async function revalidateDefaults() {
++  revalidatePath("/settings");
++  revalidatePath("/", "layout");
++}
++
++export async function publishAppearanceDefault() {
++  const user = await requireOrgSettingsUser();
++  const [record, organization] = await Promise.all([
++    db.user.findUnique({
++      where: { id: user.id },
++      select: {
++        uiPalette: true,
++        uiAccent: true,
++        uiScale: true,
++        uiRadius: true,
++        uiFont: true,
++      },
++    }),
++    db.organization.findUnique({
++      where: { id: user.orgId },
++      select: { uiDefaults: true },
++    }),
++  ]);
++  const appearance = resolveAppearance(record, organization?.uiDefaults);
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { uiDefaults: JSON.stringify(appearance) },
++  });
++  await revalidateDefaults();
++}
++
++export async function clearAppearanceDefault() {
++  const user = await requireOrgSettingsUser();
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { uiDefaults: null },
++  });
++  await revalidateDefaults();
++}
++
++export async function publishNavDefault() {
++  const user = await requireOrgSettingsUser();
++  const [record, organization] = await Promise.all([
++    db.user.findUnique({
++      where: { id: user.id },
++      select: { navLayout: true },
++    }),
++    db.organization.findUnique({
++      where: { id: user.orgId },
++      select: { navDefault: true },
++    }),
++  ]);
++  const enabledFeatures = enabledFeatureSet(user);
++  const options = {
++    accountType: user.accountType,
++    enabledFeatures,
++    canViewFinancials: canViewFinancials(user.role),
++    canManageUsers: canManageUsers(user.role),
++    aiAssistantEnabled:
++      user.accountType === "PERSONAL" && user.aiAssistantEnabled,
++  };
++  const layout = resolveNavLayout(
++    record?.navLayout,
++    organization?.navDefault,
++    options,
++  );
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { navDefault: serializeNavLayout(layout) },
++  });
++  await revalidateDefaults();
++}
++
++export async function clearNavDefault() {
++  const user = await requireOrgSettingsUser();
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { navDefault: null },
++  });
++  await revalidateDefaults();
++}
++
++export async function publishDashboardDefault() {
++  const user = await requireOrgSettingsUser();
++  const [record, organization] = await Promise.all([
++    db.user.findUnique({
++      where: { id: user.id },
++      select: { dashLayout: true },
++    }),
++    db.organization.findUnique({
++      where: { id: user.orgId },
++      select: { dashDefault: true },
++    }),
++  ]);
++  const layout = resolveDashboardLayout(
++    record?.dashLayout,
++    organization?.dashDefault,
++  );
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { dashDefault: serializeDashboardLayout(layout) },
++  });
++  await revalidateDefaults();
++}
++
++export async function clearDashboardDefault() {
++  const user = await requireOrgSettingsUser();
++  await db.organization.update({
++    where: { id: user.orgId },
++    data: { dashDefault: null },
++  });
++  await revalidateDefaults();
++}
+diff --git a/qna-noor-auto/src/app/settings/nav-actions.ts b/qna-noor-auto/src/app/settings/nav-actions.ts
+index 23cf3b0..a65984f 100644
+--- a/qna-noor-auto/src/app/settings/nav-actions.ts
++++ b/qna-noor-auto/src/app/settings/nav-actions.ts
+@@ -3,6 +3,7 @@
+ import { revalidatePath } from "next/cache";
+ import { db } from "@/lib/db";
+ import { requireUser } from "@/lib/session";
++import { enabledFeatureSet } from "@/lib/features";
+ import {
+   normalizeNavLayout,
+   serializeNavLayout,
+@@ -10,10 +11,11 @@ import {
+ 
+ export async function saveNavLayout(fd: FormData) {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Sidebar customization is only available for personal accounts");
+-  }
+-  const layout = normalizeNavLayout(fd.get("layout"));
++  const features = enabledFeatureSet(user);
++  const layout = normalizeNavLayout(fd.get("layout"), {
++    accountType: user.accountType,
++    enabledFeatures: features,
++  });
+   await db.user.update({
+     where: { id: user.id },
+     data: { navLayout: serializeNavLayout(layout) },
+@@ -23,9 +25,6 @@ export async function saveNavLayout(fd: FormData) {
+ 
+ export async function resetNavLayout() {
+   const user = await requireUser();
+-  if (user.accountType !== "PERSONAL") {
+-    throw new Error("Sidebar customization is only available for personal accounts");
+-  }
+   await db.user.update({
+     where: { id: user.id },
+     data: { navLayout: null },
+diff --git a/qna-noor-auto/src/app/settings/page.tsx b/qna-noor-auto/src/app/settings/page.tsx
+index 67f8ed3..d6058f5 100644
+--- a/qna-noor-auto/src/app/settings/page.tsx
++++ b/qna-noor-auto/src/app/settings/page.tsx
+@@ -40,13 +40,21 @@ import { VoicePicker } from "./VoicePicker";
+ import { TimezonePicker } from "./TimezonePicker";
+ import { ThemeToggle, type ThemeMode } from "@/components/ThemeToggle";
+ import { AppearanceEditor } from "./AppearanceEditor";
+-import { normalizeAppearance } from "@/lib/appearance";
++import { resolveAppearance } from "@/lib/appearance";
+ import { NavLayoutEditor } from "./NavLayoutEditor";
+ import {
+   getEligibleNavItems,
+   navItemLabel,
+-  normalizeNavLayout,
++  resolveNavLayout,
+ } from "@/lib/navLayout";
++import {
++  clearAppearanceDefault,
++  clearDashboardDefault,
++  clearNavDefault,
++  publishAppearanceDefault,
++  publishDashboardDefault,
++  publishNavDefault,
++} from "./default-actions";
+ 
+ export const dynamic = "force-dynamic";
+ 
+@@ -74,8 +82,9 @@ export default async function SettingsPage({
+   }>;
+ }) {
+   const orgId = await requireOrgId();
+-  await requireSettingsAccess();
+   const user = await getCurrentUser();
++  if (!user) redirect("/login");
++  await requireSettingsAccess();
+   const themeCookie = (await cookies()).get("vx-theme")?.value;
+   const theme: ThemeMode =
+     themeCookie === "light" || themeCookie === "dark" ? themeCookie : "system";
+@@ -83,31 +92,20 @@ export default async function SettingsPage({
+   if (!org) redirect("/");
+   const accountType = org.accountType ?? "AUTO_SHOP";
+   const isPersonal = accountType === "PERSONAL";
+-  const appearanceRecord =
+-    isPersonal && user
+-      ? await db.user.findUnique({
+-          where: { id: user.id },
+-          select: {
+-            uiPalette: true,
+-            uiAccent: true,
+-            uiScale: true,
+-            uiRadius: true,
+-            uiFont: true,
+-            navLayout: true,
+-          },
+-        })
+-      : null;
+-  const appearancePrefs = normalizeAppearance(
+-    appearanceRecord
+-      ? {
+-          palette: appearanceRecord.uiPalette,
+-          accent: appearanceRecord.uiAccent,
+-          scale: appearanceRecord.uiScale,
+-          radius: appearanceRecord.uiRadius,
+-          font: appearanceRecord.uiFont,
+-        }
+-      : undefined,
+-  );
++  const appearanceRecord = await db.user.findUnique({
++    where: { id: user.id },
++    select: {
++      uiPalette: true,
++      uiAccent: true,
++      uiScale: true,
++      uiRadius: true,
++      uiFont: true,
++      navLayout: true,
++      dashLayout: true,
++    },
++  });
++  const appearancePrefs = resolveAppearance(appearanceRecord, org.uiDefaults);
++  const accountDefaultAppearance = resolveAppearance(null, org.uiDefaults);
+   const canManageOrgSettings = Boolean(
+     user && (user.role === "OWNER" || user.role === "ADMIN"),
+   );
+@@ -126,7 +124,20 @@ export default async function SettingsPage({
+       enabledFeatures: featureSet,
+     }),
+   }));
+-  const navLayout = normalizeNavLayout(appearanceRecord?.navLayout);
++  const navOptions = {
++    accountType,
++    enabledFeatures: featureSet,
++  };
++  const navLayout = resolveNavLayout(
++    appearanceRecord?.navLayout,
++    org.navDefault,
++    navOptions,
++  );
++  const accountDefaultNavLayout = resolveNavLayout(
++    null,
++    org.navDefault,
++    navOptions,
++  );
+   const showAutoSettings = featureSet.has("repair_orders");
+   const showTaxRate = featureSet.has("invoices");
+   const showAppointmentReminders = featureSet.has("schedule");
+@@ -266,15 +277,70 @@ export default async function SettingsPage({
+           </p>
+           <ThemeToggle initialTheme={theme} />
+         </div>
+-        {isPersonal && <AppearanceEditor initialPrefs={appearancePrefs} />}
++        <AppearanceEditor
++          initialPrefs={appearancePrefs}
++          resetPrefs={accountDefaultAppearance}
++        />
+       </Card>
+-      {isPersonal && (
++      <Card className="mb-6 max-w-2xl">
++        <CardHeader title="Sidebar" />
++        <NavLayoutEditor
++          initialLayout={navLayout}
++          resetLayout={accountDefaultNavLayout}
++          items={eligibleNavItems}
++        />
++      </Card>
++      {canManageOrgSettings && (
+         <Card className="mb-6 max-w-2xl">
+-          <CardHeader title="Sidebar" />
+-          <NavLayoutEditor
+-            initialLayout={navLayout}
+-            items={eligibleNavItems}
+-          />
++          <CardHeader title="Defaults for this account" />
++          <div className="space-y-4 p-6">
++            <p className="text-sm text-zinc-600 dark:text-zinc-400">
++              Publish your current appearance, sidebar, or dashboard as the
++              default for everyone in this account.
++            </p>
++            <div className="grid gap-3 sm:grid-cols-3">
++              <form action={publishAppearanceDefault}>
++                <Button type="submit" className="w-full">
++                  Publish appearance
++                </Button>
++              </form>
++              <form action={publishNavDefault}>
++                <Button type="submit" className="w-full">
++                  Publish sidebar
++                </Button>
++              </form>
++              {isPersonal && (
++                <form action={publishDashboardDefault}>
++                  <Button type="submit" className="w-full">
++                    Publish dashboard
++                  </Button>
++                </form>
++              )}
++            </div>
++            <div className="grid gap-3 sm:grid-cols-3">
++              <form action={clearAppearanceDefault}>
++                <Button type="submit" variant="ghost" className="w-full">
++                  Clear appearance
++                </Button>
++              </form>
++              <form action={clearNavDefault}>
++                <Button type="submit" variant="ghost" className="w-full">
++                  Clear sidebar
++                </Button>
++              </form>
++              {isPersonal && (
++                <form action={clearDashboardDefault}>
++                  <Button type="submit" variant="ghost" className="w-full">
++                    Clear dashboard
++                  </Button>
++                </form>
++              )}
++            </div>
++            <p className="text-xs text-zinc-500">
++              Users who have their own saved preference keep their override.
++              Resetting a preference returns it to this account default.
++            </p>
++          </div>
+         </Card>
+       )}
+       <Card className="max-w-2xl">
+diff --git a/qna-noor-auto/src/components/nav.tsx b/qna-noor-auto/src/components/nav.tsx
+index 9ef7b15..2ea5dd1 100644
+--- a/qna-noor-auto/src/components/nav.tsx
++++ b/qna-noor-auto/src/components/nav.tsx
+@@ -13,7 +13,7 @@ import {
+ import {
+   getEligibleNavItems,
+   navItemLabel,
+-  normalizeNavLayout,
++  resolveNavLayout,
+   type NavCatalogItem,
+ } from "@/lib/navLayout";
+ 
+@@ -27,6 +27,7 @@ type NavProps = {
+   aiAssistantEnabled?: boolean;
+   canViewFinancials?: boolean;
+   navLayout?: string | null;
++  navDefault?: string | null;
+ };
+ 
+ function matchesPath(pathname: string, href: string): boolean {
+@@ -59,6 +60,7 @@ export function Nav({
+   aiAssistantEnabled = false,
+   canViewFinancials = true,
+   navLayout,
++  navDefault,
+ }: NavProps) {
+   const pathname = usePathname();
+   const router = useRouter();
+@@ -111,13 +113,19 @@ export function Nav({
+       feature: hasRepairOrders ? "repair_orders" : "invoices",
+     };
+   });
+-  const normalizedLayout = !isSuperadmin && navLayout
+-    ? normalizeNavLayout(navLayout)
++  const normalizedLayout = !isSuperadmin
++    ? resolveNavLayout(navLayout, navDefault, {
++        accountType,
++        enabledFeatures,
++      })
+     : null;
+   const navItems = normalizedLayout
+     ? baseItems
+         .map((item) => ({
+           item,
++          label: normalizedLayout.items.find(
++            (entry) => entry.href === item.href,
++          )?.label,
+           layoutIndex: normalizedLayout.items.findIndex(
+             (entry) => entry.href === item.href,
+           ),
+@@ -127,7 +135,10 @@ export function Nav({
+         }))
+         .filter(({ visible }) => visible !== false)
+         .sort((a, b) => a.layoutIndex - b.layoutIndex)
+-        .map(({ item }) => item)
++        .map(({ item, label }) => ({
++          ...item,
++          label: label ?? item.label,
++        }))
+     : baseItems;
+   const renderedHrefs = navItems.map((item) => item.href);
+   const searchTerms = [
+diff --git a/qna-noor-auto/src/lib/appearance.ts b/qna-noor-auto/src/lib/appearance.ts
+index 6074eae..c33e992 100644
+--- a/qna-noor-auto/src/lib/appearance.ts
++++ b/qna-noor-auto/src/lib/appearance.ts
+@@ -338,15 +338,105 @@ export function normalizeAppearance(input: unknown): AppearancePrefs {
+     input && typeof input === "object"
+       ? (input as Record<string, unknown>)
+       : {};
++  const rawAccent = source.accent;
++  const accentValue =
++    typeof rawAccent === "string" && /^#[0-9a-f]{6}$/i.test(rawAccent)
++      ? rawAccent.toLowerCase()
++      : lookup(UI_ACCENTS, rawAccent).key;
+   return {
+     palette: lookup(UI_PALETTES, source.palette).key,
+-    accent: lookup(UI_ACCENTS, source.accent).key,
++    accent: accentValue,
+     scale: lookup(UI_SCALES, source.scale).key,
+     radius: lookup(UI_RADII, source.radius).key,
+     font: lookup(UI_FONTS, source.font).key,
+   };
+ }
+ 
++function parseAppearanceRecord(raw: unknown): Record<string, unknown> {
++  if (typeof raw === "string") {
++    try {
++      raw = JSON.parse(raw);
++    } catch {
++      return {};
++    }
++  }
++  return raw && typeof raw === "object"
++    ? (raw as Record<string, unknown>)
++    : {};
++}
++
++function validAppearanceValue(
++  key: keyof AppearancePrefs,
++  value: unknown,
++): string | null {
++  if (typeof value !== "string") return null;
++  if (key === "accent" && /^#[0-9a-f]{6}$/i.test(value)) {
++    return value.toLowerCase();
++  }
++  const values = {
++    palette: UI_PALETTES,
++    accent: UI_ACCENTS,
++    scale: UI_SCALES,
++    radius: UI_RADII,
++    font: UI_FONTS,
++  }[key];
++  return values.some((entry) => entry.key === value) ? value : null;
++}
++
++export function resolveAppearance(
++  userPrefs: unknown,
++  orgDefault: unknown,
++): AppearancePrefs {
++  const user = parseAppearanceRecord(userPrefs);
++  const organization = parseAppearanceRecord(orgDefault);
++  const resolved = {} as Record<keyof AppearancePrefs, string>;
++  for (const key of Object.keys(DEFAULT_APPEARANCE) as Array<
++    keyof AppearancePrefs
++  >) {
++    const storageKey = `ui${key[0].toUpperCase()}${key.slice(1)}`;
++    resolved[key] =
++      validAppearanceValue(key, user[key] ?? user[storageKey]) ??
++      validAppearanceValue(key, organization[key] ?? organization[storageKey]) ??
++      DEFAULT_APPEARANCE[key];
++  }
++  return normalizeAppearance(resolved);
++}
++
++export function accentVarsFromHex(hex: string): Record<string, string> {
++  const normalized = hex.toLowerCase();
++  const match = normalized.match(/^#([0-9a-f]{6})$/);
++  if (!match) return {};
++
++  const channels = [0, 2, 4].map((offset) =>
++    Number.parseInt(match[1].slice(offset, offset + 2), 16),
++  );
++  const toHex = (value: number): string =>
++    Math.max(0, Math.min(255, Math.round(value)))
++      .toString(16)
++      .padStart(2, "0");
++  const mixed = (whiteRatio: number): string =>
++    `#${channels.map((channel) => toHex(channel * (1 - whiteRatio) + 255 * whiteRatio)).join("")}`;
++  const darkened = `#${channels.map((channel) => toHex(channel * 0.88)).join("")}`;
++  const luminance = channels
++    .map((channel) => channel / 255)
++    .map((channel) =>
++      channel <= 0.03928
++        ? channel / 12.92
++        : ((channel + 0.055) / 1.055) ** 2.4,
++    );
++  const relativeLuminance =
++    0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2];
++
++  return {
++    "--vx-accent-600": normalized,
++    "--vx-accent-700": darkened,
++    "--vx-accent-50": mixed(0.95),
++    "--vx-accent-100": mixed(0.88),
++    "--vx-accent-fg":
++      relativeLuminance > 0.179 ? "#18181b" : "#ffffff",
++  };
++}
++
+ function declarations(values: Record<string, string>): string {
+   return Object.entries(values)
+     .map(([key, value]) => `${key}:${value}`)
+@@ -365,6 +455,9 @@ export function appearanceCss(prefs: AppearancePrefs): string {
+ 
+   const palette = lookup(UI_PALETTES, normalized.palette);
+   const selectedAccent = lookup(UI_ACCENTS, normalized.accent);
++  const accentVars = /^#[0-9a-f]{6}$/i.test(normalized.accent)
++    ? accentVarsFromHex(normalized.accent)
++    : selectedAccent.vars;
+   const scale = lookup(UI_SCALES, normalized.scale);
+   const radius = lookup(UI_RADII, normalized.radius);
+   const font = lookup(UI_FONTS, normalized.font);
+@@ -390,7 +483,7 @@ export function appearanceCss(prefs: AppearancePrefs): string {
+             "--radius-xl": "0.75rem",
+           };
+   const shared = {
+-    ...selectedAccent.vars,
++    ...accentVars,
+     "--vx-root-font": scale.value,
+     ...radiusVars,
+     "--vx-font": font.value,
+diff --git a/qna-noor-auto/src/lib/dashboard.ts b/qna-noor-auto/src/lib/dashboard.ts
+index 94b1251..d7caa0c 100644
+--- a/qna-noor-auto/src/lib/dashboard.ts
++++ b/qna-noor-auto/src/lib/dashboard.ts
+@@ -163,6 +163,15 @@ export function normalizeDashboardLayout(raw: unknown): DashboardLayout {
+   return { columns: parsed.columns, blocks };
+ }
+ 
++export function resolveDashboardLayout(
++  userLayout: unknown,
++  orgDefault: unknown,
++): DashboardLayout {
++  return normalizeDashboardLayout(
++    userLayout === null || userLayout === undefined ? orgDefault : userLayout,
++  );
++}
++
+ export function serializeDashboardLayout(layout: DashboardLayout): string {
+   return JSON.stringify(layout);
+ }
+diff --git a/qna-noor-auto/src/lib/navLayout.ts b/qna-noor-auto/src/lib/navLayout.ts
+index 637323b..bbd8549 100644
+--- a/qna-noor-auto/src/lib/navLayout.ts
++++ b/qna-noor-auto/src/lib/navLayout.ts
+@@ -8,7 +8,7 @@ export type NavCatalogItem = {
+ };
+ 
+ export type NavLayout = {
+-  items: Array<{ href: string; visible: boolean }>;
++  items: Array<{ href: string; visible: boolean; label?: string }>;
+ };
+ 
+ type NavLabelOptions = {
+@@ -114,7 +114,10 @@ function parseNavLayout(raw: unknown): unknown[] {
+   return Array.isArray(record.items) ? record.items : [];
+ }
+ 
+-export function normalizeNavLayout(raw: unknown): NavLayout {
++export function normalizeNavLayout(
++  raw: unknown,
++  options: NavLabelOptions,
++): NavLayout {
+   const known = new Map(NAV_ITEMS.map((item) => [item.href, item]));
+   const items: NavLayout["items"] = [];
+   const seen = new Set<string>();
+@@ -128,9 +131,16 @@ export function normalizeNavLayout(raw: unknown): NavLayout {
+     }
+     seen.add(href);
+     const catalogItem = known.get(href);
++    if (!catalogItem) continue;
++    const defaultLabel = navItemLabel(catalogItem, options);
++    const label =
++      typeof record.label === "string"
++        ? record.label.trim().slice(0, 24)
++        : "";
+     items.push({
+       href,
+       visible: catalogItem?.required ? true : record.visible === true,
++      ...(label && label !== defaultLabel ? { label } : {}),
+     });
+   }
+ 
+@@ -143,6 +153,17 @@ export function normalizeNavLayout(raw: unknown): NavLayout {
+   return { items };
+ }
+ 
++export function resolveNavLayout(
++  userLayout: unknown,
++  orgDefault: unknown,
++  options: NavLabelOptions,
++): NavLayout {
++  return normalizeNavLayout(
++    userLayout === null || userLayout === undefined ? orgDefault : userLayout,
++    options,
++  );
++}
++
+ export function serializeNavLayout(layout: NavLayout): string {
+   return JSON.stringify(layout);
+ }

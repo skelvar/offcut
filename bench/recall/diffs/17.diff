@@ -1,0 +1,38 @@
+diff --git a/apps/tv/src/App.tsx b/apps/tv/src/App.tsx
+index 0c0e46c..5f9bc50 100644
+--- a/apps/tv/src/App.tsx
++++ b/apps/tv/src/App.tsx
+@@ -1845,7 +1845,10 @@ function ViewerApp({ catalogue, collections }: LoadedCatalogue) {
+ 
+   const back = useCallback(() => {
+     const previous = history.current.pop();
+-    const next = previous?.screen ?? 'home';
++    // A deep-linked player has no in-app entry in the navigation stack. Its back control
++    // must still return to its movie description instead of dropping the viewer at Home.
++    // Details pages, in turn, always have Home as a useful fallback destination.
++    const next = previous?.screen ?? (screenRef.current === 'player' ? 'details' : 'home');
+     if (next === screenRef.current && !previous) return;
+     screenRef.current = next;
+     pendingFocusId.current = previous?.focusId ?? null;
+diff --git a/tests/e2e/viewer.spec.ts b/tests/e2e/viewer.spec.ts
+index 85ad95c..1474cdd 100644
+--- a/tests/e2e/viewer.spec.ts
++++ b/tests/e2e/viewer.spec.ts
+@@ -191,6 +191,17 @@ test('profile to home to details passes the selected row exact stream URL to pla
+   await expect(page.locator('.details-screen')).toBeVisible();
+ });
+ 
++test('movie page back controls have useful destinations from direct web links', async ({ page }) => {
++  await page.goto('/?screen=player&capture=1&video=7');
++  await expect(page.locator('.player-screen')).toBeVisible();
++
++  await page.getByRole('button', { name: 'Back to details' }).click();
++  await expect(page.locator('.details-screen')).toBeVisible();
++
++  await page.getByRole('button', { name: 'Back', exact: true }).click();
++  await expect(page.locator('[data-focus-id="hero-play"]')).toBeVisible();
++});
++
+ test('arrow navigation exposes a visible deterministic focus state', async ({ page }) => {
+   await page.getByRole('button', { name: /Bram & Edvin/i }).click();
+   await expect(page.locator('[data-focus-id="hero-play"]')).toBeVisible();

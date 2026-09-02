@@ -1,0 +1,143 @@
+diff --git a/docs/handoff-context.md b/docs/handoff-context.md
+index 2a204f4..70ae25a 100644
+--- a/docs/handoff-context.md
++++ b/docs/handoff-context.md
+@@ -430,3 +430,10 @@ React 19 + Vite + Tailwind + Radix / Hono on Cloudflare Workers∩╝êassets run_wor
+ - σ╖▓τƒÑ P3∩╝êµ£¬Σ┐«∩╝îσÇÖΘÇëΦ╜«∩╝ë∩╝ÜTXT/Markdown education σ║Åσêùσîûµùáµ¥íΣ╗╢ `${start} ΓÇô ${end}`∩╝îend-only µ╕▓µƒô `( ΓÇô 2014)` σ╕ªµé¼µîéµ¿¬µ¥á∩╝êresume.ts τ║ª 2442/2558 Φíî∩╝¢PDF/DOCX/ΘóäΦºêµ¡úτí«∩╝ëπÇé
+ - σ¥æ∩╝ÜJobs Φ»ªµâàΘ¥óµ¥┐σÅ»Θ¥áµÄóµ╡ïσÖ¿µÿ» `<a>`πÇîApply on siteπÇì∩╝êanchor Θ¥₧ button∩╝ë+ ΘªûΣ╕¬ h2/h3 ΦüîΣ╜ìσÉìπÇé
+ - µûçµíú∩╝Üdocs/plan-r268-ux-audit-fixes.mdπÇüdocs/qa-r269-plan.md∩╝êµ╡ïΦ»òΣ╗úτÉåσåÖ∩╝ëπÇé
++
++## R269 ΓÇö fix TXT/Markdown education dangling-dash date serialization (2026-09-02)
++- Φ»üµì«∩╝ÜR269 τöƒΣ║º QA Σ╕ÇµëïσÅæτÄ░∩╝êR268 Φ╜«σ╖▓τƒÑ P3∩╝ëΓÇöΓÇöTXT/Markdown τÜä education σêåµö»µùáµ¥íΣ╗╢µÅÆσÇ╝ `${start} ΓÇô ${end}`∩╝îend-only µ╕▓µƒô `( ΓÇô 2014)`πÇüstart-only µ╕▓µƒô `(2017 ΓÇô )` µé¼µîéµ¿¬µ¥á∩╝¢ΘóäΦºê/PDF/DOCX µù⌐σ╖▓τö¿ filter(Boolean).join(' ΓÇô ') µ¡úτí«πÇé
++- σ«₧τÄ░∩╝Üresume.ts τÜä resumeToPlainText / resumeToMarkdown education σêåµö»µö╣Σ╕║ `[startDate, endDate].filter(Boolean).join(' ΓÇô ')`∩╝îΣ╕ÄΘóäΦºê/PDF/DOCX σ»╣Θ╜É∩╝¢education µùá Present Φ»¡Σ╣ë∩╝êPresent Σ╗à experience∩╝îR268∩╝ëπÇéΣ╗àµ¡ñΣ╕ñσñä∩╝îΘ¢╢σà╢Σ╗ûµö╣σè¿πÇé
++- QA∩╝êR270 σñìΘ¬î∩╝ë∩╝ÜτöƒΣ║º bundle index-DjZrm45t.js∩╝¢σà¿τ╗┐Θ¢╢ P0ΓÇôP3 Θ¢╢ AIΓÇöΓÇö4 σ╜óµÇü education fixture τ╗Åτ£ƒσ«₧ UI Σ╕ïΦ╜╜ TXT/MD/PDF∩╝îTXT σ¡ùΦèéτ║º `(2014)`/`(2017)`/`(2010 ΓÇô 2013)`/µùáµùÑµ£ƒµùáµï¼σÅ╖∩╝îσà¿µûçΣ╗╢ `( ΓÇô `/`ΓÇô )` Θ¢╢σî╣Θàì∩╝îMD σÉî∩╝¢R268 τ╗ÅσÄå Present Σ╕ÄΦÉ╜σ£░ #418 σ¢₧σ╜ÆΘÇÜΦ┐çπÇü375 µÜùΦë▓πÇülocalStorage σƒ║τ║┐Φ┐ÿσÄƒπÇé
++- σ¥æ/µÅÉτñ║∩╝ÜBuilder Σ╕ïΦ╜╜Φíîµ£ëσ¢¢µîëΘÆ« PDF/DOCX/TXT/MD∩╝êMD ΓåÆ resumeToMarkdown∩╝îBuilder.tsx τ║ª 1542 Φíî∩╝ëΓÇöΓÇöMD µÿ»Σ╕Ä TXT σ╣╢σêùµ£Çµÿôσ¡ùΦèéτ║ºµáíΘ¬îτÜäσ║Åσêùσîûσç║σÅúπÇé
++- µûçµíú∩╝Üdocs/plan-r269-education-date-serialization.mdπÇüdocs/qa-r270-plan.md∩╝êµ╡ïΦ»òΣ╗úτÉåσåÖ∩╝ëπÇé
+diff --git a/docs/plan-r269-education-date-serialization.md b/docs/plan-r269-education-date-serialization.md
+new file mode 100644
+index 0000000..60096d0
+--- /dev/null
++++ b/docs/plan-r269-education-date-serialization.md
+@@ -0,0 +1,45 @@
++# R269: fix dangling dash in TXT/Markdown education date serialization
++
++## First-hand evidence (R269 production QA, 2026-09-02)
++
++While verifying R268 on production (cv.zalize.com, bundle index-jQ5I_nHr.js), the QA pass
++found a pre-existing P3 in the export chain:
++
++- An education entry with only an end date ("2014", blank start) renders in the TXT
++  download as `BSc, State U ( ΓÇô 2014)` ΓÇö a dangling leading dash.
++- An entry with only a start date renders `( 2017 ΓÇô )` ΓÇö dangling trailing dash.
++- Preview, PDF and DOCX render the same entry correctly (`2014`), because those three
++  renderers already use `[e.startDate, e.endDate].filter(Boolean).join(' ΓÇô ')`.
++
++## Verified facts vs inference
++
++- Verified: TXT and Markdown education branches interpolate `${e.startDate} ΓÇô ${e.endDate}`
++  unconditionally when either is set (src/lib/resume.ts, education branches of
++  resumeToPlainText / resumeToMarkdown). Preview/PDF/DOCX use filter+join.
++- Verified: all other TXT/MD date sites (experience via experienceDateRange since R268,
++  projects/involvement/military via their own helpers, single-date sections) do not have
++  this defect.
++- Inference: end-only education dates are rare but legal input (users often only record a
++  graduation year), so the dangling dash is user-visible in a shipped artifact (TXT export
++  is pitched as the ATS-safest format).
++
++## Target behavior
++
++TXT and Markdown education dates use the same semantics as preview/PDF/DOCX:
++`[start, end].filter(Boolean).join(' ΓÇô ')` ΓÇö end-only ΓåÆ `2014`, start-only ΓåÆ `2017`,
++both ΓåÆ `2017 ΓÇô 2021`, neither ΓåÆ no parenthetical. No `ΓÇô Present` semantics for education
++(unchanged; only experience gets Present per R268).
++
++## Scope
++
++- src/lib/resume.ts: the two education serializer branches only.
++- No Worker/API/schema/AI/persistence/scoring/payment changes. No other section touched.
++
++## Validation
++
++- Extend .tmp-smoke/r268_oracle.ts expectations (education end-only/start-only/both forms
++  in TXT and MD).
++- npx tsc -b, npm run lint, npm run build.
++- Deploy; production QA: real TXT download byte-check for end-only education, MD via
++  copy path if reachable, regression on experience Present forms (R268), preview/PDF/DOCX
++  unchanged.
+diff --git a/docs/qa-r270-plan.md b/docs/qa-r270-plan.md
+new file mode 100644
+index 0000000..dabe600
+--- /dev/null
++++ b/docs/qa-r270-plan.md
+@@ -0,0 +1,44 @@
++# QA plan ΓÇö R270: education date join fix in TXT/Markdown (production cv.zalize.com, bundle index-DjZrm45t.js)
++
++Change: resume.ts:2443 (TXT) and :2562 (MD) education dates now `[start,end].filter(Boolean).join(' ΓÇô ')` (was raw `${start} ΓÇô ${end}`). Education/TXT+MD only.
++
++Setup done: bundle confirmed served (HTML references index-DjZrm45t.js, asset 200); source verified. CDP on :29229, recording down (enigo) ΓåÆ screenshots.
++
++Fixture: resume with experience [start-only "Jan 2020"/blank end] and education entries:
++- E1 end-only: end "2014", blank start
++- E2 start-only: start "2017", blank end
++- E3 both: "2010" ΓÇô "2013"
++- E4 no dates
++
++## Tests (each byte-checked in downloaded TXT; broken build would show "( ΓÇô 2014)" / "(2017 ΓÇô )")
++1. TXT education lines:
++   - E1 ΓåÆ `(2014)` exactly; assert absence of `( ΓÇô 2014)` ΓÇö FAIL if dangling dash present.
++   - E2 ΓåÆ `(2017)` exactly; assert no `(2017 ΓÇô )` and no `2017 ΓÇô Present`.
++   - E3 ΓåÆ `(2010 ΓÇô 2013)`.
++   - E4 ΓåÆ school line has no parenthetical.
++2. Preview spot check: education dates render `2014`, `2017`, `2010 ΓÇô 2013` (unchanged), screenshot.
++3. PDF via pdftotext: same education values, no dangling dashes; no `Present` on education.
++4. Regression R268: experience preview + TXT contain `Jan 2020 ΓÇô Present`; TXT byte-exact `(Jan 2020 ΓÇô Present)`.
++5. Regression landing: saved dark pref ΓåÆ 2 loads, console errors [] (no #418), screenshot.
++6. 375├ù812 dark builder with fixture loaded: scrollWidth === 375, screenshot.
++7. Zero non-quota /api/ai/*; restore localStorage exactly ["honestcv.clientId","honestcv.qa"].
++
++## Results (run 2025, script /home/ubuntu/qa/r270.py, downloads /home/ubuntu/qa/dl_r270/)
++
++- Bundle: page resource entries include index-DjZrm45t.js only ΓÇö passed.
++- TXT byte-exact:
++  - `BSc Computer Science, University of Texas (2014)` ΓÇö no `( ΓÇô 2014)` ΓÇö passed
++  - `MSc Software Engineering, Austin College (2017)` ΓÇö no trailing dash, no Present ΓÇö passed
++  - `Diploma, Round Rock High School (2010 ΓÇô 2013)` ΓÇö passed
++  - `Certificate, Online Academy` ΓÇö no parenthetical ΓÇö passed
++  - grep count of `( ΓÇô ` / `ΓÇô )` in file: 0 ΓÇö passed
++- Preview: 2014 / 2017 / 2010 ΓÇô 2013 render, no dangling-dash forms (r270_preview_edu.png) ΓÇö passed.
++- PDF (pdftotext): 2014, 2017, 2010 ΓÇô 2013, no education Present, no dangling dash lines ΓÇö passed.
++- Regression R268: experience `Jan 2020 ΓÇô Present` in preview and TXT line 8 `(Jan 2020 ΓÇô Present)` ΓÇö passed.
++- Regression landing dark pref: 2 loads, console errors [] (no #418) (r270_landing_dark.png) ΓÇö passed.
++- 375├ù812 dark builder: scrollWidth 375, class dark, errors [] (r270_375_dark_builder.png) ΓÇö passed.
++- Zero non-quota /api/ai/*; localStorage restored exactly ["honestcv.clientId","honestcv.qa"]; system theme (r270_cleanup_final.png) ΓÇö passed.
++
++- Markdown (MD download button, UI): line 17 `### BSc Computer Science, University of Texas *(2014)*`, `*(2017)*`, `*(2010 ΓÇô 2013)*`, no-dates entry has no parenthetical; experience `*(Jan 2020 ΓÇô Present)*`; zero dangling-dash matches ΓÇö passed.
++
++No P0ΓÇôP3 findings. Recording unavailable (enigo init failed, down since R166) ΓÇö CDP screenshots.
+diff --git a/src/lib/resume.ts b/src/lib/resume.ts
+index 0bd2f85..1b61400 100644
+--- a/src/lib/resume.ts
++++ b/src/lib/resume.ts
+@@ -2439,7 +2439,9 @@ export function resumeToPlainText(r: Resume): string {
+         if (!e.school) continue
+         lines.push(
+           [e.degree, e.school].filter(Boolean).join(', ') +
+-            (e.startDate || e.endDate ? ` (${e.startDate} ΓÇô ${e.endDate})` : '')
++            (e.startDate || e.endDate
++              ? ` (${[e.startDate, e.endDate].filter(Boolean).join(' ΓÇô ')})`
++              : '')
+         )
+         const detail = educationDetailLine(e)
+         if (detail) lines.push(detail)
+@@ -2555,7 +2557,10 @@ export function resumeToMarkdown(r: Resume): string {
+       heading(sectionHeading(r, 'education'))
+       for (const e of r.education) {
+         if (!e.school) continue
+-        const dates = e.startDate || e.endDate ? ` *(${e.startDate} ΓÇô ${e.endDate})*` : ''
++        const dates =
++          e.startDate || e.endDate
++            ? ` *(${[e.startDate, e.endDate].filter(Boolean).join(' ΓÇô ')})*`
++            : ''
+         lines.push(`### ${[e.degree, e.school].filter(Boolean).join(', ')}${dates}`, '')
+         const detail = educationDetailLine(e)
+         if (detail) lines.push(detail, '')

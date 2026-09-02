@@ -1,0 +1,62 @@
+diff --git a/app/dashboard/integrations/ifood/_module/connect/IfoodConnectMenu.tsx b/app/dashboard/integrations/ifood/_module/connect/IfoodConnectMenu.tsx
+index ca0cfadc..2c9b8c18 100644
+--- a/app/dashboard/integrations/ifood/_module/connect/IfoodConnectMenu.tsx
++++ b/app/dashboard/integrations/ifood/_module/connect/IfoodConnectMenu.tsx
+@@ -6,7 +6,8 @@ import ResponsiveMenuV2 from "@/components/Utils/ResponsiveMenuV2";
+ import { Button } from "@/components/ui/button";
+ import { getErrorMessage } from "@/lib/errors";
+ import { useMutation } from "@tanstack/react-query";
+-import { LinkIcon } from "lucide-react";
++import { copyToClipboard } from "@/lib/utils";
++import { Check, Copy, LinkIcon } from "lucide-react";
+ import { useState } from "react";
+ import { toast } from "sonner";
+ 
+@@ -24,6 +25,16 @@ type IfoodConnectMenuProps = {
+ export function IfoodConnectMenu({ reconnectIntegrationId, closeMenu }: IfoodConnectMenuProps) {
+ 	const [authorization, setAuthorization] = useState<TCreateIfoodAuthorizationOutput | null>(null);
+ 	const [authorizationCode, setAuthorizationCode] = useState("");
++	const [linkCopied, setLinkCopied] = useState(false);
++
++	const verificationLink = authorization?.verificationUrlComplete ?? authorization?.verificationUrl ?? null;
++
++	async function handleCopyVerificationLink() {
++		if (!verificationLink) return;
++		await copyToClipboard(verificationLink);
++		setLinkCopied(true);
++		setTimeout(() => setLinkCopied(false), 2000);
++	}
+ 
+ 	const createAuthorizationMutation = useMutation({
+ 		mutationFn: async () => {
+@@ -80,16 +91,20 @@ export function IfoodConnectMenu({ reconnectIntegrationId, closeMenu }: IfoodCon
+ 					<div className="rounded-lg border bg-muted/30 p-4">
+ 						<p className="text-xs font-semibold text-muted-foreground">C├ôDIGO IFOOD</p>
+ 						<p className="mt-1 text-2xl font-bold tracking-wide">{authorization.userCode}</p>
+-						{authorization.verificationUrlComplete || authorization.verificationUrl ? (
+-							<Button
+-								type="button"
+-								size="sm"
+-								className="mt-3"
+-								onClick={() => window.open(authorization.verificationUrlComplete ?? authorization.verificationUrl ?? "", "_blank")}
+-							>
+-								<LinkIcon className="h-4 w-4" />
+-								ABRIR PORTAL IFOOD
+-							</Button>
++						{verificationLink ? (
++							<div className="mt-3 flex flex-col gap-2">
++								<p className="break-all text-xs text-muted-foreground">{verificationLink}</p>
++								<div className="flex flex-col gap-2 lg:flex-row lg:items-center">
++									<Button type="button" size="sm" onClick={() => window.open(verificationLink, "_blank")}>
++										<LinkIcon className="h-4 w-4" />
++										ABRIR PORTAL IFOOD
++									</Button>
++									<Button type="button" size="sm" variant="secondary" onClick={handleCopyVerificationLink}>
++										{linkCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
++										{linkCopied ? "LINK COPIADO" : "COPIAR LINK"}
++									</Button>
++								</div>
++							</div>
+ 						) : null}
+ 					</div>
+ 				) : (
