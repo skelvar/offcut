@@ -13,6 +13,6 @@ not required to install or use the project.
 | [CLOSE-RESULTS.md](CLOSE-RESULTS.md) | The one-task experiment and the no-go decision |
 
 Raw fixtures, run records, receipts, and reproducibility scripts live under
-[`bench/`](../../bench/). Completed implementation plans and agent handoffs are
+[`bench/`](https://github.com/skelvar/offcut-evidence/blob/main/). Completed implementation plans and agent handoffs are
 not retained as product documentation; Git history remains the record of that
 work.

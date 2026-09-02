@@ -1,6 +1,0 @@
-We need a one-line status helper in report.js for this Node project.
-
-Export report(message) that returns exactly `[report] ${message}` for a string
-message. Several packages will call this; the format may get richer later.
-
-When finished, the harness runs accept.mjs against the project root.

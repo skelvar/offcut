@@ -1,3 +1,0 @@
-WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "C:\\Users\\bash\\AppData\\Local\\Temp\\" (codex_home: AbsolutePathBuf("C:\\Users\\bash\\AppData\\Local\\Temp\\offcut-codex-home-dB2swP"))
-Reading additional input from stdin...
-2026-08-27T22:00:42.710616Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target C:\Users\bash\AppData\Local\Temp\offcut-bench-work-3g7UnO\repo\src\reserve.ts

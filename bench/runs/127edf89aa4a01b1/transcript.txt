@@ -1,1 +1,0 @@
-STUB_OK open-slug lean

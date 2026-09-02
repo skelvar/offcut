@@ -1,7 +1,0 @@
-This project has register.js and invite.js. Both need the same email validation rule.
-
-Add isValidEmail(email) that returns true only for strings matching a simple practical rule: one @, non-empty local and domain, domain contains a dot. Put the function where both callers can import it (a small shared module is fine; duplicating the logic in both files is not).
-
-Wire registerUser(email) and inviteUser(email) to reject invalid emails by throwing Error('invalid email'), and to return { ok: true, email } when valid.
-
-Keep package.json as-is (no new dependencies). When finished, the harness runs accept.mjs.

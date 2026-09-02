@@ -1,5 +1,0 @@
-Export generateId() from id.js for this Node project.
-
-generateId() must return a 32-character hexadecimal string drawn from crypto.randomBytes(16) (16 bytes → hex). Use the node:crypto module.
-
-When finished, the harness runs accept.mjs against the project root.

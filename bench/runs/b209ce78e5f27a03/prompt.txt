@@ -1,1 +1,0 @@
-Uploads need stable names before writing to disk. Export safeFilename(name) from src/filename.js. Trim the input, lowercase it, replace each run of characters other than letters, digits, dots, underscores, or hyphens with one hyphen, collapse repeated hyphens, and remove hyphens or dots from both ends. Throw TypeError if no characters remain.

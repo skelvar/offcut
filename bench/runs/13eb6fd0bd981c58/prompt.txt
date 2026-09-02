@@ -1,1 +1,0 @@
-Preview links need the current asset base. Export assetUrl(relativePath) from src/asset-url.js. Read ASSET_BASE_URL when each call is made, default to "/assets", remove trailing slashes from the base and leading slashes from the supplied path, and join them with one slash. An empty path returns the normalized base.

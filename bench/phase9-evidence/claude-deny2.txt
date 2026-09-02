@@ -1,7 +1,0 @@
-File write denied by hook (`coexist-probe:deny-second`) ΓÇö `deny2.ts` was not created.
-
-**WRITE_BLOCKED**
-**OFFCUT_CTX** ΓÇö saw "Offcut: one implementation ΓÇö is the indirection carrying its weight?"
-**DENY_CTX** ΓÇö saw `DENY2_CTX`
-
-Both hook contexts arrived alongside the deny on the same PreToolUse:Write call.

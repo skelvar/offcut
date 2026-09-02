@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ALL_SIGNALS, runSignals } from '../hooks/signals.js';
 import { parseUnifiedDiff } from '../scripts/scan.mjs';
-import { RUNS_DIR, BENCH_ROOT, CONTROL_TASK_IDS } from './lib.mjs';
+import { RUNS_DIR, BENCH_ROOT, REPO_ROOT, CONTROL_TASK_IDS } from './lib.mjs';
 
 const POSITIVE_DIR = path.join(BENCH_ROOT, 'corpus', 'positive');
 
@@ -52,16 +52,31 @@ function walkText(dir) {
 }
 
 /**
- * List completed, accepted runs that have a diff.
- * @returns {Array<{ runId: string, dir: string, arm: string, task: string }>}
+ * Directory of labeled negative runs. Local `bench/runs` if present; otherwise
+ * a sibling clone of skelvar/offcut-evidence.
  */
+function sealedNegativeRunsDir() {
+  const sibling = path.join(path.dirname(REPO_ROOT), 'offcut-evidence', 'runs');
+  if (fs.existsSync(RUNS_DIR)) {
+    const hasAccepted = fs.readdirSync(RUNS_DIR, { withFileTypes: true }).some(
+      (entry) =>
+        entry.isDirectory() &&
+        fs.existsSync(path.join(RUNS_DIR, entry.name, 'accept.json')),
+    );
+    if (hasAccepted) return RUNS_DIR;
+  }
+  // offcut: sealed negatives live in skelvar/offcut-evidence; sibling clone restores local 0/95
+  return fs.existsSync(sibling) ? sibling : RUNS_DIR;
+}
+
 export function listNegativeRuns() {
-  if (!fs.existsSync(RUNS_DIR)) return [];
+  const runsDir = sealedNegativeRunsDir();
+  if (!fs.existsSync(runsDir)) return [];
   const out = [];
-  for (const entry of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(runsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const name = entry.name;
-    const dir = path.join(RUNS_DIR, name);
+    const dir = path.join(runsDir, name);
     const acceptPath = path.join(dir, 'accept.json');
     const diffPath = path.join(dir, 'diff.patch');
     const runPath = path.join(dir, 'run.json');
