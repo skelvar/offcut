@@ -1,0 +1,64 @@
+
+  Environment
+  └ Version: 1.0.13 [unknown]
+  └ CWD: D:\rightseam\.worktrees\offcut-close\bench\close-runs\2026-09-01T11-25-36-426Z\baseline\repo
+  └ Git root: D:/rightseam/.worktrees/offcut-close/bench/close-runs/2026-09-01T11-25-36-426Z/baseline/repo/
+  └ Project trusted: yes
+
+  Project Instructions (1)
+  └ D:\rightseam\.worktrees\offcut-close\bench\close-runs\2026-09-01T11-25-36-426Z\baseline\repo\Agents.md (project, ~62 tokens)
+
+  Permissions
+  └ Source: (none)
+  └ 0 loaded, 0 skipped
+
+  Login Policy
+  └ disable_api_key_auth: (unset)
+  └ force_login_team_uuid: (none)
+  └ api_key_auth_disabled: false
+
+  Skills (0)
+  └ (none)
+
+  Agents (3)
+  └ general-purpose  builtin
+  └ explore          builtin
+  └ plan             builtin
+
+  Plugins (0)
+  └ (none)
+
+  Marketplaces (0)
+  └ (none)
+
+  MCP Servers (0)
+  └ (none) — see `grok mcp add --help`
+
+  LSP Servers (0)
+  └ (none)
+
+  Hooks (0)
+  └ (none)
+
+  Config Sources
+  └ User: (none)
+  └ Project: (none)
+
+  Harness Compatibility
+  └ cursor
+    └ skills     on   (default)
+    └ rules      on   (default)
+    └ agents     on   (default)
+    └ mcps       on   (default)
+    └ hooks      on   (default)
+    └ sessions   on   (default)
+  └ claude
+    └ skills     on   (default)
+    └ rules      on   (default)
+    └ agents     on   (default)
+    └ mcps       on   (default)
+    └ hooks      on   (default)
+    └ sessions   on   (default)
+  └ codex
+    └ sessions   on   (default)
+

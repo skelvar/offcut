@@ -1,0 +1,58 @@
+{
+  "task": "checkout-idempotency-release",
+  "arms": [
+    "baseline",
+    "offcut-close"
+  ],
+  "model": "grok-4.6",
+  "reasoningEffort": "xhigh",
+  "samePrompt": true,
+  "hiddenOracle": true,
+  "maxTurns": 18,
+  "executedArms": [
+    "offcut-close"
+  ],
+  "runId": "2026-09-01T11-35-22-453Z",
+  "runRoot": "D:\\rightseam\\.worktrees\\offcut-close\\bench\\close-runs\\2026-09-01T11-35-22-453Z",
+  "summaries": [
+    {
+      "arm": "offcut-close",
+      "exitCode": 0,
+      "durationMs": 314268,
+      "visibleTests": true,
+      "hiddenAcceptance": true,
+      "hiddenOutput": "CLOSE_ACCEPT_OK",
+      "success": true,
+      "stopReason": "end_turn",
+      "turns": 11,
+      "toolCalls": 35,
+      "subagents": 1,
+      "editCalls": 3,
+      "testCommands": 2,
+      "repeatedCommands": [
+        "node --test; echo \"TEST_EXIT:$LASTEXITCODE\"; node ../tmp-repro-concurrent.mjs; echo \"CONCURRENT_EXIT:$LASTEXITCODE\"; node ../tmp-repro-conflict.mjs; echo \"CONFLICT_EXIT:$LASTEXITCODE\""
+      ],
+      "usage": {
+        "input_tokens": 143754,
+        "output_tokens": 17972,
+        "cache_read_input_tokens": 215168,
+        "cache_creation_input_tokens": 0,
+        "server_tool_use": {
+          "web_search_requests": 0
+        }
+      },
+      "modelUsage": {
+        "grok-4.6-build": {
+          "inputTokens": 143754,
+          "outputTokens": 17972,
+          "cacheReadInputTokens": 215168,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.08549708
+        }
+      },
+      "costUSD": 0.08549708,
+      "final": "The checkout idempotency change is release-ready. `CheckoutService.placeOrder(key, cart)` is unchanged as a public API. The service now coalesces in-flight work per key, rejects payload reuse with `IDEMPOTENCY_CONFLICT`, and still allows retry after a failed create. Nothing was committed.\n\n**What was broken**\n- Overlapping calls with the same key both missed the completed map and both called `store.create`.\n- A completed key always returned the original order, even when the cart differed; `IDEMPOTENCY_CONFLICT` was never thrown.\n\n**Fix (service boundary only)**\n- Track an in-flight promise per key so concurrent same-payload callers share one create.\n- Compare `JSON.stringify(cart)` on completed and in-flight hits; mismatch throws an error with `code: 'IDEMPOTENCY_CONFLICT'` and does not create again.\n- Drop the in-flight entry on failure so a later retry can succeed.\n\n**Evidence**\n- `node --test`: both visible tests passed (sequential retry; failed create then retry).\n- Concurrent same key/payload: `creates === 1`, both callers got the same order.\n- Different payload on the same key: threw `IDEMPOTENCY_CONFLICT`, `creates` stayed `1`.\n\n```text\nOffcut Close: PASS\nScope: CheckoutService.placeOrder idempotency (coalesce, conflict, retry)\nAcceptance: 5/5\nRequired findings: 2\nClosed: F1, F2\nReopened/open: none\nRepair cycles: 1/2\nIndependent evaluator: available\nVerification: node --test (2 pass); concurrent coalesce creates=1 same order; conflict code=IDEMPOTENCY_CONFLICT creates=1\nBlocker: none\nPersistent lesson: not stored\n```"
+    }
+  ]
+}

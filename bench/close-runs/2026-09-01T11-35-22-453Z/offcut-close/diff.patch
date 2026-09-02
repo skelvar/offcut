@@ -1,0 +1,49 @@
+diff --git a/src/checkout.js b/src/checkout.js
+index 38a4245..e33573b 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -2,19 +2,36 @@ export class CheckoutService {
+   constructor(store) {
+     this.store = store;
+     this.completed = new Map();
++    this.inflight = new Map();
+   }
+ 
+   async placeOrder(key, cart) {
+     if (!key) throw new TypeError('idempotency key is required');
+ 
+-    const completed = this.completed.get(key);
+-    if (completed) return completed.order;
++    const payload = JSON.stringify(cart);
++    const existing = this.completed.get(key) ?? this.inflight.get(key);
++    if (existing) {
++      if (existing.payload !== payload) {
++        const error = new Error('Idempotency key already used with a different payload');
++        error.code = 'IDEMPOTENCY_CONFLICT';
++        throw error;
++      }
++      return existing.order ?? existing.promise;
++    }
+ 
+-    const order = await this.store.create(structuredClone(cart));
+-    this.completed.set(key, {
+-      payload: JSON.stringify(cart),
+-      order,
+-    });
+-    return order;
++    const record = { payload, promise: null };
++    record.promise = this.store
++      .create(structuredClone(cart))
++      .then((order) => {
++        record.order = order;
++        this.completed.set(key, record);
++        return order;
++      })
++      .finally(() => {
++        this.inflight.delete(key);
++      });
++
++    this.inflight.set(key, record);
++    return record.promise;
+   }
+ }
